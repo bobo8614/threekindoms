@@ -1,0 +1,75 @@
+{
+  "name": "threekindoms",
+  "version": "0.3.6",
+  "description": "三国 HD-2D",
+  "main": "main.js",
+  "scripts": {
+    "build-app": "node build-app.mjs",
+    "start": "electron .",
+    "smoke": "electron . --smoke=smoke",
+    "dist:win": "node build-app.mjs && electron-builder --win zip --x64",
+    "dist:dir": "node build-app.mjs && electron-builder --mac dir",
+    "dist:mac": "node build-app.mjs && electron-builder --mac dmg --arm64 --x64"
+  },
+  "devDependencies": {
+    "@fontsource/ma-shan-zheng": "5.3.1",
+    "@fontsource/noto-serif-sc": "5.3.1",
+    "electron": "38.8.6",
+    "electron-builder": "26.18.0",
+    "resedit": "3.0.2",
+    "three": "0.170.0"
+  },
+  "productName": "Three Kingdoms HD-2D",
+  "private": true,
+  "build": {
+    "appId": "io.github.tianlin.threekindoms",
+    "productName": "Three Kingdoms HD-2D",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "app/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "zh-CN",
+      "zh-TW",
+      "en-US"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false,
+      "icon": "build/icon.ico"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "category": "public.app-category.strategy-games",
+      "hardenedRuntime": false,
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "title": "${productName} ${version}"
+    },
+    "afterPack": "build/after-pack.cjs"
+  },
+  "license": "MIT"
+}

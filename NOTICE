@@ -1,0 +1,18 @@
+Three Kingdoms HD-2D — third-party components
+
+The game and its desktop build use the following packages, installed by
+`npm --prefix hd2d-mvp/desktop install` (they are not stored in this repository):
+
+  three 0.170.0                  MIT        https://github.com/mrdoob/three.js
+  @fontsource/noto-serif-sc 5.3.1 OFL-1.1   https://github.com/fontsource/font-files
+  @fontsource/ma-shan-zheng 5.3.1 OFL-1.1   https://github.com/fontsource/font-files
+  electron 38.8.6                MIT        https://github.com/electron/electron
+  electron-builder 26.18.0       MIT        https://github.com/electron-userland/electron-builder
+  resedit 3.0.2                  MIT        https://github.com/jet2jet/resedit-js
+
+The desktop package vendors three.js and the two web fonts; their license files are
+kept beside them in the package.
+
+Game rules and data follow the 1992 Famicom game 三國志II 覇王の大陸 (Namco). This is an
+unofficial, non-commercial fan remake, not affiliated with or endorsed by Bandai Namco
+Entertainment. No ROM or original game material is included or required.

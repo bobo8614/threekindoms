@@ -1,0 +1,1092 @@
+[
+ {
+  "set": "maps",
+  "city": 0,
+  "month": 0,
+  "fails": [
+   "smallest general 38 px < 40",
+   "平原 and 山地 only ΔE 4.1 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 37.6,
+   "tagH": 22,
+   "noise": 0.0503,
+   "sat": 0.188,
+   "apron": 0.615,
+   "blossom": 0.0026,
+   "terrainDE": 4.1,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 1,
+  "month": 1,
+  "fails": [
+   "outside the board 0.79× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 60.2,
+   "tagH": 22,
+   "noise": 0.0583,
+   "sat": 0.395,
+   "apron": 0.79,
+   "blossom": 0.0042,
+   "terrainDE": 20,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 10,
+  "month": 10,
+  "fails": [
+   "board noise 0.057 > 0.85× HEAD's 0.0453",
+   "board saturation 0.55 > 0.48 (HEAD 0.537)",
+   "outside the board 0.78× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 63.2,
+   "tagH": 22,
+   "noise": 0.0573,
+   "sat": 0.553,
+   "apron": 0.782,
+   "blossom": 0,
+   "terrainDE": 25.6,
+   "closest": "平原/城",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 11,
+  "month": 11,
+  "fails": [
+   "outside the board 0.68× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 70.3,
+   "tagH": 22,
+   "noise": 0.0488,
+   "sat": 0.171,
+   "apron": 0.676,
+   "blossom": 0,
+   "terrainDE": 20.9,
+   "closest": "山地/城",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 12,
+  "month": 0,
+  "fails": [
+   "board noise 0.051 > 0.85× HEAD's 0.0494",
+   "board saturation 0.55 > 0.45 (HEAD 0.464)",
+   "outside the board 0.79× as bright as on it > 0.62",
+   "森林 and 平原 only ΔE 5.6 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.6,
+   "tagH": 22,
+   "noise": 0.0514,
+   "sat": 0.549,
+   "apron": 0.789,
+   "blossom": 0.0004,
+   "terrainDE": 5.6,
+   "closest": "森林/平原",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 13,
+  "month": 1,
+  "fails": [
+   "board noise 0.056 > 0.85× HEAD's 0.0526",
+   "board saturation 0.65 > 0.56 (HEAD 0.622)",
+   "outside the board 0.69× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.4,
+   "tagH": 22,
+   "noise": 0.0565,
+   "sat": 0.653,
+   "apron": 0.693,
+   "blossom": 0.0003,
+   "terrainDE": 14.1,
+   "closest": "森林/河流",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 14,
+  "month": 2,
+  "fails": [
+   "board noise 0.053 > 0.85× HEAD's 0.0531",
+   "board saturation 0.58 > 0.55 (HEAD 0.613)",
+   "outside the board 0.68× as bright as on it > 0.62",
+   "blossom 0.38% of the board > 0.1%",
+   "森林 and 平原 only ΔE 7.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 54.4,
+   "tagH": 22,
+   "noise": 0.0526,
+   "sat": 0.582,
+   "apron": 0.685,
+   "blossom": 0.0038,
+   "terrainDE": 7.5,
+   "closest": "森林/平原",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 15,
+  "month": 3,
+  "fails": [
+   "board noise 0.044 > 0.85× HEAD's 0.0481",
+   "outside the board 0.99× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 8.7 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 75.2,
+   "tagH": 22,
+   "noise": 0.0435,
+   "sat": 0.535,
+   "apron": 0.992,
+   "blossom": 0,
+   "terrainDE": 8.7,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 16,
+  "month": 4,
+  "fails": [
+   "board noise 0.039 > 0.85× HEAD's 0.0409",
+   "board saturation 0.55 > 0.50 (HEAD 0.557)",
+   "outside the board 0.74× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 9.2 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 58.6,
+   "tagH": 22,
+   "noise": 0.0388,
+   "sat": 0.554,
+   "apron": 0.744,
+   "blossom": 0,
+   "terrainDE": 9.2,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 17,
+  "month": 5,
+  "fails": [
+   "board noise 0.049 > 0.85× HEAD's 0.037",
+   "board saturation 0.65 > 0.45 (HEAD 0.504)",
+   "outside the board 0.74× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 5.9 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 70.1,
+   "tagH": 22,
+   "noise": 0.049,
+   "sat": 0.649,
+   "apron": 0.738,
+   "blossom": 0,
+   "terrainDE": 5.9,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 18,
+  "month": 6,
+  "fails": [
+   "board noise 0.047 > 0.85× HEAD's 0.0485",
+   "board saturation 0.64 > 0.59 (HEAD 0.661)",
+   "outside the board 0.90× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 50.7,
+   "tagH": 22,
+   "noise": 0.0468,
+   "sat": 0.644,
+   "apron": 0.902,
+   "blossom": 0,
+   "terrainDE": 14.9,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 19,
+  "month": 7,
+  "fails": [
+   "board noise 0.046 > 0.85× HEAD's 0.0472",
+   "board saturation 0.72 > 0.63 (HEAD 0.7)",
+   "outside the board 0.73× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 63.1,
+   "tagH": 22,
+   "noise": 0.0461,
+   "sat": 0.716,
+   "apron": 0.725,
+   "blossom": 0,
+   "terrainDE": 14.5,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 2,
+  "month": 2,
+  "fails": [
+   "board noise 0.051 > 0.85× HEAD's 0.0524",
+   "board saturation 0.61 > 0.50 (HEAD 0.56)",
+   "outside the board 0.83× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 79.1,
+   "tagH": 22,
+   "noise": 0.0509,
+   "sat": 0.612,
+   "apron": 0.83,
+   "blossom": 0,
+   "terrainDE": 18.1,
+   "closest": "山地/城",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 20,
+  "month": 8,
+  "fails": [
+   "board noise 0.043 > 0.85× HEAD's 0.0473",
+   "board saturation 0.68 > 0.67 (HEAD 0.744)",
+   "outside the board 0.69× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 66.3,
+   "tagH": 22,
+   "noise": 0.0434,
+   "sat": 0.679,
+   "apron": 0.691,
+   "blossom": 0,
+   "terrainDE": 33.1,
+   "closest": "平原/城",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 21,
+  "month": 9,
+  "fails": [
+   "board noise 0.041 > 0.85× HEAD's 0.0484",
+   "outside the board 0.69× as bright as on it > 0.62",
+   "森林 and 平原 only ΔE 10.0 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 56.6,
+   "tagH": 22,
+   "noise": 0.0412,
+   "sat": 0.587,
+   "apron": 0.693,
+   "blossom": 0,
+   "terrainDE": 10,
+   "closest": "森林/平原",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 22,
+  "month": 10,
+  "fails": [
+   "board noise 0.045 > 0.85× HEAD's 0.0448",
+   "board saturation 0.70 > 0.45 (HEAD 0.485)",
+   "outside the board 0.77× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 56.3,
+   "tagH": 22,
+   "noise": 0.0453,
+   "sat": 0.701,
+   "apron": 0.772,
+   "blossom": 0,
+   "terrainDE": 14.1,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 23,
+  "month": 11,
+  "fails": [
+   "board noise 0.051 > 0.85× HEAD's 0.0454",
+   "outside the board 0.77× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 9.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 76.3,
+   "tagH": 22,
+   "noise": 0.0508,
+   "sat": 0.439,
+   "apron": 0.769,
+   "blossom": 0,
+   "terrainDE": 9.5,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 24,
+  "month": 0,
+  "fails": [
+   "board noise 0.047 > 0.85× HEAD's 0.0497",
+   "board saturation 0.60 > 0.49 (HEAD 0.546)",
+   "outside the board 0.70× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 54.1,
+   "tagH": 22,
+   "noise": 0.0469,
+   "sat": 0.601,
+   "apron": 0.703,
+   "blossom": 0.0002,
+   "terrainDE": 11.8,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 25,
+  "month": 1,
+  "fails": [
+   "board noise 0.048 > 0.85× HEAD's 0.0497",
+   "board saturation 0.58 > 0.45 (HEAD 0.479)",
+   "outside the board 0.82× as bright as on it > 0.62",
+   "森林 and 平原 only ΔE 5.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 51.6,
+   "tagH": 22,
+   "noise": 0.0481,
+   "sat": 0.576,
+   "apron": 0.816,
+   "blossom": 0.0005,
+   "terrainDE": 5.5,
+   "closest": "森林/平原",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 26,
+  "month": 2,
+  "fails": [
+   "board noise 0.046 > 0.85× HEAD's 0.0515",
+   "board saturation 0.59 > 0.45 (HEAD 0.401)",
+   "outside the board 0.96× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 75.5,
+   "tagH": 22,
+   "noise": 0.0455,
+   "sat": 0.59,
+   "apron": 0.957,
+   "blossom": 0.001,
+   "terrainDE": 19.9,
+   "closest": "森林/河流",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 27,
+  "month": 3,
+  "fails": [
+   "board noise 0.043 > 0.85× HEAD's 0.0496",
+   "board saturation 0.61 > 0.48 (HEAD 0.536)",
+   "outside the board 0.95× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 8.7 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 55.2,
+   "tagH": 22,
+   "noise": 0.0425,
+   "sat": 0.609,
+   "apron": 0.952,
+   "blossom": 0,
+   "terrainDE": 8.7,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 28,
+  "month": 4,
+  "fails": [
+   "board noise 0.036 > 0.85× HEAD's 0.0377",
+   "board saturation 0.54 > 0.45 (HEAD 0.402)",
+   "outside the board 0.66× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 7.1 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 58.9,
+   "tagH": 22,
+   "noise": 0.0359,
+   "sat": 0.539,
+   "apron": 0.657,
+   "blossom": 0,
+   "terrainDE": 7.1,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 29,
+  "month": 5,
+  "fails": [
+   "board noise 0.033 > 0.85× HEAD's 0.0387",
+   "board saturation 0.59 > 0.45 (HEAD 0.394)",
+   "outside the board 0.67× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 40.5,
+   "tagH": 22,
+   "noise": 0.0334,
+   "sat": 0.594,
+   "apron": 0.667,
+   "blossom": 0,
+   "terrainDE": 10.2,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 3,
+  "month": 3,
+  "fails": [
+   "board noise 0.044 > 0.85× HEAD's 0.0467",
+   "outside the board 1.03× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 61.6,
+   "tagH": 22,
+   "noise": 0.0443,
+   "sat": 0.569,
+   "apron": 1.033,
+   "blossom": 0,
+   "terrainDE": 17.4,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 4,
+  "month": 4,
+  "fails": [
+   "board noise 0.041 > 0.85× HEAD's 0.044",
+   "board saturation 0.63 > 0.55 (HEAD 0.61)",
+   "outside the board 0.75× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 46.2,
+   "tagH": 22,
+   "noise": 0.0406,
+   "sat": 0.633,
+   "apron": 0.749,
+   "blossom": 0,
+   "terrainDE": 13.4,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 5,
+  "month": 5,
+  "fails": [
+   "board noise 0.046 > 0.85× HEAD's 0.0385",
+   "board saturation 0.55 > 0.45 (HEAD 0.481)",
+   "森林 and 山地 only ΔE 5.7 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 64.1,
+   "tagH": 22,
+   "noise": 0.0461,
+   "sat": 0.549,
+   "apron": 0.541,
+   "blossom": 0,
+   "terrainDE": 5.7,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 6,
+  "month": 6,
+  "fails": [
+   "board noise 0.044 > 0.85× HEAD's 0.0452",
+   "board saturation 0.56 > 0.45 (HEAD 0.451)",
+   "outside the board 0.76× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 9.0 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 51.3,
+   "tagH": 22,
+   "noise": 0.0441,
+   "sat": 0.56,
+   "apron": 0.762,
+   "blossom": 0,
+   "terrainDE": 9,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 7,
+  "month": 7,
+  "fails": [
+   "board noise 0.048 > 0.85× HEAD's 0.0479",
+   "board saturation 0.68 > 0.59 (HEAD 0.65)",
+   "outside the board 0.76× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 7.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 43.1,
+   "tagH": 22,
+   "noise": 0.0477,
+   "sat": 0.682,
+   "apron": 0.759,
+   "blossom": 0,
+   "terrainDE": 7.5,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 8,
+  "month": 8,
+  "fails": [
+   "board noise 0.048 > 0.85× HEAD's 0.0505",
+   "board saturation 0.71 > 0.61 (HEAD 0.678)",
+   "outside the board 0.83× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 9.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 54.3,
+   "tagH": 22,
+   "noise": 0.0481,
+   "sat": 0.711,
+   "apron": 0.825,
+   "blossom": 0,
+   "terrainDE": 9.5,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "maps",
+  "city": 9,
+  "month": 9,
+  "fails": [
+   "board noise 0.041 > 0.85× HEAD's 0.0424",
+   "board saturation 0.64 > 0.51 (HEAD 0.563)",
+   "outside the board 0.90× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 9.6 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 79.8,
+   "tagH": 22,
+   "noise": 0.0412,
+   "sat": 0.644,
+   "apron": 0.896,
+   "blossom": 0,
+   "terrainDE": 9.6,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 1,
+  "month": 0,
+  "fails": [
+   "outside the board 0.74× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 4.7 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 59.4,
+   "tagH": 22,
+   "noise": 0.0543,
+   "sat": 0.222,
+   "apron": 0.738,
+   "blossom": 0.0039,
+   "terrainDE": 4.7,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 1,
+  "month": 10,
+  "fails": [
+   "outside the board 0.74× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 3.3 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 59.4,
+   "tagH": 22,
+   "noise": 0.0545,
+   "sat": 0.209,
+   "apron": 0.736,
+   "blossom": 0,
+   "terrainDE": 3.3,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 1,
+  "month": 11,
+  "fails": [
+   "outside the board 0.73× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 3.2 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 59.7,
+   "tagH": 22,
+   "noise": 0.0554,
+   "sat": 0.153,
+   "apron": 0.732,
+   "blossom": 0,
+   "terrainDE": 3.2,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 0,
+  "fails": [
+   "board noise 0.051 > 0.85× HEAD's 0.0493",
+   "board saturation 0.55 > 0.45 (HEAD 0.465)",
+   "outside the board 0.79× as bright as on it > 0.62",
+   "森林 and 平原 only ΔE 5.6 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.9,
+   "tagH": 22,
+   "noise": 0.0514,
+   "sat": 0.549,
+   "apron": 0.789,
+   "blossom": 0.0004,
+   "terrainDE": 5.6,
+   "closest": "森林/平原",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 1,
+  "fails": [
+   "board noise 0.053 > 0.85× HEAD's 0.0538",
+   "board saturation 0.55 > 0.45 (HEAD 0.503)",
+   "outside the board 0.79× as bright as on it > 0.62",
+   "森林 and 平原 only ΔE 5.6 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.7,
+   "tagH": 22,
+   "noise": 0.0527,
+   "sat": 0.549,
+   "apron": 0.786,
+   "blossom": 0.0004,
+   "terrainDE": 5.6,
+   "closest": "森林/平原",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 10,
+  "fails": [
+   "board saturation 0.50 > 0.45 (HEAD 0.328)",
+   "outside the board 0.79× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 7.0 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.6,
+   "tagH": 22,
+   "noise": 0.0586,
+   "sat": 0.497,
+   "apron": 0.79,
+   "blossom": 0,
+   "terrainDE": 7,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 11,
+  "fails": [
+   "outside the board 0.72× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 9.6 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 54,
+   "tagH": 22,
+   "noise": 0.0599,
+   "sat": 0.198,
+   "apron": 0.716,
+   "blossom": 0.0001,
+   "terrainDE": 9.6,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 2,
+  "fails": [
+   "board noise 0.052 > 0.85× HEAD's 0.0534",
+   "board saturation 0.55 > 0.46 (HEAD 0.514)",
+   "outside the board 0.79× as bright as on it > 0.62",
+   "森林 and 平原 only ΔE 7.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.7,
+   "tagH": 22,
+   "noise": 0.0517,
+   "sat": 0.552,
+   "apron": 0.789,
+   "blossom": 0.0005,
+   "terrainDE": 7.5,
+   "closest": "森林/平原",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 3,
+  "fails": [
+   "board noise 0.047 > 0.85× HEAD's 0.0502",
+   "board saturation 0.53 > 0.46 (HEAD 0.509)",
+   "outside the board 0.80× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 6.2 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.9,
+   "tagH": 22,
+   "noise": 0.0468,
+   "sat": 0.532,
+   "apron": 0.801,
+   "blossom": 0,
+   "terrainDE": 6.2,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 4,
+  "fails": [
+   "board noise 0.039 > 0.85× HEAD's 0.0399",
+   "board saturation 0.53 > 0.45 (HEAD 0.427)",
+   "outside the board 0.80× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 6.2 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.6,
+   "tagH": 22,
+   "noise": 0.0386,
+   "sat": 0.534,
+   "apron": 0.797,
+   "blossom": 0,
+   "terrainDE": 6.2,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 5,
+  "fails": [
+   "board noise 0.034 > 0.85× HEAD's 0.0377",
+   "board saturation 0.52 > 0.45 (HEAD 0.384)",
+   "outside the board 0.80× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 5.8 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.7,
+   "tagH": 22,
+   "noise": 0.034,
+   "sat": 0.522,
+   "apron": 0.802,
+   "blossom": 0,
+   "terrainDE": 5.8,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 6,
+  "fails": [
+   "board noise 0.046 > 0.85× HEAD's 0.0487",
+   "board saturation 0.53 > 0.45 (HEAD 0.501)",
+   "outside the board 0.80× as bright as on it > 0.62",
+   "森林 and 山地 only ΔE 6.3 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.9,
+   "tagH": 22,
+   "noise": 0.0465,
+   "sat": 0.532,
+   "apron": 0.802,
+   "blossom": 0,
+   "terrainDE": 6.3,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 7,
+  "fails": [
+   "board noise 0.045 > 0.85× HEAD's 0.0505",
+   "board saturation 0.59 > 0.53 (HEAD 0.585)",
+   "outside the board 0.81× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 5.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 54,
+   "tagH": 22,
+   "noise": 0.0454,
+   "sat": 0.589,
+   "apron": 0.811,
+   "blossom": 0,
+   "terrainDE": 5.5,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 8,
+  "fails": [
+   "board noise 0.045 > 0.85× HEAD's 0.0514",
+   "board saturation 0.60 > 0.54 (HEAD 0.599)",
+   "outside the board 0.81× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 6.2 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.9,
+   "tagH": 22,
+   "noise": 0.0452,
+   "sat": 0.6,
+   "apron": 0.814,
+   "blossom": 0,
+   "terrainDE": 6.2,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 12,
+  "month": 9,
+  "fails": [
+   "board noise 0.045 > 0.85× HEAD's 0.0489",
+   "board saturation 0.59 > 0.52 (HEAD 0.579)",
+   "outside the board 0.81× as bright as on it > 0.62",
+   "平原 and 山地 only ΔE 6.5 apart < 10"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 53.5,
+   "tagH": 22,
+   "noise": 0.0446,
+   "sat": 0.592,
+   "apron": 0.811,
+   "blossom": 0,
+   "terrainDE": 6.5,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 18,
+  "month": 1,
+  "fails": [
+   "board noise 0.053 > 0.85× HEAD's 0.0481",
+   "board saturation 0.64 > 0.61 (HEAD 0.683)",
+   "outside the board 0.85× as bright as on it > 0.62",
+   "blossom 0.10% of the board > 0.1%"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 51.2,
+   "tagH": 22,
+   "noise": 0.0528,
+   "sat": 0.638,
+   "apron": 0.855,
+   "blossom": 0.001,
+   "terrainDE": 12.4,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 18,
+  "month": 11,
+  "fails": [
+   "board noise 0.046 > 0.85× HEAD's 0.0463",
+   "board saturation 0.60 > 0.55 (HEAD 0.614)",
+   "outside the board 0.91× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 51.1,
+   "tagH": 22,
+   "noise": 0.0455,
+   "sat": 0.595,
+   "apron": 0.906,
+   "blossom": 0,
+   "terrainDE": 15.1,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 18,
+  "month": 5,
+  "fails": [
+   "board saturation 0.61 > 0.54 (HEAD 0.597)",
+   "outside the board 0.92× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 51.3,
+   "tagH": 22,
+   "noise": 0.0335,
+   "sat": 0.613,
+   "apron": 0.918,
+   "blossom": 0,
+   "terrainDE": 16.2,
+   "closest": "森林/山地",
+   "move": "#ffc842"
+  }
+ },
+ {
+  "set": "seasons",
+  "city": 18,
+  "month": 9,
+  "fails": [
+   "board noise 0.043 > 0.85× HEAD's 0.042",
+   "board saturation 0.67 > 0.57 (HEAD 0.635)",
+   "outside the board 0.94× as bright as on it > 0.62"
+  ],
+  "m": {
+   "turn": 1.5708,
+   "spritePx": 51.1,
+   "tagH": 22,
+   "noise": 0.0426,
+   "sat": 0.669,
+   "apron": 0.945,
+   "blossom": 0,
+   "terrainDE": 13.3,
+   "closest": "平原/山地",
+   "move": "#ffc842"
+  }
+ }
+]

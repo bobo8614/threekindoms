@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+hd2d-mvp/desktop/app/
+hd2d-mvp/desktop/release/
+hd2d-mvp/vendor/
+# Original-game audio is never part of this repository.
+hd2d-mvp/assets/audio/original/
+hd2d-mvp/assets/audio/remix/
+*.nes
+*.nsf
+# The binary assets are published only as the Release asset pack (unzip it here; ASSETS.sha256 lists every file).
+hd2d-mvp/assets/**/*.webp
+hd2d-mvp/assets/**/*.png
+hd2d-mvp/assets/**/*.jpg
+hd2d-mvp/assets/**/*.glb
+hd2d-mvp/assets/**/*.bin
+hd2d-mvp/assets/**/*.mp3
+hd2d-mvp/desktop/build/*.png
+hd2d-mvp/desktop/build/*.icns
+hd2d-mvp/desktop/build/*.ico
+/ASSETS-README.txt
