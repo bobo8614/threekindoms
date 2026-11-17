@@ -38,13 +38,24 @@ hd2d-mvp/
 git clone https://github.com/tianlin/threekindoms.git
 cd threekindoms
 # 从 Releases 下载与代码对应的素材包（跟进 main 就用最新的），解压到仓库根目录：
-unzip -o ~/Downloads/threekindoms-assets-0.3.6.zip
+unzip -o ~/Downloads/threekindoms-assets-0.3.7.zip
 shasum -a 256 -c ASSETS.sha256 | grep -v ': OK$'    # 没有输出就说明素材齐全
 ```
 
 素材文件已经写进 `.gitignore`，解压后不会出现在 `git status` 里。根目录的 `ASSETS.sha256` 列出了每个素材文件和它的哈希：
 - 解压后如果 git 显示 `ASSETS.sha256` 被修改，说明素材包和代码版本不一致，请换用对应版本的素材包。
 - 缺少素材时，开发服务器、`tests/lfs-pointer.test.mjs` 和桌面版打包都会提示你先解压素材包。
+
+### 背景音乐（单独下载）
+
+背景音乐不在素材包里，单独放在 Releases 的 `threekindoms-bgm-remix-<版本>.zip`，解压位置同样是仓库根目录。音乐包只在曲目有变化时才发新版，用 Releases 里最新的那个即可：
+
+```bash
+unzip -o ~/Downloads/threekindoms-bgm-remix-0.3.6.zip
+(cd hd2d-mvp/assets/audio/remix && shasum -a 256 -c SHA256SUMS | grep -v ': OK$')    # 没有输出就说明齐全
+```
+
+文件会放到 `hd2d-mvp/assets/audio/remix/`，这个目录也在 `.gitignore` 里。游戏启动时会自动找到并播放这些文件，不用改任何设置；桌面版打包也会把它们带上。
 
 ## 运行
 
@@ -57,7 +68,7 @@ python3 hd2d-mvp/tools/serve.py 8677      # 启动开发服务器
 
 然后用浏览器打开 http://localhost:8677/hd2d-mvp/ 。在网址后面加 `?mute` 可以静音。
 
-游戏的背景音乐由代码实时合成，音效使用仓库里的文件。
+背景音乐来自上面的 Remix 音乐包。没解压音乐包时，只有战略、战争、白兵三处有代码实时合成的简易替代音乐，其他场景是静音的。音效使用素材包里的文件。
 
 ## 测试
 
@@ -91,4 +102,4 @@ npm --prefix hd2d-mvp/desktop start           # 直接用 Electron 运行游戏�
 
 - 在 `hd2d-mvp/mods/<包名>/` 放 `pack.json` 和需要的 `cities.json`、`roads.json`、`factions.json`、`officers.json`，写法照 `mods/sample-cities/` 和 `mods/README.md`；
 - 用 `node hd2d-mvp/tools/check_pack.mjs hd2d-mvp/mods/<包名>` 校验，`node hd2d-mvp/tools/check_pack.mjs --all --index` 把它登记进标题画面的数据包列表；
-- 在标题画面的「数据包」里选它，或者打开 `?pack=<包名>`。
+- 打开 `?pack=<包名>` 载入它；数据包还在试验阶段，标题画面的「数据包」按钮默认隐藏，网址加 `?packs` 才显示。
