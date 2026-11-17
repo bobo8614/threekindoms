@@ -44,6 +44,17 @@ shasum -a 256 -c ASSETS.sha256 | grep -v ': OK$'    # 没有输出就说明素�
 - 解压后如果 git 显示 `ASSETS.sha256` 被修改，说明素材包和代码版本不一致，请换用对应版本的素材包。
 - 缺少素材时，开发服务器、`tests/lfs-pointer.test.mjs` 和桌面版打包都会提示你先解压素材包。
 
+### 背景音乐（单独下载）
+
+背景音乐不在素材包里，单独放在 Releases 的 `threekindoms-bgm-remix-<版本>.zip`，解压位置同样是仓库根目录：
+
+```bash
+unzip -o ~/Downloads/threekindoms-bgm-remix-0.3.6.zip
+(cd hd2d-mvp/assets/audio/remix && shasum -a 256 -c SHA256SUMS | grep -v ': OK$')    # 没有输出就说明齐全
+```
+
+文件会放到 `hd2d-mvp/assets/audio/remix/`，这个目录也在 `.gitignore` 里。游戏启动时会自动找到并播放这些文件，不用改任何设置；桌面版打包也会把它们带上。
+
 ## 运行
 
 需要 Node.js 22 以上和 Python 3。
@@ -55,7 +66,7 @@ python3 hd2d-mvp/tools/serve.py 8677      # 启动开发服务器
 
 然后用浏览器打开 http://localhost:8677/hd2d-mvp/ 。在网址后面加 `?mute` 可以静音。
 
-游戏的背景音乐由代码实时合成，音效使用仓库里的文件。
+背景音乐来自上面的 Remix 音乐包。没解压音乐包时，只有战略、战争、白兵三处有代码实时合成的简易替代音乐，其他场景是静音的。
 
 ## 测试
 
