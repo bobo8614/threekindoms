@@ -2,10 +2,13 @@
 // 黄河 it lies, how far drawing moved it, and the closest pairs of cities on the board.
 //   node hd2d-mvp/tools/check_geo.mjs
 import { readFileSync } from 'node:fs';
-import { CITY_SITES, BANKS, RIVERS, placeCities, isLand, nearest } from '../src/china.js';
+import { RIVERS, placeCities, isLand, nearest } from '../src/china.js';
 
+// The seats and banks are data/base-map.json (hand-kept; core/pack.js merges them into the game's cities).
 const data = JSON.parse(readFileSync(new URL('../data/game-data.json', import.meta.url)));
-const drawn = placeCities();
+const CITY_SITES = JSON.parse(readFileSync(new URL('../data/base-map.json', import.meta.url))).cities;
+const BANKS = Object.fromEntries(CITY_SITES.filter((s) => s.bank).map((s) => [s.id, s.bank]));
+const drawn = placeCities(CITY_SITES);
 const river = (n) => RIVERS.find((r) => r.name === n);
 const KM = 111;
 let bad = 0;

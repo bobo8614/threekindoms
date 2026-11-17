@@ -3,11 +3,11 @@
 //   node --import ./hd2d-mvp/tools/node_imports.mjs hd2d-mvp/tools/warmap_check.mjs
 import { existsSync, readFileSync } from 'node:fs';
 import { seasonsOf } from '../src/warseason.js';
-import { CITY_SITES } from '../src/china.js';
 
 const DIR = new URL('../assets/ai/warground/maps/', import.meta.url).pathname;
 const BOARD = { x: 60, y: 110, w: 1654, h: 707 };
 const fields = JSON.parse(readFileSync(new URL('../data/game-data.json', import.meta.url))).maps;
+const CITY_SITES = JSON.parse(readFileSync(new URL('../data/base-map.json', import.meta.url))).cities; // the original 30's seats
 const bad = [];
 for (const city of Object.keys(fields).map(Number)) {
   const want = seasonsOf(CITY_SITES[city].lat), f = `${DIR}${city}.json`;

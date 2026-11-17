@@ -158,8 +158,8 @@ async function run(sc) {
       return { cells, corners, W: innerWidth, H: innerHeight };
     });
     Object.assign(geo, await page.evaluate(async (sc) => {
-      const { MONTHS } = await import('./src/seasons.js'), { CITY_SITES } = await import('./src/china.js');
-      return { snowing: CITY_SITES[sc.city].lat > MONTHS[sc.month].snow - 0.6, blossomMonth: MONTHS[sc.month].blossom > 0 };
+      const { MONTHS } = await import('./src/seasons.js'), { data } = await import('./src/core/game.js');
+      return { snowing: data().cities[sc.city].lat > MONTHS[sc.month].snow - 0.6, blossomMonth: MONTHS[sc.month].blossom > 0 };
     }, sc));
     await page.waitForTimeout(700);
     const png = await page.screenshot();

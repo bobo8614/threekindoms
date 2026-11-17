@@ -11,7 +11,7 @@ import { warGround, bakePlate, paintTerrain, paintedWater, plantWoods } from '..
 import { seasonEnv } from '../seasonenv.js';
 import { seeThrough } from '../seethrough.js';
 import { W, H, FOREST, SAND, PLAIN, RIVER, MOUNT, CASTLE } from '../core/field.js';
-import { FACTION_COLORS } from '../core/game.js';
+import { factionColor } from '../core/game.js';
 import { WATER_Y, PITCH, KIND, PLATE_M, PLATE_PX, DIRS, woodsOf, keySun, phase, WAR_RAIN } from './shared.js';
 
 export function makeBoard(wv) {
@@ -174,7 +174,7 @@ export function makeBoard(wv) {
       S.castle.facing = Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? Math.PI / 2 : -Math.PI / 2) : dz > 0 ? 0 : Math.PI;
     }
   }
-  S.castleColor = FACTION_COLORS[field.faction('def')] ?? '#5a5a66'; // roofs glazed in the holder's colour, as on the strategy map
+  S.castleColor = factionColor(field.faction('def')) ?? '#5a5a66'; // roofs glazed in the holder's colour, as on the strategy map
   const before = new Set(scene.children);
   const dressing = flat ? { billboards: [], lights: [], labels: [], update() {} } : dressBoard(scene, S, field.war.city * 31 + 5, { calm: true, painted: !!G });
   const woods = G && !flat && plantWoods(scene, G, woodsOf(S, rng(field.war.city * 53 + 1)), PITCH, field.war.city);

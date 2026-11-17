@@ -91,6 +91,12 @@ test('a new campaign, the 战略地图 and a command, with the pad alone', async
   // spent), A on the city goes to its panel and throws nothing (review, 2026-11-14).
   await page.evaluate(() => { const { g, debug } = window.__game; g.current = (g.player + 1) % g.factions.length; debug.hud(); });
   assert.equal(await page.evaluate(() => !!document.querySelector('.dock')), false);
+  // The focus went down with the dock, so the pad is on the map now: a press within 160 ms of that is not taken (padConfirm,
+  // "a menu that came up under the thumb"), so wait it out as a player's next press would.
+  // (Two frames: the pad's own frame has seen the change and started that count, then the count itself.)
+  await page.waitForFunction(() => window.__game.pad.state.zone === 'map');
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await page.waitForTimeout(200);
   await padTap(page, 'a');
   assert.deepEqual(page.errors, []);
   assert.ok(await page.evaluate(() => document.querySelector('.citypanel')?.contains(document.activeElement)), 'the focus goes into the city panel');
@@ -213,7 +219,10 @@ for (const view of ['flat', '3D']) test(`the war map on the pad (${view}): deplo
   }
   assert.equal((await state(page)).zone, 'map');
   // X: 撤销, and the cursor goes back with him.
-  await padTap(page, 'x', { wait: 400 });
+  await padTap(page, 'x', { wait: 100 });
+  // He walks back along his route (100 ms a cell); until he is there the field is busy and RB would only move the cursor.
+  await page.waitForFunction(() => !window.__game.war.st.busy, null, { timeout: 10000 });
+  await page.waitForTimeout(100);
   assert.equal(await page.evaluate(() => window.__game.war.field.pool[window.__game.war.field.human]), pool, 'the move is undone');
   const back = await page.evaluate(() => { const s = window.__game.war.st.sel; return { x: s.x, y: s.y }; });
   assert.deepEqual(await cell(page), back);

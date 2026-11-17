@@ -150,7 +150,8 @@ body.season-turning { transition: --panel 2.5s, --lacquer 2.5s, --lacquer2 2.5s,
 .setup-opts .opt { padding: 7px 11px; font-size: 14px; letter-spacing: 1px; }
 .cheat.on i { background: #ffd890; box-shadow: inset 0 0 0 2px #3a2208; }
 .level.on, .ruler.on { border-color: #ffd890; box-shadow: inset 0 0 0 3px var(--lacquer), inset 0 0 0 4px #ffd890, 0 0 26px #ffb34a66; }
-.rulers { display: grid; grid-template-columns: repeat(7, minmax(0, 150px)); justify-content: center; width: min(100%, 1122px); gap: 12px; }
+/* --n: rulers in a row (app.js setup: seven, or with a data pack's houses up to ten, then two rows) */
+.rulers { display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 150px)); justify-content: center; width: min(100%, calc(var(--n, 7) * 162px - 12px)); gap: 12px; }
 .ruler { position: relative; height: 300px; overflow: hidden; cursor: pointer; transition: transform .18s cubic-bezier(.2,.9,.3,1.2), box-shadow .18s, filter .18s; }
 .rulers:has(.ruler.on) .ruler:not(.on):not(:hover) { filter: brightness(.62) saturate(.7); }
 .ruler:hover, .ruler.on { transform: translateY(-6px); }
@@ -173,6 +174,7 @@ body.season-turning { transition: --panel 2.5s, --lacquer 2.5s, --lacquer2 2.5s,
 .books { display: flex; gap: 3px; } .books i { width: 9px; height: 14px; background: linear-gradient(#f2d48c, #a8803c); border-radius: 1px; box-shadow: 0 0 0 1px #0008; }
 .books i.used { background: #3a2c1e; }
 .res { display: flex; gap: 12px; color: var(--dim); font-size: 15px; } .res b { color: var(--ink); font-weight: 600; }
+.res .resg { display: contents; } /* src/phone.css lays the two groups out on a narrow phone */
 .citypanel { top: var(--hud-top, 70px); left: 12px; width: 340px; max-height: calc(100% - 160px); display: flex; flex-direction: column; overflow-y: auto; }
 .citypanel header { padding: 12px 14px 8px; display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid color-mix(in srgb, var(--rule) 50.2%, transparent); }
 .citypanel header h2 { font: 30px var(--brush); letter-spacing: 3px; }
@@ -542,6 +544,8 @@ body.cine .citypanel, body.cine .logbox, body.cine .warcards, body.cine .wardock
 .sysmenu-group { display: flex; flex-direction: column; gap: 4px; }
 .sysmenu-group + .sysmenu-group { padding-top: 6px; border-top: 1px solid rgba(220,180,110,.14); }
 .sysmenu-quick { display: flex; gap: 4px; }
+.sysmenu-pair { display: flex; gap: 4px; }
+.sysmenu-list .sysmenu-pair .btn { flex: 1 1 0; white-space: nowrap; }
 .sysmenu-list .sysmenu-quick .btn { flex: 1 0 auto; padding: 4px 5px; font-size: 12px; white-space: nowrap; }
 .sysmenu-list .sysrange { display: flex; align-items: center; gap: 8px; cursor: default; }
 .sysrange input { width: 96px; accent-color: #d8b46a; } .sysrange small { min-width: 34px; text-align: right; opacity: .8; }
@@ -947,7 +951,7 @@ body:has(.tq) #ui-top:has(> .shade) { z-index: 15; }
 .vig-frame::before, .vig-frame::after { content: '◆'; position: absolute; font-size: 10px; line-height: 1; color: #fff0c0; text-shadow: 0 0 4px #000; }
 .vig-frame::before { top: -1px; left: -1px; } .vig-frame::after { bottom: -1px; right: -1px; }
 .vig canvas { display: block; width: 100%; max-width: 640px; margin: 0 auto; image-rendering: pixelated; /* 640-wide storyboard frames, shown 1:1 in the middle of the screen */ box-shadow: inset 0 0 0 1px #000; background: #000; }
-.vig-cap { min-height: 1.6em; margin-top: 10px; font: 600 20px/1.6 var(--serif); letter-spacing: 2px; color: #fff3d6; text-align: center; }
+.vig-cap { min-height: 1.6em; margin-top: 10px; padding: 0 22px; /* clear of the ▼ at its corner when a line runs full width */ font: 600 20px/1.6 var(--serif); letter-spacing: 2px; color: #fff3d6; text-align: center; }
 .books i.blink { animation: pipBlink .133s steps(2) infinite; } /* the original's counter: 4 frames on, 4 off */
 .books + b.blink { animation: blink .133s steps(2) infinite; }
 /* The spent book, told in the middle where the picture is about to open (D63, 2026-11-14): the top bar's pip alone was easy to miss. */
@@ -1255,6 +1259,9 @@ body[data-glyph-art][data-input=pad] .dock .tabs::before { --gi: var(--gi-lb); -
 .ctl-keylist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; margin-top: 12px; }
 .ctl-key { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #e8dcc0; }
 .ctl-key .caps { display: flex; gap: 3px; flex: none; min-width: 92px; justify-content: flex-end; }
+/* 触屏 (controls.js touchView): one grid of two columns, so the words line up whatever the gesture's length */
+.ctl-touch .ctl-keylist { grid-template-columns: max-content minmax(0, 1fr); gap: 7px 12px; } .ctl-touch .ctl-key { display: contents; }
+.ctl-key .gesture { text-align: right; color: var(--gold); font-weight: normal; font-size: 14px; }
 body[data-input=pad] .ctl-key kbd { display: inline-block; }
 @media (max-width: 760px) { .ctl-pad { grid-template-columns: 1fr; } .ctl-side.left { align-items: flex-start; text-align: left; } .ctl-side.left .ctl-call { flex-direction: row; } .ctl-lines { display: none; } .ctl-keylist { grid-template-columns: 1fr; } }
 .ctl-key kbd { min-width: 24px; padding: 1px 7px; text-align: center; font: 13px/1.5 var(--serif); color: #fff1d0; background: linear-gradient(#3a2c1c, #1a120c);
@@ -1269,6 +1276,13 @@ body[data-glyph-art][data-input=pad] .ctl-tabs::before { --gi: var(--gi-lb); --g
 .unitpanel .acts .btn.recast small { margin-left: 5px; color: var(--gold); font-size: 13px; }
 .runtimes { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; color: var(--dim); font-size: 14px; }
 .runtimes b { min-width: 1.6em; text-align: center; font-size: 20px; color: var(--gold); } .runtimes .btn { min-width: 2.2em; padding: 2px 8px; } .runtimes .btn.ghost { margin-left: 6px; font-size: 13px; }
+/* 病院, 学问所, 赏赐 for several at once (宙斯之刃@bilibili): the others to press in, numbered in the order they will go; 'until full'. */
+.batchwho { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 2px; color: var(--dim); font-size: 14px; max-height: 40vh; overflow-y: auto; }
+.batchwho .chip.first { padding: 3px 9px; border: 1px solid #ffd89060; border-radius: 3px; color: #fff4d8; } .batchwho .chip.first small { margin-left: 6px; color: var(--dim); font-size: 12px; }
+.batchwho .btn.chip { padding: 3px 9px; font-size: 14px; } .batchwho .btn.chip small { margin-left: 6px; color: var(--dim); font-size: 12px; }
+.batchwho .btn.chip.on, .runtimes .btn.untilfull.on { border-color: #ffd890; color: #fff4d8; background: linear-gradient(var(--btn-on), var(--btn-hi-b)); }
+.runtimes .btn.untilfull { min-width: 0; padding: 3px 12px; font-size: 14px; } .runtimes .btn.untilfull.on::before { content: '✓ '; }
+.modal p.batchnote { margin: 8px 0 0; color: var(--dim); font-size: 13px; } .modal p.batchnote:empty { display: none; }
 .modal em.runout { display: block; margin-top: 6px; font-style: normal; color: var(--bad); font-size: 14px; }
 .lasttag::before { content: '上次'; } /* drawn, not text: a command's or a general's own text stays his name */
 kbd.keycap::before { content: attr(data-label); } /* a key named beside a command without becoming part of its text */

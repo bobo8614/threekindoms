@@ -1,48 +1,9 @@
 // Geography of the 战略地图: city seats, coastline, rivers, lakes and mountain ranges in real lon/lat.
 // Pure data and lookups (no three.js), so tools/ can check it in node.
 
-// Each ROM city sits on its Eastern Han / Three Kingdoms seat (治所), given as the modern place's lon/lat.
-export const CITY_SITES = [
-  { lon: 123.17, lat: 41.27, seat: '襄平（辽阳）' },          // 0 辽东
-  { lon: 116.40, lat: 39.90, seat: '蓟（北京）' },            // 1 幽州
-  { lon: 112.55, lat: 37.75, seat: '晋阳（太原）' },          // 2 并州
-  { lon: 118.30, lat: 36.85, seat: '临菑（淄博）' },          // 3 青州
-  { lon: 114.35, lat: 36.30, seat: '邺（临漳）' },            // 4 冀州
-  { lon: 109.00, lat: 40.80, seat: '西安阳（五原郡，乌拉特前旗）' }, // 5 西安阳
-  { lon: 102.63, lat: 37.93, seat: '姑臧（武威）' },          // 6 凉州
-  { lon: 107.55, lat: 35.55, seat: '临泾（镇原）' },          // 7 安定
-  { lon: 108.90, lat: 34.30, seat: '长安（西安）' },          // 8 长安
-  { lon: 101.78, lat: 36.62, seat: '西都（西平郡，西宁）' },   // 9 西平关
-  { lon: 117.95, lat: 34.30, seat: '下邳（睢宁）' },          // 10 徐州
-  { lon: 116.20, lat: 35.10, seat: '昌邑（金乡）' },          // 11 兖州
-  { lon: 112.45, lat: 34.68, seat: '洛阳' },                  // 12 洛阳
-  { lon: 112.36, lat: 32.52, seat: '新野' },                  // 13 新野
-  { lon: 115.78, lat: 33.85, seat: '谯（亳州）' },            // 14 豫州
-  { lon: 118.78, lat: 32.05, seat: '秣陵/建业（南京）' },     // 15 建业
-  { lon: 116.78, lat: 32.57, seat: '寿春（寿县）' },          // 16 扬州
-  { lon: 118.32, lat: 27.05, seat: '建安（建瓯）' },          // 17 建安
-  { lon: 113.27, lat: 23.13, seat: '番禺（广州）' },          // 18 交州
-  { lon: 109.60, lat: 23.10, seat: '布山（贵港）' },          // 19 郁林
-  { lon: 114.85, lat: 30.75, seat: '西陵（武汉新洲）' },      // 20 江夏
-  { lon: 112.19, lat: 30.35, seat: '江陵（荆州）' },          // 21 荆州
-  { lon: 112.57, lat: 26.89, seat: '衡阳' },                  // 22 衡阳
-  { lon: 112.98, lat: 28.20, seat: '临湘（长沙）' },          // 23 长沙
-  { lon: 111.61, lat: 26.22, seat: '泉陵（永州）' },          // 24 零陵
-  { lon: 107.03, lat: 33.07, seat: '南郑（汉中）' },          // 25 汉中
-  { lon: 104.07, lat: 30.67, seat: '成都' },                  // 26 成都
-  { lon: 108.17, lat: 29.30, seat: '涪陵（彭水）' },          // 27 涪陵
-  { lon: 100.60, lat: 25.48, seat: '云南（祥云）' },          // 28 云南
-  { lon: 99.17, lat: 25.12, seat: '不韦（保山）' },           // 29 永昌
-];
-
-// The bank each riverside seat stands on, checked against the river's direction of flow
-// (left/right looking downstream). The map nudges a city off the water onto this bank.
-// 建业 south of the 长江, 江陵 and 西陵 north of it, 寿春 south of the 淮河, 长安 south of the 渭水,
-// 西安阳 north of the 黄河 bend, 南郑 north of the 汉水, 临湘 east and 衡阳 west of the 湘江, 番禺 north of the 珠江.
-export const BANKS = {
-  15: ['长江', 'right'], 21: ['长江', 'left'], 20: ['长江', 'left'], 16: ['淮河', 'right'], 8: ['渭水', 'right'],
-  5: ['黄河', 'left'], 25: ['汉水', 'left'], 23: ['湘江', 'right'], 22: ['湘江', 'left'], 18: ['珠江', 'left'], 19: ['珠江', 'left'],
-};
+// The city seats and the bank each riverside seat stands on are data: the original 30 in data/base-map.json (checked by
+// tools/check_geo.mjs), a pack's own in its cities.json (core/pack.js). Each is { lon, lat, seat, tier, bank? }, a bank
+// being [river, 'left' | 'right'] looking downstream: the map nudges a city off the water onto that bank.
 
 // Mainland outline, clockwise from the far north-east, then closed around the west off the board.
 const MAINLAND = [
@@ -135,28 +96,29 @@ const ridge = (pts, x, y) => nearest(pts, x, y).d;
 
 // The sand table's town models by tier (tools/blender_sandtable.py SIZE): 都城 2.2, 州治大城 1.7, 关隘 1.6, 郡城 1.3
 // board units (x 0.9 per degree of longitude, z 1 per degree of latitude).
-const FOOT = (id) => ([8, 12].includes(id) ? 2.2 : [1, 4, 15, 21, 26].includes(id) ? 1.7 : [9, 25].includes(id) ? 1.6 : 1.3);
+const FOOT = { capital: 2.2, major: 1.7, pass: 1.6, county: 1.3 };
 // Spreading: towns closer than half their two models plus `gap` push apart, none further than `reach` from its seat.
 export const SPREAD = { gap: 0.65, reach: 0.5 };
 
 // Seats as drawn: the true seat, moved just far enough off a river to stand clear on its own bank, then eased apart
 // where the models and their name tags would crowd (兖州/豫州/徐州/扬州, the 湘江 three, 云南/永昌). Each stays on the
 // side of every river its seat is on.
-export function placeCities(clear = 0.34) {
-  const sides = CITY_SITES.map((s, id) => RIVERS.map((rv) => {
-    const bank = BANKS[id];
+export function placeCities(sites, clear = 0.34) {
+  const foot = (id) => FOOT[sites[id].tier] ?? FOOT.county;
+  const sides = sites.map((s) => RIVERS.map((rv) => {
+    const bank = s.bank;
     return bank && bank[0] === rv.name ? (bank[1] === 'left' ? 1 : -1) : nearest(rv.pts, s.lon, s.lat).side;
   }));
   const offRiver = (id, p) => RIVERS.forEach((rv, k) => {
     const n = nearest(rv.pts, p.lon, p.lat), need = rv.w + clear;
     if (n.d < need) { p.lon = n.px + n.nx * sides[id][k] * need; p.lat = n.py + n.ny * sides[id][k] * need; }
   });
-  const base = CITY_SITES.map((s, id) => { const p = { lon: s.lon, lat: s.lat }; offRiver(id, p); return p; });
+  const base = sites.map((s, id) => { const p = { lon: s.lon, lat: s.lat }; offRiver(id, p); return p; });
   const P = base.map((p) => ({ ...p }));
   for (let it = 0; it < 160; it++) {
     for (let a = 0; a < P.length; a++) for (let b = a + 1; b < P.length; b++) {
       const dx = (P[b].lon - P[a].lon) * 0.9, dz = P[b].lat - P[a].lat, d = Math.hypot(dx, dz) || 1e-6;
-      const short = (FOOT(a) + FOOT(b)) / 2 + SPREAD.gap - d;
+      const short = (foot(a) + foot(b)) / 2 + SPREAD.gap - d;
       if (short <= 0) continue;
       const k = short * 0.25 / d;
       P[a].lon -= dx * k / 0.9; P[a].lat -= dz * k; P[b].lon += dx * k / 0.9; P[b].lat += dz * k;
@@ -168,7 +130,7 @@ export function placeCities(clear = 0.34) {
       if (!isLand(p.lon, p.lat)) Object.assign(p, base[id]);
     });
   }
-  return P.map((p, id) => ({ lon: p.lon, lat: p.lat, seat: CITY_SITES[id].seat }));
+  return P.map((p, id) => ({ lon: p.lon, lat: p.lat, seat: sites[id].seat }));
 }
 
 // Mountain ranges' height above the plain (world units), smooth across each ridge's width.

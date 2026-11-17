@@ -112,6 +112,7 @@
   ],
   "bgm-select": [
    "assets/audio/remix/bgm-select.mp3",
+   "assets/audio/original/bgm-select.mp3",
    "assets/audio/remix/bgm-title.mp3",
    "assets/audio/original/bgm-title.mp3"
   ],

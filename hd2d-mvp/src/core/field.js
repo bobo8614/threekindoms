@@ -2,7 +2,7 @@
 // Ported: deployment blocks and AI role sub-lists, movement costs (600-troop split), shared daily
 // mobility, rice per day, 30-day limit, castle capture, commander loss, retreat thresholds, field
 // hospital/rice shop, AI roles 0–4 with their decision order. Strategies (计略) are not ported yet.
-import { data, rng, NONE, DEAD, roads, addExp, takeLevelUps, equipBlock, wearEquip, spared, SPARED_HP, maxHp } from './game.js';
+import { data, rng, NONE, DEAD, roads, addExp, takeLevelUps, equipBlock, wearEquip, spared, SPARED_HP, maxHp, recruitLoyalty } from './game.js';
 import { Tactical } from './tactical.js';
 import { roll100, realChance } from './origrng.js';
 
@@ -118,7 +118,8 @@ export class Field {
   assignRoles(side, ids) {
     const n = ids.length;
     if (n < 2) return [0];
-    const f = this.faction(side), row = ROLE_TABLE[side].find(([, fs]) => fs.includes(f))[0].split(' ')[n - 2];
+    // A pack's house (core/pack.js) takes the row of the original house it names as `like`.
+    const f = data().factions[this.faction(side)]?.like ?? this.faction(side), row = ROLE_TABLE[side].find(([, fs]) => fs.includes(f))[0].split(' ')[n - 2];
     const counts = [...row].map(Number);
     // sort non-commanders by war descending (bubble with swap on ≥, kept as an approximation)
     const rest = ids.slice(1).sort((a, b) => this.O(b).war - this.O(a).war);
@@ -218,8 +219,16 @@ export class Field {
       o.soldiers = info.soldiers; o.hp = info.hp;
       if (info.fate === 'dead') { o.status = DEAD; u.gone = true; u.fate = 'dead'; }
       if (info.fate === 'captured') { u.gone = true; u.fate = 'captured'; u.capturedBy = u.side === 'att' ? 'def' : 'att'; }
+      if (info.fate === 'defected') this.defect(u, u.side === 'att' ? 'def' : 'att');
     }
     this.checkCommanders();
+  }
+  // A change of side on the war map (`$C766` codes 4..7: 单挑说得 结果 4, 计略 倒戈): he stays where he stands with the men he
+  // has, under the other banner, and his loyalty is recomputed at once by the new ruler's 人德 (`11:$CF3F`). A commander
+  // who goes over is lost to his side (checkCommanders); he does not command the new one.
+  defect(t, side) {
+    t.side = side; t.role = 4; t.commander = false;
+    const o = this.O(t.id); o.loyalty = recruitLoyalty(this.O(this.g.factions[this.faction(side)].ruler).virtue, o.loyalty);
   }
   // 武将不战死 keeps a ruler from being lost to an overflow after the war: an AI ruler 退却s only to a city with room,
   // the AI's own 退却 city first, else any own or empty neighbour.
@@ -402,8 +411,7 @@ export class Field {
       case 5: { const ch = this.chest(t.side), d = Math.min(ch.rice, Math.floor((ch.rice * (10 + U(5))) / 100) + Math.floor(a.int / 5)); ch.rice -= d; hits.push({ u: t, rice: -d }); lines.push(`烧毁敌军米 ${d}`); break; }
       case 7: fire(t); for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { const n = this.unitAt(t.x + dx, t.y + dy); if (n && n.side === t.side) fire(n); } break;
       case 8: {
-        t.side = u.side; t.role = 4; t.commander = false;
-        const o = this.O(t.id); o.loyalty = Math.min(90, Math.max(10, (70 + Math.floor(this.O(this.g.factions[this.faction(u.side)].ruler).virtue / 10) - o.loyalty) & 255));
+        this.defect(t, u.side);
         lines.push(`${nm(t)} 倒戈投向我军`); break;
       }
       case 9: hp(t, Math.floor((L() + Math.floor(((a.war + a.int) & 255) / 10)) * (5 + U(3)) / 10)); if (!t.gone) loss(t, Math.floor((a.war * (14 + U(7))) / 10)); break;
@@ -538,7 +546,7 @@ export class Field {
     for (let pass = 0; pass < 400; pass++) {
       let acted = false;
       for (const u of slots) {
-        if (this.over || u.gone) continue;
+        if (this.over || u.gone || u.side !== s) continue; // one won over mid-turn (说得, 倒戈) no longer acts for this side
         const act = this.aiDecide(u);
         if (!act) continue;
         acted = true; yield act;
@@ -557,8 +565,9 @@ export class Field {
     // Under 武将不战死 a ruler retreats only where there is room (roomTargets): the AI's own 退却 city is not
     // checked, and an overflow there turns him 下野 after the war.
     if (flee) { const [city] = isRuler && this.g.noWarDeath ? this.roomTargets(u) : this.retreatTargets(u); if (city != null) { this.retreat(u, city); return { type: 'retreat', u, city }; } }
+    const way = u.giveWay; u.giveWay = null; // asked this day to step out of a walker's path (approach()); only an idle officer does
     if (u.mission && !u.mission.done) return this.missionAct(u);
-    if (u.role === 7) return null;
+    if (u.role === 7) return this.makeWay(u, way);
     const adj = this.adjacentEnemies(u);
     const commanderFoe = this.side(foe).find((e) => e.commander);
     const special = this.aiStrategy(u, true);
@@ -586,7 +595,22 @@ export class Field {
       return this.approach(u, near);
     }
     if (u.role === 2) { if (s === 'def') return this.approach(u, commanderFoe); const [cx, cy] = this.castle(); return this.approach(u, { x: cx, y: cy }); }
-    return this.aiStrategy(u, false) || this.approach(u, this.side(s).find((x) => x.commander));
+    const n = this.aiStrategy(u, false); if (n) return n;
+    // Remake deviation: an escort touching his commander (diagonals too) holds. A60C would square him up beside the
+    // commander, which put him back in front of a commander who had just sidestepped him (see approach()).
+    const lead = this.side(s).find((x) => x.commander);
+    if (lead && lead !== u && Math.max(Math.abs(lead.x - u.x), Math.abs(lead.y - u.y)) <= 1) return this.makeWay(u, way);
+    return this.approach(u, lead);
+  }
+  // An idle officer (an escort beside his commander, one whose errand is done) whom a walker of his own side could not
+  // get round steps off the walker's line: one cell across it, the cheaper side first. Remake deviation, with approach().
+  makeWay(u, way) {
+    if (!way || way.day !== this.day || u.stop || u.qimen) return null;
+    const to = [[u.x + way.dy, u.y + way.dx], [u.x - way.dy, u.y - way.dx]].filter(([x, y]) => this.inside(x, y) && !this.unitAt(x, y))
+      .map(([x, y]) => ({ x, y, c: this.aiEstimate(u, x, y) })).sort((a, b) => a.c - b.c).find((c) => c.c <= this.pool[u.side]);
+    if (!to) return null;
+    this.move(u, to.x, to.y, to.c);
+    return { type: 'move', u, path: [[to.x, to.y]], cost: to.c };
   }
   // AI strategy choice (6.8 §5): normal priority 6→5→8→9→7→random{2,1,3}→4→0; special 10→15 for listed strategists.
   aiStrategy(u, special) {
@@ -646,7 +670,14 @@ export class Field {
     const vert = [0, Math.sign(dy) || 1], horz = [Math.sign(dx), 0];
     let cands = Math.abs(dx) > Math.abs(dy) ? [horz, vert] : [vert, horz];
     if (!dx) cands = [vert]; else if (!dy) cands = [horz];
-    cands = cands.map(([sx, sy]) => [u.x + sx, u.y + sy]).filter(([x, y]) => this.inside(x, y))
+    // `u.detour` is the cell a sidestep (below) left, kept while he walks to the same target and until his next
+    // ordinary step: he does not walk back onto it, though after the sidestep it is one of the two cells "toward the target".
+    if (u.detour && (u.detour.tx !== target.x || u.detour.ty !== target.y)) u.detour = null;
+    // A detour that would leave him no cell at all (the target now straight behind it) is forgotten.
+    cands = cands.map(([sx, sy]) => [u.x + sx, u.y + sy]).filter(([x, y]) => this.inside(x, y));
+    if (u.detour && cands.every(([x, y]) => u.detour.x === x && u.detour.y === y)) u.detour = null;
+    const left = ([x, y]) => u.detour && u.detour.x === x && u.detour.y === y;
+    cands = cands.filter((c) => !left(c))
       .map(([x, y]) => ({ x, y, c: this.aiEstimate(u, x, y) })).sort((a, b) => a.c - b.c);
     let first = cands.find((c) => c.c <= this.pool[u.side]);
     if (!first) return null;
@@ -654,14 +685,22 @@ export class Field {
     if (occ && occ.side !== u.side) return u.role === 1 && this.pool[u.side] >= ATTACK_COST ? this.doAttack(u, [occ]) : null;
     // Remake deviation (player feedback N07): A60C waits when its own officer holds the first step, so two
     // officers queued on one axis (each walking toward the other) stood still until the day-31 timeout.
-    // Here the other axis is tried instead; still one greedy step, no path-finding.
+    // Here the other axis is tried instead; still one greedy step, no path-finding. The sidestep must not be undone
+    // by the next decision (2026-11-17, a recording of 冀州: 曹丕 and his escort 田丰 stepped aside and back until the
+    // day's mobility was gone, every day): the cell left is remembered in `u.detour`, an escort does not move back
+    // in front of his commander (aiDecide), and an idle officer who still boxes a walker in steps aside (makeWay()).
+    // tests/aiwalk.test.mjs.
+    const from = occ ? { x: u.x, y: u.y, tx: target.x, ty: target.y } : null;
     if (occ) {
       if (first.x === target.x && first.y === target.y) return null; // already beside the officer it walks to
       if (!dx || !dy) cands = [[u.x + (dx ? 0 : 1), u.y + (dy ? 0 : 1)], [u.x - (dx ? 0 : 1), u.y - (dy ? 0 : 1)]]
-        .filter(([x, y]) => this.inside(x, y)).map(([x, y]) => ({ x, y, c: this.aiEstimate(u, x, y) })).sort((a, b) => a.c - b.c);
+        .filter(([x, y]) => this.inside(x, y)).filter((c) => !left(c)).map(([x, y]) => ({ x, y, c: this.aiEstimate(u, x, y) })).sort((a, b) => a.c - b.c);
+      const held = first;
       first = cands.find((c) => c !== first && c.c <= this.pool[u.side] && !this.unitAt(c.x, c.y));
-      if (!first) return null;
+      // No way round: the officer in the way is asked to step off this line, which he does if he is idle (makeWay()).
+      if (!first) { occ.giveWay = { day: this.day, dx: held.x - u.x, dy: held.y - u.y }; return null; }
     }
+    u.detour = from;
     this.move(u, first.x, first.y, first.c);
     return { type: 'move', u, path: [[first.x, first.y]], cost: first.c };
   }

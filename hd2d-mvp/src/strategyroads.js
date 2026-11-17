@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SEA_Y } from './worldmap.js';
+import { courseOf, waterIndex, wetCostOf, crossings } from './packgeo.js';
 
 // Quiet road ink follows the bake at roughly three CSS pixels wide; fresh water keeps its own surface.
 const ROAD_HALF_PX = 1.4, ROAD_CORE = 0.45, ROAD_ALPHA = 0.55, ROAD_SEA_ALPHA = 0.18, ROAD_END_ALPHA = 0.7, ROAD_LIFT = 0.012;
@@ -13,29 +14,11 @@ export function createStrategyRoads({ scene, data, sand, world, cityPos, groundY
   // Roads: packed-earth ribbons draped on the land, bowing round any city that sits on the straight line;
   // a crossing by sea (辽东–青州 over the 渤海) is a dashed sea lane. The selected city's roads light up (select()).
   const paths = new Map();
+  let wetCost = null; // the sand table's, for a pack's roads (set below): how much of a course runs over fresh water
   const pathOf = (a, b) => {
     const key = a < b ? `${a}-${b}` : `${b}-${a}`;
     if (!paths.has(key) && sand && world.roadPath(Math.min(a, b), Math.max(a, b))) paths.set(key, world.roadPath(Math.min(a, b), Math.max(a, b)));
-    if (!paths.has(key)) {
-      const [i, j] = a < b ? [a, b] : [b, a], p = cityPos[i], q = cityPos[j];
-      const dx = q.x - p.x, dz = q.z - p.z, len = Math.hypot(dx, dz), nx = -dz / len, nz = dx / len;
-      // A quadratic curve's offset at t is 2t(1−t)·bow: bow away from the city that needs it most.
-      let bow = 0;
-      cityPos.forEach((c, k) => {
-        if (k === i || k === j) return;
-        const t = ((c.x - p.x) * dx + (c.z - p.z) * dz) / (len * len), s = (c.x - p.x) * nx + (c.z - p.z) * nz;
-        if (t < 0.08 || t > 0.92 || Math.abs(s) > 0.6) return;
-        const need = (0.62 - Math.abs(s)) / (2 * t * (1 - t));
-        if (need > Math.abs(bow)) bow = need * (s > 0 ? -1 : 1);
-      });
-      bow = Math.max(-len * 0.45, Math.min(len * 0.45, bow));
-      const cx = (p.x + q.x) / 2 + nx * bow, cz = (p.z + q.z) / 2 + nz * bow, n = Math.ceil(len / 0.05), pts = [];
-      for (let k = 0; k <= n; k++) {
-        const t = k / n, x = (1 - t) ** 2 * p.x + 2 * t * (1 - t) * cx + t * t * q.x, z = (1 - t) ** 2 * p.z + 2 * t * (1 - t) * cz + t * t * q.z;
-        pts.push(new THREE.Vector3(x, groundY(x, z), z));
-      }
-      paths.set(key, pts);
-    }
+    if (!paths.has(key)) paths.set(key, courseOf(Math.min(a, b), Math.max(a, b), cityPos, groundY, wetCost));
     const pts = paths.get(key);
     return a < b ? pts : [...pts].reverse();
   };
@@ -70,32 +53,8 @@ export function createStrategyRoads({ scene, data, sand, world, cityPos, groundY
   let baseRoad = null, roadDist = NaN, roadHeight = NaN, roadFov = NaN;
   if (sand) {
     const edge = new THREE.Color(ROAD_EDGE), land = new THREE.Color(ROAD_LAND), sea = new THREE.Color(ROAD_SEA), pieces = [];
-    const widths = [1, ROAD_CORE, -ROAD_CORE, -1], waterCells = new Map(), bridges = sand.meta.pieces.bridge ?? [];
-    // The heightfield alone cannot identify a lake or river. Index their existing triangles once, with a margin
-    // wider than half a road sample, so no solid segment bridges the water between samples.
-    for (const w of sand.meta.water) for (let i = 0; i < w.i.length; i += 3) {
-      const a = w.i[i] * 3, b = w.i[i + 1] * 3, c = w.i[i + 2] * 3;
-      const tri = [w.v[a], w.v[a + 2], w.v[b], w.v[b + 2], w.v[c], w.v[c + 2]];
-      if (Math.abs((tri[2] - tri[0]) * (tri[5] - tri[1]) - (tri[3] - tri[1]) * (tri[4] - tri[0])) < 1e-8) continue;
-      const x0 = Math.floor((Math.min(tri[0], tri[2], tri[4]) - ROAD_WATER_MARGIN) / ROAD_WATER_CELL), x1 = Math.floor((Math.max(tri[0], tri[2], tri[4]) + ROAD_WATER_MARGIN) / ROAD_WATER_CELL);
-      const z0 = Math.floor((Math.min(tri[1], tri[3], tri[5]) - ROAD_WATER_MARGIN) / ROAD_WATER_CELL), z1 = Math.floor((Math.max(tri[1], tri[3], tri[5]) + ROAD_WATER_MARGIN) / ROAD_WATER_CELL);
-      for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) { const key = `${x},${z}`; if (!waterCells.has(key)) waterCells.set(key, []); waterCells.get(key).push(tri); }
-    }
-    const waterAt = (x, z) => {
-      const tris = waterCells.get(`${Math.floor(x / ROAD_WATER_CELL)},${Math.floor(z / ROAD_WATER_CELL)}`);
-      if (!tris) return false;
-      for (const t of tris) {
-        let neg = false, pos = false;
-        for (let j = 0; j < 6; j += 2) {
-          const k = (j + 2) % 6, dx = t[k] - t[j], dz = t[k + 1] - t[j + 1], cross = dx * (z - t[j + 1]) - dz * (x - t[j]);
-          neg ||= cross < 0; pos ||= cross > 0;
-          const q = Math.min(1, Math.max(0, ((x - t[j]) * dx + (z - t[j + 1]) * dz) / (dx * dx + dz * dz || 1)));
-          if ((x - t[j] - q * dx) ** 2 + (z - t[j + 1] - q * dz) ** 2 <= ROAD_WATER_MARGIN ** 2) return true;
-        }
-        if (!(neg && pos)) return true;
-      }
-      return false;
-    };
+    const widths = [1, ROAD_CORE, -ROAD_CORE, -1], bridges = sand.meta.pieces.bridge ?? [];
+    const waterAt = waterIndex(sand.meta.water, { cell: ROAD_WATER_CELL, margin: ROAD_WATER_MARGIN });
     // Remove only points within a sub-pixel lateral tolerance and the local ground relief.
     const thin = (pts) => {
       const kept = [pts[0]]; let start = 0;
@@ -117,13 +76,41 @@ export function createStrategyRoads({ scene, data, sand, world, cityPos, groundY
         .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.xz += roadOffset * uRoadWidth;');
     };
     baseRoadMat.customProgramCacheKey = () => 'sandRoadInk';
+    const packEarth = new THREE.Color('#d2c29c'); // the baked roads' packed earth in the albedo
+    const trackMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
+    // A pack road's crossings: each run of points over fresh water gets one baked bridge piece along the road, stretched to
+    // the run's length, and those points count as bridge (the ink goes over it). Returns the bridged point indices.
+    const bridgeParts = world.pieceModel?.('bridge') ?? [], BRIDGE_LEN = sand.meta.size.bridge ?? 0.2;
+    if (data.pack) wetCost = wetCostOf(waterAt);
+    const spans = (course) => {
+      const on = new Set();
+      for (const [k, e] of crossings(course, waterAt)) {
+        const a = course[Math.max(0, k - 1)], b = course[Math.min(course.length - 1, e + 1)], len = a.distanceTo(b);
+        for (let q = Math.max(0, k - 1); q <= Math.min(course.length - 1, e + 1); q++) on.add(q);
+        const mid = course[(k + e) >> 1], ry = Math.atan2(-(b.z - a.z), b.x - a.x), sc = Math.max(1, len / BRIDGE_LEN);
+        const y = Math.max(world.surfaceAt(a.x, a.z), world.surfaceAt(b.x, b.z));
+        for (const { geo, mat } of bridgeParts) {
+          const m = new THREE.Mesh(geo, mat); m.position.set(mid.x, y, mid.z); m.rotation.y = ry; m.scale.set(sc, 1, Math.min(sc, 1.5)); m.userData.packBridge = true; scene.add(m);
+        }
+      }
+      return on;
+    };
     for (const c of data.cities) for (const n of c.roads) if (c.id < n) {
-      const course = world.roadPath(c.id, n); if (!course?.length) continue; // never invent a second course beside the bake
+      // A road the bake drew has its course and its earth in the picture; never invent a second course beside it. A pack's
+      // road (one end or both at a city the bake never saw, or a new pair) takes the drawn curve, an earth track under the ink,
+      // and a bridge wherever it crosses a river or lake.
+      const baked = world.roadPath(c.id, n), course = baked?.length ? baked : data.pack ? pathOf(c.id, n) : null;
+      if (!course?.length) continue;
+      const span = baked?.length ? null : spans(course);
+      if (span) {
+        const g = ribbon(course, 0.032, 0.006, (atSea, run, end) => [packEarth, atSea ? 0 : end ? 0.5 : 0.85]);
+        const track = new THREE.Mesh(g, trackMat); track.renderOrder = 2; scene.add(track);
+      }
       let run = 0;
       const pts = thin(course.map((p, k) => {
         if (k) run += p.distanceTo(course[k - 1]);
-        const atSea = world.heightAt(p.x, p.z) < SEA_Y + 0.01, wet = waterAt(p.x, p.z);
-        let bridge = false;
+        let bridge = !!span?.has(k);
+        const atSea = !bridge && world.heightAt(p.x, p.z) < SEA_Y + 0.01, wet = waterAt(p.x, p.z);
         if (wet && !atSea) for (let i = 0; i < bridges.length; i += 6) if ((p.x - bridges[i]) ** 2 + (p.z - bridges[i + 2]) ** 2 <= ROAD_BRIDGE_RADIUS ** 2) { bridge = true; break; }
         const alpha = wet && !bridge ? 0 : atSea ? (dash(run) ? ROAD_SEA_ALPHA : 0) : ROAD_ALPHA * (run < 0.35 || k > course.length - 8 ? ROAD_END_ALPHA : 1);
         return { x: p.x, y: (bridge ? Math.max(world.surfaceAt(p.x, p.z), p.y) : world.surfaceAt(p.x, p.z)) + ROAD_LIFT, z: p.z, atSea, alpha };

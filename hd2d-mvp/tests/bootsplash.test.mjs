@@ -47,3 +47,24 @@ test('a key skips the splash, and a chime not yet heard never sounds', async () 
   assert.ok(!c || c.stopped, 'the scheduled chime is cancelled');
   assert.deepEqual(page.errors, []);
 });
+
+// Before the first scene is set up (the splash, the title still loading) no war map exists: a pointer leaving the canvas, a
+// right click and a double click there must not reach into one (思念漂泊凛冬@bilibili, D86: `mode === war` held while both were
+// null, and a mouse leaving the canvas threw from war.hoverCell).
+test('pointer events on the canvas during the boot throw nothing, and the title still comes', async () => {
+  const page = await game.open('', { setup: spy });
+  await page.waitForFunction(() => document.body.dataset.screen === 'boot' && document.querySelector('.boot'));
+  await page.evaluate(() => {
+    const c = document.querySelector('#stage canvas') ?? document.querySelector('canvas');
+    const at = { clientX: 200, clientY: 200, bubbles: true, pointerId: 7, isPrimary: true };
+    c.dispatchEvent(new PointerEvent('pointerleave', { ...at, pointerType: 'mouse' }));
+    c.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerType: 'mouse', button: 2, buttons: 2 }));
+    c.dispatchEvent(new PointerEvent('pointerup', { ...at, pointerType: 'mouse', button: 2 }));
+    c.dispatchEvent(new MouseEvent('dblclick', { ...at }));
+    c.dispatchEvent(new PointerEvent('pointerleave', { ...at, pointerType: 'mouse' }));
+  });
+  await page.waitForTimeout(100);
+  assert.deepEqual(page.errors, []);
+  await page.waitForFunction(() => document.body.dataset.screen === 'title' && document.querySelector('.tt') && !document.querySelector('.boot'), null, { timeout: 10000 });
+  assert.deepEqual(page.errors, []);
+});

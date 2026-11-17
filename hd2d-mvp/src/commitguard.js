@@ -39,7 +39,10 @@ function source(e) {
   const t = now();
   if (e && e.type === 'keydown') return { kind: 'key', at: e.repeat ? -Infinity : keys.get(e.key) ?? -Infinity };
   if (e && (e.type === 'click' || e.type === 'pointerup' || e.type === 'mouseup')) {
-    const count = e.type === 'click' && e.detail ? e.detail : e.type === 'click' ? 0 : downCount || 1;
+    // A finger's release (the map's tap, src/app.js) comes before the mouse events the browser makes up for it, so downCount
+    // there is still the tap before's: a quick second tap on a 计略 button would make the map's next tap a "double click"
+    // and drop it (2026-11-17). A finger lifted is one tap; the short guard below still holds off a commit tapped too soon.
+    const count = e.type === 'click' && e.detail ? e.detail : e.type === 'click' ? 0 : e.type === 'pointerup' && e.pointerType && e.pointerType !== 'mouse' ? 1 : downCount || 1;
     if (count) return { kind: 'mouse', count, at: downAt };
     // detail 0: Enter (pressed on its keydown) or Space (on its keyup) on a focused button, or the pad's button.click().
     if (keys.has('Enter')) return { kind: 'key', at: keys.get('Enter') };

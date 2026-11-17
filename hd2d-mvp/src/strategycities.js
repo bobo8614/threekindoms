@@ -8,6 +8,26 @@ import { layoutTags, measureTags } from './citytags.js';
 import { toX, toZ } from './worldmap.js';
 import { buildFortress, buildTown, buildPass, roofTex, M, MAT } from './structures.js';
 
+// A pack's town has no shadow in the board's baked light: a soft one on the ground, toward the bake's lamp side. The 2D map's
+// town pictures (tools/bake_strategy_flat.mjs --towns) are photographed with the same one.
+let shadowGeo, shadowMat, padMat;
+const softDisc = (stops) => { const t = canvasTex(64, 64, (c) => { const r = c.createRadialGradient(32, 32, 2, 32, 32, 32); for (const [k, v] of stops) r.addColorStop(k, v); c.fillStyle = r; c.fillRect(0, 0, 64, 64); }); t.magFilter = THREE.LinearFilter; t.colorSpace = THREE.NoColorSpace; return t; };
+// Also the packed-earth ground the bake paints round each of its towns (the albedo's pale disc), so a new town does not stand on bare grass.
+export function townShadow(half) {
+  if (!shadowMat) {
+    shadowGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    shadowMat = new THREE.MeshBasicMaterial({ color: '#1c1208', transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1,
+      alphaMap: softDisc([[0, '#9a9a9a'], [0.55, '#5a5a5a'], [1, '#000']]) });
+    padMat = new THREE.MeshBasicMaterial({ color: '#9c9070', transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1,
+      alphaMap: softDisc([[0, '#d8d8d8'], [0.5, '#b0b0b0'], [0.8, '#404040'], [1, '#000']]) });
+  }
+  const g = new THREE.Group();
+  const pad = new THREE.Mesh(shadowGeo, padMat); pad.scale.setScalar(half * 3); pad.position.y = 0.003; pad.renderOrder = 1; pad.userData.keep = true;
+  const sh = new THREE.Mesh(shadowGeo, shadowMat); sh.scale.setScalar(half * 2.6); sh.position.set(half * 0.18, 0.004, half * 0.12); sh.renderOrder = 2; sh.userData.keep = true; // own meshes: the pad must draw before the shadow
+  g.add(pad, sh);
+  return g;
+}
+
 export function createStrategyCities({ scene, data, sand, world, sites, onCity, onHover, colorOf }) {
   // Town fabric for the strategy map: whitewashed walls and pale stone, so a city stands out on the green
   // like the FC map's white castles; roofs and wall tops take snow in winter.
@@ -33,7 +53,8 @@ export function createStrategyCities({ scene, data, sand, world, sites, onCity, 
     // Cities, built from the war map's set pieces: 都城 the walled castle with its three-storey keep, 关隘 a
     // long gate wall, 普通城 a walled county town. Main roofs share one grey tile tinted toward the owner's
     // colour (update() deepens it with distance), and the full colour flies on a banner.
-    const CAPITAL = new Set([4, 8, 12, 15, 26]), PASS = new Set([9, 25]);
+    // The walled castle for 都城 (data/base-map.json `fort` where it differs from the sand table's tier), the gate wall for 关隘.
+    const fort = (c) => c.fort ?? c.tier === 'capital', pass = (c) => c.tier === 'pass';
     const tileTex = roofTex('#b4b4b4', '#787878', '#dcdcdc'), NEUTRAL = new THREE.Color('#8a9098');
     const flagGeo = new THREE.PlaneGeometry(0.26, 0.16, 6, 1); flagGeo.translate(0.13, 0, 0);
     const pickGeo = new THREE.BoxGeometry(0.95, 0.8, 0.95); pickGeo.translate(0, 0.4, 0);
@@ -48,12 +69,14 @@ export function createStrategyCities({ scene, data, sand, world, sites, onCity, 
       // the owner's colour flies on the banner and tints the land.
       const half = st ? world.size[{ capital: 'city-capital', major: 'city-major', county: 'city-county', pass: 'pass' }[st.tier]] / 2 * st.ms : 0;
       if (st) for (const { geo, mat } of world.cityModel(st.tier)) { const m = new THREE.Mesh(geo, mat); m.scale.setScalar(st.ms); m.position.y = -0.03; g.add(m); }
-      else if (CAPITAL.has(c.id)) { const f = buildFortress(g, { x: 0, h: 0, z: 0 }, null, { roofMat: roof, lights: false }); f.group.scale.setScalar(0.95); flags.push(...f.flags); }
-      else if (PASS.has(c.id)) buildPass(g, roof);
+      else if (fort(c)) { const f = buildFortress(g, { x: 0, h: 0, z: 0 }, null, { roofMat: roof, lights: false }); f.group.scale.setScalar(0.95); flags.push(...f.flags); }
+      else if (pass(c)) buildPass(g, roof);
       else buildTown(g, roof, c.id * 7 + 3);
+      // A pack's town has no shadow in the board's baked light: a soft one on the ground, cast toward the bake's lamp side.
+      if (st?.mod) g.add(townShadow(half));
       g.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = !st; o.material = SWAP.get(o.material) ?? o.material; } });
       // A pale paved terrace under the walls: the town reads as one bright block from any height.
-      const pad = PASS.has(c.id) ? [1.32, 0.42] : CAPITAL.has(c.id) ? [1.08, 1.08] : [0.9, 0.9];
+      const pad = pass(c) ? [1.32, 0.42] : fort(c) ? [1.08, 1.08] : [0.9, 0.9];
       if (!st) { const terrace = new THREE.Mesh(new THREE.BoxGeometry(pad[0], 0.07, pad[1]), terraceMat); terrace.position.y = -0.02; terrace.receiveShadow = true; g.add(terrace); }
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.62, 5), poleMat);
       const [fx, fz, ph] = st ? [half * 0.92, -half * 0.4, st.tier === 'capital' ? 0.56 : 0.44] : [0.56, 0.12, 0.62];
@@ -86,7 +109,7 @@ export function createStrategyCities({ scene, data, sand, world, sites, onCity, 
     // per city; the banners (they wave), the pick boxes and the ruler's crown keep their own meshes.
     const live = new Set([...flags, ...pickables, ...marks.map((m) => m.crown)]), batches = new Map(), statics = [];
     scene.updateMatrixWorld();
-    for (const g of cityGroups) g.traverse((o) => { if (o.isMesh && !live.has(o)) statics.push(o); });
+    for (const g of cityGroups) g.traverse((o) => { if (o.isMesh && !live.has(o) && !o.userData.keep) statics.push(o); });
     for (const o of statics) {
       const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
       for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);

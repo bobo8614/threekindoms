@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { W, H, STRATS, stratCount } from '../core/field.js';
 import { slash, sparkBurst, dustPuff, STRATEGY_FX, levelUp } from '../fx.js';
-import { name, cityName, takeLevelUps, DEAD } from '../core/game.js';
+import { name, cityName, takeLevelUps, DEAD, factionName } from '../core/game.js';
 import { playVignette } from '../vignette.js';
 import { ORIGINAL, paced, hold as holdBeat } from '../pace.js';
 import { stage } from '../commitguard.js';
@@ -184,6 +184,8 @@ export function makePlay(wv) {
     for (const [u, info] of [[a, res.a], [d, res.d]]) {
       if (info.fate === 'dead') ui.log(`　<em>${name(u.id)} 阵亡</em>`);
       if (info.fate === 'captured') ui.log(`　<em>${name(u.id)} 被俘</em>`);
+      // 说得 won him over: he stays where he stands under the other banner, so his figure is made again in its colours (as 倒戈)
+      if (info.fate === 'defected') { ui.log(`　<em>${name(u.id)} 归降，转投${factionName(field.g, field.faction(u.side))}军</em>`); if (views.get(u)) { drop(views.get(u).g); views.delete(u); } addUnit(u); continue; }
       wv.tag(u);
     }
     if (res.duel?.retreated) ui.log(`　${name(res.duel.retreated)} 从单挑中退却`);

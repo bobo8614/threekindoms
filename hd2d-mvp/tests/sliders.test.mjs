@@ -147,6 +147,20 @@ test('a row with nothing to choose has its box disabled', async () => {
   assert.deepEqual(page.errors, []);
 });
 
+// 赏金 with 10–19 金: the dialog asks 50 of a row that only holds 10 (西风@devblog, 2026-11-17).
+test('a starting amount past the row starts at its end, and 确定 takes that', async () => {
+  const id = await open([{ key: 'gold', label: '金', min: 10, max: 10, step: 10, value: 50 }]);
+  assert.equal(await box().inputValue(), '10');
+  await okBtn().click();
+  assert.deepEqual(await ans(id), { gold: 10 });
+  const id2 = await open([{ ...GOLD, min: 10, max: 30, value: 50 }]);
+  assert.equal(await box().inputValue(), '30');
+  assert.equal(await range().inputValue(), '30');
+  await okBtn().click();
+  assert.deepEqual(await ans(id2), { gold: 30 });
+  assert.deepEqual(page.errors, []);
+});
+
 test('typing does not reach the map keys', async () => {
   const before = await page.evaluate(() => window.__game.strategy.camera.position.toArray());
   const id = await open([GOLD]);

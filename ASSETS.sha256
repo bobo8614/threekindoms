@@ -1408,7 +1408,7 @@ c2e1b722fe069f7fa6d473f685dc333916d42aac4415138a9ded7f74139e6e64  hd2d-mvp/asset
 055a498c5ed7ef78c0cd9824dd223e647bc19597dae19224516bf919df9db230  hd2d-mvp/assets/ai/portraits/203.webp
 89ab3939ecf787e8f9a0b5745a29d515873438e3db14fb4d34382efcac5faa09  hd2d-mvp/assets/ai/portraits/204.webp
 feab62d3357ea6e4d386a53ff6d1471e3874cb8c34e0673e291f0d56ecb979b6  hd2d-mvp/assets/ai/portraits/205.webp
-0577be590b7bfb24827be4fba42cec3c39b8384901227a54953dbadec5c1c8e4  hd2d-mvp/assets/ai/portraits/206.webp
+2ef63eb9cd59f8cd6db3565aa7960184fd3aedf713f3cfd913a6801dbb9e50be  hd2d-mvp/assets/ai/portraits/206.webp
 391e38437b521cd71202b91d4f050073802b99d1f45d056cfc8d1c2d1a9b298b  hd2d-mvp/assets/ai/portraits/207.webp
 2a034191c6258a77a9ea2e44c9a4775dc3adec6d0ae20872d09ebb3bf3638859  hd2d-mvp/assets/ai/portraits/208.webp
 bb0df58439627679a397837e60460830c1dfa18ed4b595a09ce72228e8897b47  hd2d-mvp/assets/ai/portraits/209.webp
@@ -1552,6 +1552,10 @@ aa8e56e65273d768ff56cca9c7e9b287ed1ac3ab1644aa54ba4ad470be48d9c6  hd2d-mvp/asset
 9be5ca1cc3d4631e420b5012cc947995b67d7ae2c9e5d6b97aa1e1a4eda30eca  hd2d-mvp/assets/ai/sandtable/flat/autumn.webp
 5493002ce7961a43fdff2cde6f0f480a24bd3f31d66b3adce0aa927d9bdd6a63  hd2d-mvp/assets/ai/sandtable/flat/spring.webp
 580ba2b982518d7c1043875879810a9e3e7091b8ba421d1bc532080b21809f2e  hd2d-mvp/assets/ai/sandtable/flat/summer.webp
+6fde41a4c2f07ae38512b6e1c9d8f30cbc2e025f89835739d0c79cb487a05e6d  hd2d-mvp/assets/ai/sandtable/flat/towns-autumn.webp
+ac209c795dacc6e2624b122c8089478d32dd4070a273fc63d7b49c803ddeb68d  hd2d-mvp/assets/ai/sandtable/flat/towns-spring.webp
+bd0381b29d567317ec1cd7cd04e68cb20467a0d8bf75926b226380909df4baaf  hd2d-mvp/assets/ai/sandtable/flat/towns-summer.webp
+c92fa98e2a30671863d252a49a212048b227de7cdfa638f26803a26e8185344d  hd2d-mvp/assets/ai/sandtable/flat/towns-winter.webp
 5591e5e8aa84b38fbe17380ca00a96301a953a07c8c87144fb3bc93ea145c38f  hd2d-mvp/assets/ai/sandtable/flat/winter.webp
 f7fbe607e13434f8ed67e6afc9f3b82f7ef4db950eff37256c2a1a13164ca142  hd2d-mvp/assets/ai/sprites/attacker-archer.png
 f22d5d5d9364165359a4b6182716f9dea0a6fad5170e1ec7b8a2a93a6d8668de  hd2d-mvp/assets/ai/sprites/attacker-cavalry.png
@@ -1577,10 +1581,10 @@ f88b83ec2f7546fcde26e418fa450b849e6540cd95d2616114b28f209703fd73  hd2d-mvp/asset
 a0ac7054f0841a63c6015de0d01f22ca9b8d7955890b3120d755a4aa7606b7e1  hd2d-mvp/assets/ai/sprites/duel/108-turn.png
 3441365ca8bd80bcea7e830d49442ee31121606ead5d14821e8570cf544b25aa  hd2d-mvp/assets/ai/sprites/duel/108-wheel.png
 f5b9a769d05ef963672ecb521c21e84cb99d29a47ee431973d4940bd928aedc6  hd2d-mvp/assets/ai/sprites/duel/108.png
-841afe926090a7b86e24227389875131495ea8a5c2c34d668e083e54b20e6adf  hd2d-mvp/assets/ai/sprites/duel/109-c.png
-74e939cc6c9333be04cda21babce66fc5ee66d2fd1a08a7127672e17f40e95b0  hd2d-mvp/assets/ai/sprites/duel/109-turn.png
-d459dd178c25c486672d2a1b93ed8c86149327f93717dc302b42ff2dcc544607  hd2d-mvp/assets/ai/sprites/duel/109-wheel.png
-67562113d000464e4f8ca1200cdd6ae7c06491df6d6f729ba87fc731570474d3  hd2d-mvp/assets/ai/sprites/duel/109.png
+12771e11d404713cfdd7f12665d3f3c4a18aecd80c57b276e16a11c74031ba15  hd2d-mvp/assets/ai/sprites/duel/109-c.png
+08e57a7be22ffb26e849f0d574490b3df6b8ce5bc4dacae80f4642ae561dbd06  hd2d-mvp/assets/ai/sprites/duel/109-turn.png
+e36ea77efbd21c4b527a5e5fa6c68fa69e15ab26857381d05809fc822ef009b6  hd2d-mvp/assets/ai/sprites/duel/109-wheel.png
+cb5240e2c88fcd4d0891dffeb55e4b1abd2be9caeef9c405d037e90b7ee190d1  hd2d-mvp/assets/ai/sprites/duel/109.png
 27c9a2cd2b350def28ed238d0e2c42171defc14c66118413d0712c07d3a023e6  hd2d-mvp/assets/ai/sprites/duel/110-c.png
 a3c5186b9d65d31c04bc5edf1bed8c6edfb665464923032fee35390818c287de  hd2d-mvp/assets/ai/sprites/duel/110-turn.png
 92b6cf87c2f65371a9ab687bcf2e6a488843ebdf6db82e4fd320788b382c24e5  hd2d-mvp/assets/ai/sprites/duel/110-wheel.png
@@ -1781,7 +1785,7 @@ afd314c13bec926c8723a57deef24a0b0adf1ec515c2a2a42abac4a70010a912  hd2d-mvp/asset
 08cfe1bfd0acceaa7f7e0bcc610232c3f07fee2dea4bc6bdab2085f591025ccd  hd2d-mvp/assets/ai/sprites/march/104.png
 af7f057cb2aac82526efff9120a928005c104022c477440984998562cfec2943  hd2d-mvp/assets/ai/sprites/march/107.png
 3925846474788fc3d8ae71796701eb6686260a9451a75098abda1c62c768577c  hd2d-mvp/assets/ai/sprites/march/108.png
-a5c4655fe959c64f081d66e9eb27041df4b3dc9081e58fc77c50e21f04926cae  hd2d-mvp/assets/ai/sprites/march/109.png
+f6b58bb1a99d9a3fc770a56d542c6e703d4fd29ea8ee7b5131777a2567439a98  hd2d-mvp/assets/ai/sprites/march/109.png
 544b5281651a7369f45b62a2e4e0a5b017e19d3dff8609aae9410ad39321cef6  hd2d-mvp/assets/ai/sprites/march/110.png
 10798b7c0bf4aac157f59a0a66b0745ffa283eb9dd0ab69d29af9091b7c27e57  hd2d-mvp/assets/ai/sprites/march/111.png
 de66b6a30174b1c89a931896d5e83aec3a87aca32ede8d5499c755ebdb688cc2  hd2d-mvp/assets/ai/sprites/march/112.png

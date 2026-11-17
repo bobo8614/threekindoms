@@ -1,6 +1,6 @@
 // Small DOM toolkit for the game HUD: element builder, modal dialogs that resolve to a value,
 // click-through message boxes, toasts, banners and officer/city pickers.
-import { data, name, cityName, maxHp } from './core/game.js';
+import { data, name, cityName, maxHp, artOf } from './core/game.js';
 import { PHONE } from './phone.js';
 
 // A mouse's side buttons (3 back, 4 forward) mean history back/forward to Chromium and Electron, and a game is
@@ -43,7 +43,7 @@ export const setPortraits = (p) => (portraitFiles = p);
 // Painted art is indexed by officer id; an 阿会喃 copy (原版漏洞, core/ahuinan.js) wears 阿会喃's.
 // Every officer has a painted portrait, half-body and four expressions (tests/artcoverage.test.mjs);
 // 阿会喃's portrait is only a last resort, never the original pixel art.
-const art = (id) => (data().officers[id]?.clone ? 0 : id);
+const art = artOf; // a pack's officer, or an 阿会喃 copy, shows the officer whose pictures he borrows
 const FALLBACK = 'assets/ai/portraits/0.webp';
 export const portrait = (id) => portraitFiles[art(id)] || portraitFiles[0] || FALLBACK;
 // Expressions. The original's selector $00A4 takes 0–4, but 0 and 1 share pixels for every face, so there
@@ -243,7 +243,9 @@ export async function pickCity(title, cids, describe = () => '', { hover } = {})
 // until then 确定 waits, and leaving the box (or Enter) puts it right in sight: empty is the last amount, otherwise the nearest legal one.
 export function sliders(title, fields, { note = '', ok = '确定', validate, live } = {}) {
   return modal(title, (close) => {
-    const vals = Object.fromEntries(fields.map((f) => [f.key, f.value ?? f.min]));
+    // The starting amount is kept inside the row: 赏金 starts at 50, but with 10–19 金 the only amount is 10, the slider has nothing
+    // to move and 确定 sent the 50 the city did not have (西风@devblog, 2026-11-17).
+    const vals = Object.fromEntries(fields.map((f) => [f.key, Math.max(f.min, Math.min(f.max, f.value ?? f.min))]));
     const unsettled = new Set(), boxes = [];
     // A press on 确定 takes the focus from a box, which puts the amount right and would free the button before the release: a click
     // pressed while a box was unsettled only shows the corrected amount, it confirms nothing. So an unsettled box greys the button

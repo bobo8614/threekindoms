@@ -45,7 +45,8 @@ test('赏赐: the one rewarded, 喜', async () => {
   await page.evaluate((id) => { window.__game.g.officers[id].loyalty = 50; }, me);
   await dock('仓', '赏赐'); await pick(me);
   await page.locator('.shade .btn', { hasText: '赏金' }).click();
-  await yes();
+  await yes(); // the amount
+  await yes(); // the 是/否, which can take others along since 2026-11-16
   const w = await nextWindow();
   assert.deepEqual([w.who, w.mood], [me, 'joy']); assert.match(w.text, /忠诚/);
   await closeWindow();

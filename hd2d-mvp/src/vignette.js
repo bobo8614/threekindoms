@@ -125,7 +125,7 @@ export async function playVignette({ scene, caption, onBook, books = 1, onShow, 
   const start = performance.now();
   let skip = false;
   // Played large in the middle of the screen (0.1.0 framed it over the small city panel).
-  const box = h('div', { class: 'vig floating', role: 'img', 'aria-label': caption, title: '点击跳过', 'data-scene': scene }), dim = h('div', { class: 'vig-dim' });
+  const box = h('div', { class: 'vig floating', role: 'img', 'aria-label': caption.replace(/\u2060/g, ''), title: '点击跳过', 'data-scene': scene }), dim = h('div', { class: 'vig-dim' });
   const cv = h('canvas', { width: S.w, height: S.h }), cap = h('div', { class: 'vig-cap' });
   box.append(h('div', { class: 'vig-frame' }, cv), cap);
   // A 命令书 show holds the screen as the original does: other keys and clicks around the picture go to it, not
@@ -165,7 +165,8 @@ export async function playVignette({ scene, caption, onBook, books = 1, onShow, 
   const frame = (t = performance.now()) => { if (due(t)) paint(c, S, (performance.now() - t0) / 1000, st); raf = requestAnimationFrame(frame); };
   frame(); onShow?.();
   box.classList.add('in');
-  const chars = [...caption];
+  // A word joiner (U+2060, app.js caption) rides with the character before it: it holds a line together, it is never typed.
+  const chars = caption.match(/[^\u2060]\u2060*/gu) ?? [];
   for (let i = 1; i <= chars.length && !skip; i++) { cap.textContent = chars.slice(0, i).join(''); await sleep(typing); }
   cap.textContent = caption;
   if (result) {

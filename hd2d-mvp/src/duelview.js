@@ -510,6 +510,7 @@ export function createDuelView(T, sprites = {}, audio) {
   // start on this same event (react: false when the caller stages the reaction itself).
   function impact(me, foe, a, tier, ctx, frame = 'strike', react = true) {
     const T0 = TIER[tier], w = me.meta?.weapon || 'blade';
+    const short = w === 'sword' || w === 'fan'; // 诸葛亮's feather fan cuts like a sword
     // The hit-stop holds the striker on the blow (swing() waits it out) while the struck rider takes it at once and
     // trembles; only a 舍身 (allIn) and the deathblow stop the whole scene.
     const deathblow = (ctx.hp?.[foe.id] ?? 1) <= 0;
@@ -519,7 +520,7 @@ export function createDuelView(T, sprites = {}, audio) {
     p.y = Math.min(Math.max(p.y, 1.2), 2.1);
     if (fx && tier !== 'graze') {
       if (w === 'spear') thrust(scene, p, me.dir < 0, tier === 'heavy' ? 2.2 : 1.5, tween);
-      else slash(scene, p, me.dir < 0, w === 'sword' ? (tier === 'heavy' ? 1.3 : 0.9) : tier === 'heavy' ? 1.9 : tier === 'light' ? 1.0 : 1.4, tween, w === 'sword' ? 0.9 : 0.55);
+      else slash(scene, p, me.dir < 0, short ? (tier === 'heavy' ? 1.3 : 0.9) : tier === 'heavy' ? 1.9 : tier === 'light' ? 1.0 : 1.4, tween, short ? 0.9 : 0.55);
     }
     if (fx) sparkBurst(scene, p, T0.sparks, T0.color, tween);
     kick(me.dir, deathblow ? Math.max(T0.kick, 0.14) : T0.kick);

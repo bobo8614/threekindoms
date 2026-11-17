@@ -80,6 +80,11 @@
   "end": 108.53795,
   "xfade": 0.08
  },
+ "assets/audio/original/bgm-select.mp3": {
+  "start": 21.79981,
+  "end": 111.25468,
+  "xfade": 0.08
+ },
  "assets/audio/original/bgm-skirmish.mp3": {
   "start": 9.27264,
   "end": 111.52171,

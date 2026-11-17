@@ -215,7 +215,7 @@ export function createTacticalView(T, sprites) {
   const sameField = (b, looks) => !!laid && laid.b === b && laid.G === tacticalGround(where.month, where.city) && laid.month === where.month && laid.city === where.city && laid.a === looks.a && laid.d === looks.d;
   function build(b, looks) {
     const T0 = performance.now(); // tools/scene_switch_trace.mjs (PERF-05): measures only
-    blast.clear();
+    blast.clear(); aim?.(null);
     if (set && sameField(b, looks)) {
       const gone = set.children.filter((o) => !laid.kids.has(o));
       for (const o of gone) { o.traverse((x) => x.isCSS2DObject && x.element.remove()); set.remove(o); }
@@ -484,6 +484,9 @@ export function createTacticalView(T, sprites) {
         else if (ev.spared) { popup('被俘!', posOf(ev.t).clone().setY(2.2), units.get(ev.t).look); await kill(ev.t, { fade: true }); } // 武将不战死
         else await sleep(d(60));
         if (ev.t.kind === 'gen' || ev.dmg >= 30) shake = 0.12;
+        // he turned to strike; the original writes his facing back once the stroke is done (core/tactical.js faceOf), and
+        // his 爆炎 flies that way, so the figure shows it again
+        if (battle.faceOf) turn(v, ...battle.faceOf(ev.u));
         break;
       }
       case 'exit': {
@@ -533,15 +536,31 @@ export function createTacticalView(T, sprites) {
     } else await Promise.all([...v.alive].map((M, i) => fall(v, M, i * 70 + Math.random() * 60)));
     hide(v);
   }
+  // 爆炎's landing, shown on the ground while the player points at the tactic (tacticalhud.js): the 3×3 two cells along
+  // the general's facing (core/tactical.js blastAt). cells: [cx, cy], or null to clear.
+  const aimMat = new THREE.MeshBasicMaterial({ color: '#ff7a30', transparent: true, opacity: 0.38, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  const aimTiles = Array.from({ length: 9 }, () => { const m = new THREE.Mesh(blobGeo, aimMat); m.scale.setScalar(0.92); m.visible = false; m.renderOrder = 5; m.userData.noSeason = true; scene.add(m); return m; });
+  function aim(at) {
+    aimTiles.forEach((m, i) => {
+      const x = at && at[0] + (i % 3) - 1, y = at && at[1] + Math.floor(i / 3) - 1;
+      m.visible = !!at && x >= 0 && y >= 0 && x < GW && y < GH;
+      if (m.visible) m.position.set(wx(x), groundY(wx(x), wz(y), cellH(x, y)) + 0.03, wz(y));
+    });
+  }
   async function tacticFx(ev, hooks = {}) {
     if (!ev.ok) return;
     const own = battle.gen(ev.side), foe = battle.gen(ev.side === 'a' ? 'd' : 'a');
-    if (ev.id === 'blast' && ev.center) {
-      // 爆炎 (src/blastfx.js): the general winds up and throws on his strike; the blow lands as the bomb goes off
-      const [cx, cy] = ev.center, to = new THREE.Vector3(wx(cx), 0, wz(cy)), v = units.get(own), M = v?.alive[0];
-      to.y = groundY(to.x, to.z, cellH(cx, cy));
+    aim(null);
+    if (ev.id === 'blast' && (ev.center || ev.toward)) {
+      // 爆炎 (src/blastfx.js): the general winds up and throws on his strike, the way he faces; the blow lands as the bomb
+      // goes off. Thrown off the board (ev.center null, the original's B440) the pot flies out over the edge and nothing bursts.
+      const v = units.get(own), M = v?.alive[0], [fx, fy] = ev.toward ?? [own.side === 'a' ? 1 : -1, 0];
+      if (v) turn(v, fx, fy);
+      const [cx, cy] = ev.center ?? [own.x + 2 * fx, own.y + 2 * fy], to = new THREE.Vector3(wx(cx), 0, wz(cy));
+      to.y = groundY(to.x, to.z, cellH(Math.min(GW - 1, Math.max(0, cx)), Math.min(GH - 1, Math.max(0, cy))));
       if (M && !M.busy) await new Promise((res) => { playClip(M, 'attack', (e) => e === 'hit' && res()); setTimeout(res, d(500)); });
-      const from = posOf(own).clone(); from.y += 1.05; from.x += 0.25 * (v?.face ?? 1);
+      const from = posOf(own).clone(); from.y += 1.05; from.x += 0.25 * (fx || 0);
+      if (!ev.center) { await blast.play({ from, to, d, dud: true }); return; }
       clash(to);
       await blast.play({ from, to, d, shake: (k) => { shake = Math.max(shake, k); },
         onBurst: () => { hooks.sfx?.('sfx-blast'); for (const h of ev.hits) { popup(`-${h.dmg}`, posOf(h.u).clone().setY(1.2), units.get(h.u).look); flash(h.u); reel(h.u); tag(h.u); if (h.u.dead || h.u.out) kill(h.u, { fade: h.u.kind === 'gen' && battle.side[h.u.side].fate !== 'dead' }); } } });
@@ -563,7 +582,7 @@ export function createTacticalView(T, sprites) {
   const tmp = new THREE.Vector3();
   return {
     scene, camera,
-    build, play, tag, settle,
+    build, play, tag, settle, aim,
     // The war this 白兵 belongs to: { month, city } (the battlefield's seat sets the latitude).
     setPlace(p) { where = p; place = env.set(p); loading = loadTacticalGround(p.month, p.city).catch((e) => console.warn('白兵 ground', e)); },
     // The painted field's materials for the place set last (build() falls back to tiles without them).

@@ -196,6 +196,16 @@
   .dock-ed .count b { color: #ffe2a0; font-size: 18px; margin: 0 2px; }
   .dock-ed .sep { width: 1px; height: 24px; background: #8a6a3466; margin: 0 4px; }
 
+  /* Number keypad (short screens): the value and its range beside a 3×4 pad, so it fits 320 px */
+  .kp-wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: stretch; }
+  .kp-side { display: grid; align-content: start; gap: 6px; min-width: 9em; }
+  .kp-side .foot { margin-top: auto; padding-top: 12px; }
+  .kp-val { font: 600 40px/1.1 var(--serif); color: #fff4d8; font-variant-numeric: tabular-nums; padding: 4px 10px; border: 1px solid var(--gold2); border-radius: 3px; background: #0008; text-align: right; }
+  .kp-side small { color: var(--dim); font-size: 13px; }
+  .kp { display: grid; grid-template-columns: repeat(3, 52px); gap: 6px; }
+  .kp .btn { height: 44px; padding: 0; font-size: 20px; }
+  .kp .btn:last-child { font-size: 15px; }
+
   /* Confirmation list */
   .diff { max-height: 46vh; overflow: auto; margin: 6px 0 0; padding: 0; list-style: none; border-top: 1px solid #8a6a3440; font-variant-numeric: tabular-nums; }
   .diff li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 4px 2px; border-bottom: 1px solid #ffffff0a; font-size: 15px; }
@@ -215,6 +225,91 @@
     .se-who { grid-template-columns: auto minmax(0, 1fr); } .se-who .se-acts { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
     .se-who .fig { width: 92px; height: 112px; } .se-who h2 { font-size: 32px; }
   }
+  /* Phone-only controls: the 记录 button beside the tabs, − and + beside each number, the back-to-list button and the
+     rail's 返回游戏. The desktop layout has slots, a keyboard and room for both panes. */
+  .slotpick, .se-step, .se-back, #back-rail, #sep-rail { display: none; }
+
+  /* Short landscape screens (phones held sideways: devblog #356 D66, and the Android package) get the page as one
+     screen, like a game menu, instead of a long page with a list scrolling inside it:
+     - the actions are a rail on the right with a gutter of its own (a bottom bar sat over the sliders on a 320–390 px
+       tall page), with 返回游戏 in it; the record slots fold into the 记录 button that leads the tabs;
+     - the list and the detail each scroll in their own box: side by side from 780 px, else one at a time (a row opens
+       the detail, ‹ 列表 or the back key returns);
+     - controls are 32 px or more for a finger, and every number has − and + (held, they repeat and speed up), since the
+       keyboard covers half the screen in the full-screen package.
+     The rail takes ~125 px; change --rail and the rail's buttons together (tests/editorentry.test.mjs). */
+  @media (max-height: 520px) and (min-aspect-ratio: 4/3) {
+    :root { --rail: 104px; }
+    html, body { height: 100%; overflow: hidden; }
+    .ed { box-sizing: border-box; height: var(--vh, 100vh); grid-template-rows: auto minmax(0, 1fr); gap: 8px;
+      padding: max(8px, env(safe-area-inset-top, 0px)) calc(var(--rail) + 20px + env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); }
+    .ed-head, .ed > .slots-rail { display: none; } /* the slot dialogs (记录, 导入) use .slots-rail too */
+    .dock-ed { left: auto; right: max(8px, env(safe-area-inset-right, 0px)); bottom: auto; top: 50%; transform: translateY(-50%);
+      width: var(--rail); max-width: none; max-height: calc(100% - 16px); overflow-y: auto; box-sizing: border-box;
+      flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; padding: 8px; }
+    .dock-ed .count { margin: 0 0 2px; text-align: center; font-size: 13px; }
+    .dock-ed .count b { font-size: 16px; }
+    .dock-ed .btn { min-height: 34px; padding: 4px; font-size: 15px; white-space: nowrap; }
+    .dock-ed .sep { display: block; width: auto; height: 1px; margin: 2px 4px; }
+    #back-rail, #sep-rail { display: block; }
+
+    .ed-tabs { flex-wrap: nowrap; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+    .ed-tabs .btn { flex: none; min-width: 0; min-height: 38px; padding: 4px 12px; font-size: 16px; white-space: nowrap; }
+    .ed-tabs .meta, .ed-tabs .sp { display: none; }
+    .ed-tabs .slotpick { display: inline-flex; align-items: center; gap: 6px; border-color: var(--gold2); }
+    .ed-tabs .slotpick::after { content: ''; width: 0; height: 0; border: 5px solid transparent; border-top-color: var(--gold); margin: 5px 0 0 2px; }
+    .ed-tabs .slotpick small { margin: 0; }
+
+    #body { min-height: 0; }
+    #body > * { height: 100%; box-sizing: border-box; }
+    .md { grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: stretch; }
+    .list { height: 100%; min-height: 0; }
+    .list-bar { padding: 8px 8px 6px; }
+    .list-bar input, .list-bar select { min-height: 34px; }
+    .se-chip { min-height: 32px; padding: 3px 11px; }
+    .detail { min-height: 0; overflow-y: auto; align-content: start; padding: 12px 14px 16px; gap: 12px; overscroll-behavior: contain; }
+    .rows { overscroll-behavior: contain; }
+    /* the head stays short so the sliders start on the first screen: the buttons sit under the name and tags */
+    .se-who { grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; align-items: start; padding-bottom: 10px; }
+    .se-who.city { grid-template-columns: minmax(0, 1fr); }
+    .se-who .se-acts { grid-column: 2; flex-direction: row; flex-wrap: wrap; }
+    .se-who.city .se-acts { grid-column: 1; }
+    .se-who .se-acts .btn { min-height: 34px; padding: 3px 10px; }
+    .se-who .fig { grid-row: span 2; width: 76px; height: 92px; } .se-who h2 { font-size: 28px; }
+    .se-who .tags { margin-top: 4px; } .se-tag { font-size: 12px; }
+
+    .stat { grid-template-columns: 3em minmax(0, 1fr) auto; gap: 8px; padding: 1px 0; }
+    .se-delta { display: none; }
+    .se-meter { height: 34px; }
+    .se-meter input[type=range]::-webkit-slider-thumb { width: 20px; height: 30px; margin-top: -11px; }
+    .se-meter .was { top: 8px; }
+    .val { gap: 4px; }
+    .val input { width: 3.6em; height: 32px; box-sizing: border-box; padding: 2px 4px; cursor: pointer; }
+    .se-step { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid #5a4428; border-radius: 3px;
+      background: #0007; color: var(--ink); font-size: 18px; line-height: 1; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .se-step:active:not(:disabled) { border-color: var(--gold); background: #3a2208c0; }
+    .se-step:disabled { opacity: .3; }
+
+    .se-gear-row { gap: 3px; flex-wrap: nowrap; } .se-gear-row .k { width: 3em; font-size: 14px; } /* eight to a row at 568 px */
+    .eq { width: 38px; height: 38px; padding: 2px; } .eq img { width: 30px; height: 30px; }
+    .se-gear-now { margin-left: 3em; }
+    .al { grid-template-rows: auto minmax(0, 1fr); padding: 12px 14px; gap: 10px; }
+    .al-wrap { overflow: auto; overscroll-behavior: contain; }
+    .al td { width: 108px; height: 62px; }
+    .al .lead img { width: 34px; height: 40px; } .al tbody th .lead { grid-template-columns: 34px auto; } .al .lead { min-width: 64px; }
+    .step button { width: 34px; height: 34px; font-size: 18px; }
+    .bug { overflow-y: auto; padding: 14px 16px; gap: 14px; overscroll-behavior: contain; }
+    .bug-hero .fig { width: 80px; height: 98px; } .bug-hero h2 { font-size: 30px; }
+    .bug-steps li .btn { min-height: 34px; }
+  }
+  @media (max-height: 520px) and (min-aspect-ratio: 4/3) and (min-width: 780px) {
+    .md { grid-template-columns: minmax(230px, 38%) minmax(0, 1fr); }
+  }
+  @media (max-height: 520px) and (min-aspect-ratio: 4/3) and (max-width: 779.98px) {
+    .md:not(.pane-detail) > .detail, .md.pane-detail > .list { display: none; }
+    .se-who .se-acts .se-back { display: inline-block; }
+  }
+  @media (max-height: 520px) and (min-aspect-ratio: 4/3) and (max-width: 640px) { .ed-tabs .slotpick small { display: none; } }
 </style>
 </head>
 <body>
@@ -235,6 +330,8 @@
   <span class="sep"></span>
   <button class="btn" id="export">导出</button>
   <button class="btn" id="import">导入…</button>
+  <span class="sep" id="sep-rail"></span>
+  <button class="btn" id="back-rail">返回游戏</button>
   <input type="file" id="file" accept=".json,application/json" hidden>
 </div>
 <div id="ui-top"></div>
@@ -244,7 +341,9 @@ import { h, modal, toast, avatar, figure, setPortraits, setFaces, setHalfbody } 
 import { OFFICER_FIELDS, CITY_FIELDS, ALLIANCE_MAX, hpText, setOfficer, setCity, setAlliance, checkRecord, setBug, setPhantomOwner } from './src/core/saveedit.js';
 import { PHANTOM_ROADS } from './src/core/ahuinan.js';
 
-const D = await G.loadData();
+// The editor works on the data the game plays (?pack= is passed on from the game's menu); a record of another pack is refused by checkRecord.
+await G.loadWithPack();
+const D = G.data();
 const json = async (url) => { try { return await (await fetch(url, { cache: 'no-store' })).json(); } catch { return []; } };
 // The same art the game loads (app.js): generated portraits, expression busts and waist-up figures, where they exist.
 const [pIdx, fIdx, hIdx] = await Promise.all(['portraits', 'faces', 'halfbody'].map((k) => json(`assets/ai/${k}/index.json`)));
@@ -265,6 +364,10 @@ const dot = (f) => h('i', { class: 'dot', style: { background: color(f) } });
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 let slot = null, base = null, g = null, quickOpened = null, tab = 'officers', pick = { officers: null, cities: null };
+// On a narrow phone the list and the detail show one at a time (the CSS below 780 px); paneDetail: the detail is up.
+let paneDetail = false, listTop = 0;
+const showList = () => { paneDetail = false; render(); };
+const backBtn = () => h('button', { class: 'btn se-back', onclick: showList }, '‹ 列表');
 const filt = { q: '', faction: 'all', status: G.SERVING, cityFaction: 'all' };
 
 // ---------- Changes against the record as loaded ----------
@@ -297,17 +400,26 @@ function refreshDock() {
 }
 
 // ---------- Slots ----------
+const slotRows = () => [{ s: G.loadQuick(), n: 'quick' }, ...G.saves().map((s, i) => ({ s, n: i + 1 }))];
+function slotCard({ s, n }, onPick) {
+  const cls = `slotc${n === 'quick' ? ' quick' : ''}`;
+  if (!s) return h('button', { class: cls, disabled: true }, h('span', { class: 'blank' }), h('span', { class: 'no' }, slotName(n)), h('span', { class: 'when' }, n === 'quick' && G.hasQuick() ? '无法读取' : '空'));
+  const ruler = s.factions[s.player].ruler;
+  return h('button', { class: `${cls} ${n === slot ? 'on' : ''}`, onclick: () => onPick(n), title: `${G.factionName(s, s.player)} · ${s.year}年${s.month + 1}月` },
+    avatar(ruler), h('span', { class: 'no' }, slotName(n), s.edited ? h('i', {}, '已编辑') : null),
+    h('span', { class: 'when' }, `${s.year}年${s.month + 1}月 · ${G.name(ruler)}`));
+}
 function renderSlots() {
-  const rows = [{ s: G.loadQuick(), n: 'quick' }, ...G.saves().map((s, i) => ({ s, n: i + 1 }))];
-  $('slots').replaceChildren(...rows.map(({ s, n }) => {
-    const cls = `slotc${n === 'quick' ? ' quick' : ''}`;
-    if (!s) return h('button', { class: cls, disabled: true }, h('span', { class: 'blank' }), h('span', { class: 'no' }, slotName(n)), h('span', { class: 'when' }, n === 'quick' && G.hasQuick() ? '无法读取' : '空'));
-    const ruler = s.factions[s.player].ruler;
-    return h('button', { class: `${cls} ${n === slot ? 'on' : ''}`, onclick: () => switchTo(n), title: `${G.factionName(s, s.player)} · ${s.year}年${s.month + 1}月` },
-      avatar(ruler), h('span', { class: 'no' }, slotName(n), s.edited ? h('i', {}, '已编辑') : null),
-      h('span', { class: 'when' }, `${s.year}年${s.month + 1}月 · ${G.name(ruler)}`));
-  }));
+  const rows = slotRows();
+  $('slots').replaceChildren(...rows.map((r) => slotCard(r, switchTo)));
   return rows.map(({ s }) => s);
+}
+// The phone's 记录 button (the slot rail is folded away on short screens): the same cards in a dialog.
+async function pickSlot() {
+  const n = await modal('选择记录', (close) => [
+    h('div', { class: 'slots-rail', style: { gridTemplateColumns: 'repeat(4, minmax(0,1fr))', padding: 0 } }, slotRows().map((r) => slotCard(r, close))),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'))], { wide: true });
+  if (n != null) switchTo(n);
 }
 async function switchTo(n) {
   if (n === slot) return;
@@ -315,7 +427,7 @@ async function switchTo(n) {
   open(n);
 }
 function open(n) {
-  slot = n; quickOpened = n === 'quick' ? G.quickToken() : null;
+  slot = n; quickOpened = n === 'quick' ? G.quickToken() : null; paneDetail = false; listTop = 0;
   base = n === 'quick' ? G.loadQuick() : n ? G.load(n) : null; g = base ? clone(base) : null; pick = { officers: null, cities: null };
   if (g) pick.officers = g.factions[g.player].ruler;
   if (g) pick.cities = g.factions[g.player].city;
@@ -323,24 +435,63 @@ function open(n) {
 }
 
 // ---------- Controls ----------
+// The phone layout's query (the CSS above); a change of window size re-renders, so the number boxes follow it.
+const shortScreen = matchMedia('(max-height: 520px) and (min-aspect-ratio: 4/3)');
+shortScreen.addEventListener('change', () => render());
+// The number keypad: digits replace the value at the first press, ⌫ takes one back, 最大 is the top of the range.
+function keypad(label, lo, hi, v0) {
+  return modal(label, (close) => {
+    let s = String(v0), fresh = true;
+    const out = h('output', { class: 'kp-val' });
+    const ok = h('button', { class: 'btn primary', onclick: () => close(Math.min(hi, Math.max(lo, Number(s)))) }, '确定');
+    const paint = () => { out.textContent = s === '' ? '—' : s; ok.disabled = s === ''; };
+    const key = (d) => { if (fresh) { s = ''; fresh = false; } if (s.length < String(hi).length) s = (s + d).replace(/^0+(?=\d)/, ''); paint(); };
+    const btn = (text, fn, label2) => h('button', { class: 'btn', onclick: fn, 'aria-label': label2 ?? text }, text);
+    paint();
+    return [h('div', { class: 'kp-wrap' },
+      h('div', { class: 'kp-side' }, out, h('small', {}, `范围 ${lo}–${hi}`),
+        h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'), ok)),
+      h('div', { class: 'kp' }, [...'789456123'].map((d) => btn(d, () => key(d))),
+        btn('⌫', () => { fresh = false; s = s.slice(0, -1); paint(); }, '退格'), btn('0', () => key('0')),
+        btn('最大', () => { s = String(hi); fresh = true; paint(); })))];
+  });
+}
+// A button that acts at once when pressed and repeats while held (n: how many times so far); a key press acts once.
+function stepper(label, text, step) {
+  const b = h('button', { class: 'se-step', type: 'button', 'aria-label': label, tabindex: -1 }, text);
+  let t = null, n = 0;
+  const stop = () => { clearTimeout(t); t = null; };
+  const go = () => { if (b.disabled) return stop(); step(n++); t = setTimeout(go, n === 1 ? 420 : 70); };
+  b.addEventListener('pointerdown', (e) => { if (b.disabled || e.button > 0) return; e.preventDefault(); stop(); n = 0; b.setPointerCapture?.(e.pointerId); go(); });
+  for (const k of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(k, stop);
+  b.addEventListener('click', (e) => { if (e.detail === 0) step(0); });
+  return b;
+}
 // One stat row: label, a gold meter (white tick at the loaded value), the number and the change against it.
 function statRow(label, lo, hi, get, getBase, set, { disabled = false } = {}) {
   const range = h('input', { type: 'range', min: lo, max: hi, step: 1, 'aria-label': label });
   const num = h('input', { type: 'number', min: lo, max: hi, inputmode: 'numeric', 'aria-label': `${label}数值` });
   const was = h('i', { class: 'was' }), delta = h('span', { class: 'se-delta' });
-  const row = h('div', { class: `stat ${disabled ? 'locked' : ''}` }, h('label', {}, label), h('div', { class: 'se-meter' }, range, was), h('div', { class: 'val' }, num, delta));
+  // − and + (shown on phones): held, they repeat, and after a while move in bigger steps (金 runs to 9999).
+  const span = hi - lo, by = (n) => (n < 12 ? 1 : Math.max(1, Math.round(span / (n < 30 ? 200 : 50))));
+  const minus = stepper(`${label}减`, '−', (n) => commit(get() - by(n))), plus = stepper(`${label}加`, '+', (n) => commit(get() + by(n)));
+  const row = h('div', { class: `stat ${disabled ? 'locked' : ''}` }, h('label', {}, label), h('div', { class: 'se-meter' }, range, was), h('div', { class: 'val' }, minus, num, plus, delta));
   const pct = (v) => `${((v - lo) / (hi - lo)) * 100}%`;
   const paint = () => {
     const v = get(), b0 = getBase(), d = v - b0;
     range.value = v; num.value = v; range.style.setProperty('--p', pct(v));
     was.style.left = `calc(6px + (100% - 12px) * ${(b0 - lo) / (hi - lo)})`; was.hidden = !d;
-    row.classList.toggle('changed', !!d);
+    row.classList.toggle('changed', !!d); minus.disabled = disabled || v <= lo; plus.disabled = disabled || v >= hi;
     delta.className = `se-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}`; delta.textContent = d ? `${d > 0 ? '+' : ''}${d}` : '';
   };
   const commit = (v) => { if (set(v) != null) { paint(); onEdit(); } else paint(); };
   range.addEventListener('input', () => commit(range.value));
   num.addEventListener('change', () => commit(num.value));
   num.addEventListener('keydown', (e) => { if (e.key === 'Enter') num.blur(); });
+  // On a short screen the box opens the page's own keypad: the Android package is full screen, so the system
+  // keyboard would cover the box and everything around it (the WebView does not shrink for it).
+  num.readOnly = shortScreen.matches;
+  num.addEventListener('click', async () => { if (!num.readOnly || num.disabled) return; const v = await keypad(label, lo, hi, get()); if (v != null) commit(v); });
   if (disabled) { range.disabled = num.disabled = true; }
   paint();
   row.paint = paint;
@@ -363,7 +514,7 @@ function gearPicker(o) {
     for (const { k, btns } of lines) for (const b of btns) { b.classList.toggle('on', Number(b.dataset.v) === o[k]); b.classList.toggle('was', Number(b.dataset.v) === base.officers[o.id][k] && o[k] !== base.officers[o.id][k]); }
     const w = D.equipment[o.weapon], a = D.equipment[24 + o.armor];
     const cw = o.weapon !== base.officers[o.id].weapon, ca = o.armor !== base.officers[o.id].armor;
-    now.replaceChildren('现装备 ', h('b', { class: cw ? 'changed' : '' }, w?.name ?? '—'), ` 攻${w?.atk ?? 0}　`, h('b', { class: ca ? 'changed' : '' }, a?.name ?? '—'), ` 防${a?.dfn ?? 0}`);
+    now.replaceChildren('现装备 ', h('b', { class: cw ? 'changed' : '' }, w?.name ?? '—'), ` 攻${w?.atk ?? 0} 重${w?.weight ?? 0}　`, h('b', { class: ca ? 'changed' : '' }, a?.name ?? '—'), ` 防${a?.dfn ?? 0} 重${a?.weight ?? 0}`);
   };
   paint();
   const el = h('div', { class: 'se-gear' }, lines.map((l) => l.el), now);
@@ -383,7 +534,7 @@ function officerRows() {
 function officerRow(o) {
   const f = G.factionOf(g, o.id), at = placeOf(o);
   const cls = `row ${pick.officers === o.id ? 'on' : ''} ${o.status === G.DEAD ? 'dead' : o.status === G.UNAPPEARED ? 'yet' : ''}`;
-  return h('button', { class: cls, 'data-id': o.id, onclick: () => { pick.officers = o.id; renderOfficers(true); } },
+  return h('button', { class: cls, 'data-id': o.id, onclick: () => { pick.officers = o.id; paneDetail = true; renderOfficers(true); } },
     avatar(o.id),
     h('div', {}, h('div', { class: 'nm' }, h('span', {}, G.name(o.id)), G.isRuler(g, o.id) ? h('em', {}, '君主') : null),
       h('div', { class: 'sub' }, h('span', {}, '武', h('b', {}, o.war)), h('span', {}, '知', h('b', {}, o.int)), h('span', {}, '德', h('b', {}, o.virtue)), h('span', {}, '兵', h('b', {}, o.soldiers)))),
@@ -408,7 +559,7 @@ function officerDetail(id) {
           at != null ? h('span', { class: 'se-tag' }, G.cityName(at)) : null,
           G.isRuler(g, id) ? h('span', { class: 'se-tag gold' }, '君主') : null,
           capTag, h('span', { class: 'se-tag' }, `${d.year}年登场`))),
-      h('div', { class: 'se-acts' },
+      h('div', { class: 'se-acts' }, backBtn(),
         h('button', { class: 'btn', disabled: dead, title: '武力、知力、人德、体力（连同上限）99，忠诚 100，兵 1000', onclick: () => {
           for (const [k, v] of [['war', 99], ['int', 99], ['virtue', 99], ['hp', 99], ['loyalty', 100], ['soldiers', 1000]]) setOfficer(g, id, k, v);
           repaint(); } }, '能力拉满'),
@@ -416,8 +567,10 @@ function officerDetail(id) {
     h('div', { class: 'sec' }, h('h4', {}, '能力'), h('div', { class: 'stats-ed' }, rows)),
     h('div', { class: 'sec' }, h('h4', {}, '装备'), gear));
 }
+// The list's scroll is remembered (listTop), not read back: on a narrow phone the list is hidden while the detail is up.
+const rowsBox = (attrs, kids) => { const el = h('div', { class: 'rows', ...attrs }, kids); el.addEventListener('scroll', () => { listTop = el.scrollTop; }, { passive: true }); return el; };
 function renderOfficers(keepScroll = false) {
-  const prev = document.querySelector('.rows')?.scrollTop ?? 0;
+  if (!keepScroll) listTop = 0;
   const all = g.officers, counts = Object.fromEntries(STATUS_ORDER.map((s) => [s, all.filter((o) => o.status === s).length]));
   const qi = h('input', { type: 'search', placeholder: '搜索武将名或编号', value: filt.q, 'aria-label': '搜索武将' });
   qi.addEventListener('input', () => { filt.q = qi.value; fillRows(); });
@@ -425,25 +578,25 @@ function renderOfficers(keepScroll = false) {
     g.factions.filter((x) => x.ruler != null).map((x) => h('option', { value: x.id }, G.factionName(g, x.id))), h('option', { value: G.NONE }, '无主'));
   fs.value = filt.faction; fs.onchange = () => { filt.faction = fs.value === 'all' ? 'all' : Number(fs.value); fillRows(); };
   const chip = (v, label, n) => h('button', { class: `se-chip ${filt.status === v ? 'on' : ''}`, onclick: () => { filt.status = v; renderOfficers(); } }, label, n != null ? h('small', {}, n) : null);
-  const rowsEl = h('div', { class: 'rows', role: 'listbox', 'aria-label': '武将' });
+  const rowsEl = rowsBox({ role: 'listbox', 'aria-label': '武将' });
   function fillRows() {
     const list = officerRows();
     rowsEl.replaceChildren(...(list.length ? list.map(officerRow) : [h('div', { class: 'se-none' }, '没有符合条件的武将')]));
   }
   fillRows();
   const id = pick.officers;
-  $('body').replaceChildren(h('div', { class: 'md' },
+  $('body').replaceChildren(h('div', { class: `md ${paneDetail ? 'pane-detail' : ''}` },
     h('div', { class: 'panel ed-box list' },
       h('div', { class: 'list-bar' }, qi, fs, h('div', { class: 'se-chips' }, chip('all', '全部', all.length), STATUS_ORDER.map((s) => chip(s, STATUS[s], counts[s])))),
       rowsEl),
     id == null ? h('div', { class: 'panel ed-box detail' }, h('div', { class: 'se-none' }, '从左侧选一位武将')) : officerDetail(id)));
-  if (keepScroll) rowsEl.scrollTop = prev;
+  if (keepScroll) rowsEl.scrollTop = listTop;
   if (document.activeElement === document.body && filt.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 
 // ---------- Cities ----------
 function cityRow(c) {
-  return h('button', { class: `row ${pick.cities === c.id ? 'on' : ''}`, onclick: () => { pick.cities = c.id; renderCities(true); } },
+  return h('button', { class: `row ${pick.cities === c.id ? 'on' : ''}`, onclick: () => { pick.cities = c.id; paneDetail = true; renderCities(true); } },
     c.officers.length ? avatar(c.officers[0]) : h('span', { class: 'blank' }),
     h('div', {}, h('div', { class: 'nm' }, h('span', {}, G.cityName(c.id))),
       h('div', { class: 'sub' }, h('span', {}, '金', h('b', {}, c.gold)), h('span', {}, '米', h('b', {}, c.rice)), h('span', {}, '将', h('b', {}, c.officers.length)))),
@@ -459,7 +612,7 @@ function cityDetail(cid) {
       h('div', {}, h('h2', {}, G.cityName(cid), h('small', {}, `No.${cid}`)),
         h('div', { class: 'tags' }, h('span', { class: 'se-tag' }, dot(c.faction), G.factionName(g, c.faction)), has.map((n) => h('span', { class: 'se-tag' }, n))),
         c.officers.length ? h('div', { class: 'gov' }, c.officers.map((id) => h('span', { title: G.name(id) }, avatar(id)))) : null),
-      h('div', { class: 'se-acts' },
+      h('div', { class: 'se-acts' }, backBtn(),
         h('button', { class: 'btn', title: '金、米 9999', onclick: () => { setCity(g, cid, 'gold', 9999); setCity(g, cid, 'rice', 9999); repaint(); } }, '金米充足'),
         h('button', { class: 'btn', title: '全部项目拉到上限', onclick: () => { for (const [k, , , hi] of CITY_FIELDS) setCity(g, cid, k, hi); repaint(); } }, '全部拉满'),
         h('button', { class: 'btn', onclick: () => { for (const [k] of CITY_FIELDS) setCity(g, cid, k, base.cities[cid][k]); repaint(); } }, '还原此城'))),
@@ -467,15 +620,15 @@ function cityDetail(cid) {
     h('div', { class: 'sec' }, h('h4', {}, '内政'), h('div', { class: 'stats-ed' }, rows.slice(4))));
 }
 function renderCities(keepScroll = false) {
-  const prev = document.querySelector('.rows')?.scrollTop ?? 0;
+  if (!keepScroll) listTop = 0;
   const live = g.factions.filter((x) => x.ruler != null);
   const chip = (v, label) => h('button', { class: `se-chip ${filt.cityFaction === v ? 'on' : ''}`, onclick: () => { filt.cityFaction = v; renderCities(); } }, v === 'all' ? null : dot(v), label);
   const list = g.cities.filter((c) => filt.cityFaction === 'all' || c.faction === filt.cityFaction);
-  const rowsEl = h('div', { class: 'rows' }, list.length ? list.map(cityRow) : h('div', { class: 'se-none' }, '该势力没有城市'));
-  $('body').replaceChildren(h('div', { class: 'md' },
+  const rowsEl = rowsBox({}, list.length ? list.map(cityRow) : h('div', { class: 'se-none' }, '该势力没有城市'));
+  $('body').replaceChildren(h('div', { class: `md ${paneDetail ? 'pane-detail' : ''}` },
     h('div', { class: 'panel ed-box list' }, h('div', { class: 'list-bar' }, h('div', { class: 'se-chips' }, chip('all', '全部'), live.map((x) => chip(x.id, G.factionName(g, x.id))), chip(G.NONE, '无主'))), rowsEl),
     pick.cities == null ? h('div', { class: 'panel ed-box detail' }, h('div', { class: 'se-none' }, '从左侧选一座城')) : cityDetail(pick.cities)));
-  if (keepScroll) rowsEl.scrollTop = prev;
+  if (keepScroll) rowsEl.scrollTop = listTop;
 }
 
 // ---------- Alliances ----------
@@ -526,10 +679,10 @@ function renderBugs() {
       h('li', {}, h('b', {}, '触发'), '让某个 AI 势力的所有敌对邻国都与它结盟（「同盟」页可以直接改），并给它的城市足够的金米——出兵要花真金白银。'),
       h('li', {}, h('b', {}, '流落'), `打输且不肯投降的阿会喃会去王莆之主在${PHANTOM_ROADS.map(G.cityName).join('、')}中的城；那里没有它的城就占一座空城，再不行就在这四城附近成为在野武将，可以去搜索招募。`),
       h('li', {}, h('b', {}, '数值'), `复制体的能力取自出兵那一刻阿会喃本人的数值（现为 武${a0.war} 知${a0.int} 德${a0.virtue}）。在「武将」页把阿会喃调高，之后出现的每个复制体都一样强。`,
-        h('button', { class: 'btn', onclick: () => { tab = 'officers'; pick.officers = 0; filt.status = 'all'; filt.q = ''; render(); } }, '去调整阿会喃'))),
+        h('button', { class: 'btn', onclick: () => { tab = 'officers'; pick.officers = 0; filt.status = 'all'; filt.q = ''; paneDetail = true; render(); } }, '去调整阿会喃'))),
     h('div', { class: 'sec' }, h('h4', {}, '王莆之主'), h('p', { class: 'hint' }, '守王莆的一方；来犯者打赢后王莆归它所有。原版开局是董卓。'), owners),
     h('div', { class: 'sec' }, h('h4', {}, `现有复制体 ${copies.length}`),
-      copies.length ? h('div', { class: 'copies' }, copies.map((id) => h('button', { class: 'copy', title: `No.${id}`, onclick: () => { tab = 'officers'; pick.officers = id; filt.status = 'all'; filt.q = ''; render(); } },
+      copies.length ? h('div', { class: 'copies' }, copies.map((id) => h('button', { class: 'copy', title: `No.${id}`, onclick: () => { tab = 'officers'; pick.officers = id; filt.status = 'all'; filt.q = ''; paneDetail = true; render(); } },
         avatar(id), h('span', {}, where(id)), h('small', {}, `武${g.officers[id].war}`))))
         : h('p', { class: 'hint' }, on ? '还没有阿会喃流落出来。' : '开启后，流落出来的阿会喃会列在这里。'))));
 }
@@ -537,8 +690,9 @@ function renderBugs() {
 // ---------- Frame ----------
 function renderTabs() {
   const n = changes(), by = (k) => n.filter((c) => c.kind === k).length;
-  const tabBtn = (k, label) => h('button', { class: `btn ${tab === k ? 'on' : ''}`, onclick: () => { tab = k; render(); } }, label, by(k) ? h('small', {}, `改${by(k)}`) : null);
-  $('tabs').replaceChildren(tabBtn('officers', '武将'), tabBtn('cities', '城市'), tabBtn('alliance', '同盟'), tabBtn('bugs', '原版漏洞'), h('span', { class: 'sp' }),
+  const tabBtn = (k, label) => h('button', { class: `btn ${tab === k ? 'on' : ''}`, onclick: () => { tab = k; paneDetail = false; render(); } }, label, by(k) ? h('small', {}, `改${by(k)}`) : null);
+  $('tabs').replaceChildren(h('button', { class: 'btn slotpick', 'aria-label': '选择记录', onclick: pickSlot }, slotName(slot), h('small', {}, `${g.year}年${g.month + 1}月`)),
+    tabBtn('officers', '武将'), tabBtn('cities', '城市'), tabBtn('alliance', '同盟'), tabBtn('bugs', '原版漏洞'), h('span', { class: 'sp' }),
     g ? h('span', { class: 'meta' }, '玩家 ', h('b', {}, G.factionName(g, g.player)), `　${g.year}年${g.month + 1}月　LEVEL ${g.level + 1}`) : null);
 }
 function onEdit() {
@@ -553,7 +707,7 @@ function render() {
   if (!g) {
     $('tabs').replaceChildren();
     $('body').replaceChildren(h('div', { class: 'panel ed-box empty-state' }, h('h3', {}, '尚无记录'),
-      h('p', {}, '先在游戏里用「城 → 记录」存一次，或用下方「导入」读入导出过的记录文件。')));
+      h('p', {}, '先在游戏里用「城 → 记录」存一次，或用「导入」读入导出过的记录文件。')));
     return;
   }
   renderTabs();
@@ -599,19 +753,45 @@ $('revert').onclick = async () => {
   const n = changes().length; if (!n) return;
   if (await ask('放弃改动', h('p', {}, `放弃尚未写回的 ${n} 项改动，恢复为记录中的数值？`), '放弃')) { const keep = { ...pick }; open(slot); pick = keep; render(); }
 };
-$('export').onclick = () => {
+// The Android package (apk/.../MainActivity.java) exposes NativeFiles: its WebView drops <a download> and blob: links
+// without a word, and its file chooser offers only files typed as JSON (one sent through a chat app reads as
+// octet-stream). save() opens the system's 保存到… sheet and open() its file picker; each answers once through
+// window.__nativeFile({ ok, name, where, text, error }), and a cancelled sheet answers { ok: false }.
+const nativeFiles = window.NativeFiles;
+let fileWait = null;
+window.__nativeFile = (r) => { const f = fileWait; fileWait = null; f?.(r || {}); };
+const viaShell = (call) => new Promise((resolve) => { fileWait?.({}); fileWait = resolve; try { call(); } catch { window.__nativeFile({ error: 'unavailable' }); } });
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+$('export').onclick = async () => {
   if (!g) return;
-  const url = URL.createObjectURL(new Blob([JSON.stringify(g, null, 1)], { type: 'application/json' }));
-  h('a', { href: url, download: `threekindoms-${slotName(slot)}-${g.year}年${g.month + 1}月.json` }).click();
+  const name = `threekindoms-${slotName(slot)}-${g.year}年${g.month + 1}月.json`, text = JSON.stringify(g, null, 1);
+  if (nativeFiles) {
+    const r = await viaShell(() => nativeFiles.save(name, text));
+    if (r.ok) toast(`<strong>已导出</strong>　${esc(r.name || name)}${r.where ? `<br>保存在「${esc(r.where)}」` : ''}`, 4200);
+    else if (r.error) toast('<em>导出失败</em>：没能写入所选的位置', 3500);
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  h('a', { href: url, download: name }).click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`<strong>已导出</strong>　${esc(name)}`, 3200);
 };
-$('import').onclick = () => $('file').click();
+$('import').onclick = async () => {
+  if (!nativeFiles) return $('file').click();
+  const r = await viaShell(() => nativeFiles.open());
+  if (r.ok && r.text != null) importRecord(r.name || '记录文件', r.text);
+  else if (r.error === 'too-big') toast('<em>无法导入</em>：文件太大，不是记录文件', 3000);
+  else if (r.error) toast('<em>无法导入</em>：读不出所选的文件', 3000);
+};
 $('file').onchange = async () => {
   const file = $('file').files[0]; $('file').value = ''; if (!file) return;
-  let rec; try { rec = JSON.parse(await file.text()); } catch { toast('<em>无法导入</em>：文件不是有效的 JSON', 3000); return; }
+  importRecord(file.name, await file.text());
+};
+async function importRecord(fileName, text) {
+  let rec; try { rec = JSON.parse(text); } catch { toast('<em>无法导入</em>：文件不是有效的 JSON', 3000); return; }
   const err = checkRecord(rec); if (err) { toast(`<em>无法导入</em>：${err}`, 3000); return; }
   const list = G.saves();
-  const n = await modal('导入到哪个记录槽', (close) => [h('p', {}, `${file.name} · ${rec.year}年${rec.month + 1}月 · ${G.factionName(rec, rec.player)}。已有记录的槽会被覆盖。`),
+  const n = await modal('导入到哪个记录槽', (close) => [h('p', {}, `${fileName} · ${rec.year}年${rec.month + 1}月 · ${G.factionName(rec, rec.player)}。已有记录的槽会被覆盖。`),
     h('div', { class: 'slots-rail', style: { gridTemplateColumns: 'repeat(4, minmax(0,1fr))', padding: 0 } }, list.map((s, i) => h('button', { class: 'slotc', onclick: () => close(i + 1) },
       s ? avatar(s.factions[s.player].ruler) : h('span', { class: 'blank' }), h('span', { class: 'no' }, `记录${SLOT_NAMES[i]}`), h('span', { class: 'when' }, s ? `${s.year}年${s.month + 1}月` : '空')))),
     h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'))], { wide: true });
@@ -619,14 +799,20 @@ $('file').onchange = async () => {
   if (n === slot && changes().length && !(await ask('覆盖当前记录', h('p', {}, '这个槽正在编辑，未写回的改动会丢失。'), '覆盖'))) return;
   if (!G.save(rec, n)) { toast('<em>导入失败</em>：浏览器存储不可用或已满', 3000); return; }
   open(n); toast(`<strong>已导入到记录${SLOT_NAMES[n - 1]}</strong>`, 2400);
-};
+}
 // 返回游戏 asks in the page about unwritten changes: the desktop shell blocks a beforeunload without a dialog.
 let leaving = false;
-$('back').onclick = async () => {
+$('back').onclick = $('back-rail').onclick = async () => {
   const n = changes().length;
   if (n && !(await ask('返回游戏', h('p', {}, `尚未写回的 ${n} 项改动会丢失。`), '放弃并返回'))) return;
   leaving = true; location.replace(`index.html${location.search}`); // no history entry: a mouse's back button has nowhere to go
 };
+// Esc (and so the Android back key, which the package sends as Esc) steps back from a phone's detail pane to its list;
+// with a dialog open the dialog takes it.
+const onePane = matchMedia('(max-height: 520px) and (min-aspect-ratio: 4/3) and (max-width: 779.98px)');
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && paneDetail && onePane.matches && !document.querySelector('.shade') && (tab === 'officers' || tab === 'cities')) { e.preventDefault(); showList(); }
+}, true);
 addEventListener('beforeunload', (e) => { if (!leaving && changes().length) e.preventDefault(); });
 window.__editor = { get g() { return g; }, get slot() { return slot; }, changes };
 

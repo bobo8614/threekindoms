@@ -1,6 +1,6 @@
 """Slice a 单挑 action sheet (tools/gen_duel_frames_codex.sh) into the strip src/duelview.js plays.
 
-  python3 hd2d-mvp/tools/slice_duel_frames.py <key> [--weapon blade|spear|sword] [--height 112]
+  python3 hd2d-mvp/tools/slice_duel_frames.py <key> [--weapon blade|spear|sword|fan] [--height 112]
 
 In:  assets/ai/sprites/source/duel/<key>.png — 4×4 poses on magenta, order = FRAMES below; and, when
      present, <key>-b.png — the second sheet (FRAMES_B), whose first cell repeats idle_a so it is
@@ -23,8 +23,9 @@ FRAMES_B = ['idle_ref', 'walk_1', 'walk_2', 'walk_3', 'walk_4', 'swing_mid', 'sw
 # Frame flags: 'go' — the rider lunges toward the contact point during this frame; 'hit' — the lunge
 # arrives at the end of this frame and contact fires: hit-stop, sparks, sound, the foe's hurt pose,
 # damage number and HP bar together.
-WIND = {'blade': 160, 'spear': 140, 'sword': 120}
-LUNGE = {'blade': 100, 'spear': 80, 'sword': 70}
+# 诸葛亮's feather fan (duel_frame_prompts.mjs weaponClass) is timed as a short one-handed weapon.
+WIND = {'blade': 160, 'spear': 140, 'sword': 120, 'fan': 120}
+LUNGE = {'blade': 100, 'spear': 80, 'sword': 70, 'fan': 70}
 def clips(w, full):
     common = {
         'stagger':   [['hurt', 260], ['dodge', 200]],
@@ -70,7 +71,8 @@ if not a.weapon:
     if a.key in ('attacker', 'defender'): a.weapon = 'blade'
     else:
         D = json.load(open(os.path.join(MVP, 'data/game-data.json')))
-        a.weapon = ['sword', 'blade', 'spear'][D['officers'][int(a.key)]['weapon'] // 8]
+        o = D['officers'][int(a.key)]
+        a.weapon = 'fan' if o['name'] == '诸葛亮' else ['sword', 'blade', 'spear'][o['weapon'] // 8]
 
 def bg(p): r, g, b, _ = p; return r > 140 and b > 140 and g < 130 and abs(r - b) < 100
 def load(path):

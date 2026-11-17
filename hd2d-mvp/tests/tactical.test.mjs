@@ -391,6 +391,63 @@ test('the AI keeps the rule: no 爆炎 while its own tactic runs, the same field
   assert.equal(held.events?.length ?? 0, 0);
 });
 
+// 爆炎 flies along the general's facing (Angurvadel@bilibili, D87; the original's B211→B25B, replayed by
+// tools/replay_skirmish_blast_facing_probes.py): two cells from where he stands, up, down, left or right; a march sets the
+// facing and keeps it, a blow or a shot turns him for the stroke alone (A61D / A75B write the byte back). The attacker
+// starts facing right, the defender left (B548). A landing off the board is no blast (B440): the points go, nothing bursts.
+function faceField(side, at = [8, 5]) {
+  const g = G.newGame(4, 1, 1), ids = g.officers.filter((o) => o.status === 2).map((o) => o.id);
+  const t = new Tactical(g, ids[0], ids[1], 2, () => 0);
+  t.map = Array.from({ length: GH }, () => Array(GW).fill(0));
+  t.side.a.tp = t.side.d.tp = 24;
+  const foe = side === 'a' ? 'd' : 'a';
+  t.units = [{ side, kind: 'gen', idx: 0, x: at[0], y: at[1], hp: 80, id: t.side[side].id }, { side: foe, kind: 'gen', idx: 0, x: 0, y: 0, hp: 80, id: t.side[foe].id }];
+  return { t, gen: t.units[0] };
+}
+for (const side of ['a', 'd']) {
+  test(`爆炎 of side ${side} lands where the general faces, two cells off`, () => {
+    for (const [face, at] of [[[0, -1], [8, 3]], [[0, 1], [8, 7]], [[-1, 0], [6, 5]], [[1, 0], [10, 5]]]) {
+      const { t, gen } = faceField(side); gen.face = face;
+      const ev = t.tactic(side, 'blast');
+      assert.equal(ev.ok, true); assert.deepEqual(ev.center, at, String(face));
+    }
+  });
+  test(`side ${side} starts facing ${side === 'a' ? 'right' : 'left'}, as the original deploys`, () => {
+    const g = G.newGame(4, 1, 1), ids = g.officers.filter((o) => o.status === 2).map((o) => o.id);
+    const t = new Tactical(g, ids[0], ids[1], 2, () => 0);
+    for (const u of t.units.filter((x) => x.side === side)) assert.deepEqual(u.face, side === 'a' ? [1, 0] : [-1, 0]);
+  });
+}
+test('a march turns the general and he keeps facing that way; a blow turns him only for the stroke', () => {
+  const { t, gen } = faceField('a'); t.units[1].x = 8; t.units[1].y = 0; // the foe general straight up
+  t.side.a.cmd.gen = 'advance';
+  const ev = t.act(gen);
+  assert.equal(ev.type, 'move'); assert.deepEqual(ev.to, [8, 4]); assert.deepEqual(gen.face, [0, -1]);
+  assert.deepEqual(t.tactic('a', 'blast').center, [8, 2], 'thrown up the column he marched');
+  const foe = { side: 'd', kind: 'inf', idx: 1, x: 9, y: 4, hp: 100 }; t.units.push(foe);
+  assert.equal(t.act(gen).type, 'attack'); assert.deepEqual(gen.face, [0, -1], 'striking the squad on his right leaves him facing up');
+});
+test('爆炎 landing off the board bursts nowhere: the 12 points go, no squad is hit', () => {
+  const { t, gen } = faceField('a', [8, 1]); gen.face = [0, -1];
+  t.units.push({ side: 'd', kind: 'inf', idx: 1, x: 8, y: 0, hp: 100 });
+  assert.equal(t.blastAt('a'), null, 'no landing cell');
+  const ev = t.tactic('a', 'blast');
+  assert.equal(ev.ok, true); assert.equal(ev.center, null); assert.deepEqual(ev.hits, []); assert.equal(t.side.a.tp, 12);
+  gen.y = 2; assert.deepEqual(t.blastAt('a'), [8, 0], 'the top row is still on the board');
+});
+test('the AI counts the 3×3 one to three cells before its general, by his facing, as the original (D4AA)', () => {
+  // the original's tables for up and down are each other's: facing up it counts the squads below him (and throws up)
+  for (const [face, cells, want] of [
+    [[1, 0], [[9, 5], [10, 4], [11, 6]], true], [[1, 0], [[12, 5], [10, 7]], false], // right: x+1..3, y−1..1; x+4 or y+2 is out
+    [[-1, 0], [[7, 5], [5, 4]], true], [[0, -1], [[8, 6], [7, 8]], true], [[0, -1], [[8, 4], [7, 2]], false], [[0, 1], [[8, 4], [9, 2]], true],
+  ]) {
+    const { t, gen } = faceField('d'); gen.face = face; t.units[1].x = 15; t.units[1].y = 9;
+    cells.forEach(([x, y], i) => t.units.push({ side: 'a', kind: 'inf', idx: i + 1, x, y, hp: 100 }));
+    t.aiTactic('d');
+    assert.equal(t.events?.[0]?.id === 'blast', want, `${face} ${JSON.stringify(cells)}`);
+  }
+});
+
 // The tactic badges (暴力倾向@devblog, 2026-11-13) read effects(): what works on a side, whoever cast it. 咒缚's counter is kept on
 // the caster (act() reads it there), so the bound general's side is the other one; 强弩 and 火矢 are the side's own archers', 士气向上
 // every unit's; a counter that has run out is gone.

@@ -24,7 +24,9 @@ export const FRAMES_B = ['idle_ref', 'walk_1', 'walk_2', 'walk_3', 'walk_4', 'sw
 // the duel (thrown, struggling, kneeling, slumped), plus the winner's triumph. Cells 10–14 are parts
 // apart (man / horse / weapon alone) so a fall can part them on screen.
 export const FRAMES_C = ['idle_ref', 'allin_charge_1', 'allin_charge_2', 'allin_leap', 'allin_smear', 'allin_impact', 'allin_land', 'hurt_crush', 'slump', 'man_fly', 'man_hit', 'man_struggle', 'horse_rear', 'weapon', 'man_kneel', 'triumph'];
-export const weaponClass =(o) => ['sword', 'blade', 'spear'][Math.floor(o.weapon / 8)];
+// 诸葛亮 fights with his feather fan alone (2026-11-16, user's call): sword-and-fan sheets kept growing a third hand
+// on the armrest, and the fan is the weapon he is known by. His equipment in the game data is unchanged.
+export const weaponClass = (o) => o.name === '诸葛亮' ? 'fan' : ['sword', 'blade', 'spear'][Math.floor(o.weapon / 8)];
 
 const STRIKE = {
   blade: {
@@ -36,6 +38,11 @@ const STRIKE = {
     windup: 'WIND-UP: spear drawn far back, rear hand at the hip, spearhead pulled back level with the saddle, torso coiled; horse gathers its hind legs',
     strike: 'STRIKE: a full horizontal THRUST — both arms and torso driven forward, the spear perfectly level and extended far in front of the horse\'s head at an enemy rider\'s chest height; horse lunges',
     follow: 'FOLLOW-THROUGH: spear pulled back halfway, point still forward, rider re-settling in the saddle',
+  },
+  fan: {
+    windup: 'WIND-UP: the white feather fan drawn far back over his shoulder in one hand, elbow up, torso leaning back, the other hand gripping the carriage rail; he half-rises from the seat',
+    strike: 'STRIKE: a forward FAN SWEEP that lands at an enemy rider\'s CHEST height — fan arm fully extended straight forward past the front of the carriage, the fan face flung edge-first at the height of his own shoulders, torso leaning forward, the other hand on the rail',
+    follow: 'FOLLOW-THROUGH: the fan swept low and past after the blow, arm crossing the body, he rises back up in the seat',
   },
   sword: {
     windup: 'WIND-UP: sword raised high above the head in one hand, elbow up, torso leaning back, reins in the other hand; horse gathers',
@@ -58,6 +65,12 @@ const SWING = {
     jab: 'FEINT JAB: a short probing jab — spear level, arms only half extended, point a little past the horse\'s nose, body upright',
     allin: 'ALL-IN THRUST: standing in the stirrups, whole body behind the spear, arms locked at full length, spear far out in front at an enemy rider\'s chest height; horse leaping forward',
   },
+  fan: {
+    mid: 'SWEEP MID: the fan coming down past his head, arm bent, fan diagonal, leaning forward in the seat',
+    late: 'SWEEP LATE: fan arm nearly extended forward at shoulder height, the fan coming level',
+    jab: 'FEINT JAB: a quick short flick of the fan forward at shoulder height, arm half extended, body upright',
+    allin: 'ALL-IN SWEEP: standing, body thrown far forward, fan arm fully stretched in a long lunge',
+  },
   sword: {
     mid: 'CUT MID: sword coming down past his head, arm bent, blade diagonal, torso leaning forward',
     late: 'CUT LATE: sword arm nearly extended forward at shoulder height over the horse\'s head, blade coming level',
@@ -79,6 +92,12 @@ const ALLIN = {
     leap: 'spear drawn back to full length over the shoulder, point aimed forward and down',
     smear: 'the spear only HALF extended, driving forward level at his shoulder height, with a long, bright, thick pale-gold straight SMEAR streak behind the spearhead running back past his shoulder (drawn as pixel art, part of the figure)',
     impact: 'the spear locked at FULL extension, twice as far out as in the smear cell, level at his own shoulder height (an enemy rider\'s chest), whole body behind it',
+  },
+  fan: {
+    carry: 'the fan held low and back at his side',
+    leap: 'the fan raised high over his head, elbow up, torso arched back',
+    smear: 'the fan in mid-sweep coming down in front of him, with a painted pale-gold curved SMEAR arc of wind trailing the fan (drawn as pixel art, part of the figure)',
+    impact: 'the fan at the END of the same downward-forward sweep shown in the smear cell: arm fully stretched forward past the front of the carriage, the fan at an enemy rider\'s chest height, torso flung far forward',
   },
   sword: {
     carry: 'sword held low and back along the horse\'s flank',
@@ -109,43 +128,44 @@ const rowsC = (a) => [
 // Cells for a rider who sits a carriage instead of a horse, in the same order as the horse rows.
 const CART = {
   a: (s) => [
-    'IDLE A: carriage standing still, all four wheels on the ground, he sits upright with the sword ready in one hand and the feather fan in the other',
+    'IDLE A: carriage standing still, all four wheels on the ground, he sits upright holding the feather fan up in one hand, the other hand resting empty on his knee (as in reference image 1)',
     'IDLE B: same as IDLE A but he lifts the fan slightly and his robe and the canopy tassels stir (breath)',
     'ROLL 1: carriage rolling forward fast, wheel spokes blurred at one angle, robe and canopy streaming back',
     'ROLL 2: rolling, spokes at a quarter turn, the carriage body tipped very slightly forward',
     'ROLL 3: rolling, spokes at a half turn, robe streaming back',
     'ROLL 4: rolling, spokes at three quarters of a turn, front wheels just bouncing off the ground',
-    s.windup.replace(/, reins in the other hand; horse gathers.*$/, ', fan in the other hand; he half-rises from the seat'),
+    s.windup,
     s.strike.replace(/past the horse's head/, 'past the front of the carriage').replace(/below the horse's neck/, 'below his own waist'),
     s.follow,
-    'HURT: he is jolted back against the seat as if struck in the chest, sword arm flung out, head thrown back; the carriage rocks back onto its rear wheels',
-    'TAUNT: he points the feather fan straight at the enemy and calls out, sword lowered, carriage still',
-    'FALL: he slumps sideways out of the seat, sword dropping from his hand; the carriage tips up on two wheels',
+    'HURT: he is jolted back against the seat as if struck in the chest, fan arm flung out, head thrown back; the carriage rocks back onto its rear wheels',
+    'TAUNT: he points the feather fan straight at the enemy and calls out, the other hand on his knee, carriage still',
+    'FALL: he slumps sideways out of the seat, the fan dropping from his hand; the carriage tips up on two wheels',
     'DODGE: he leans far back and away in the seat, fan raised as a guard, while the carriage rolls back one length',
-    'DOWNED: the man alone, NO carriage — lying on his back on the (invisible) ground, fan and sword fallen beside him; same robe',
+    'DOWNED: the man alone, NO carriage — lying on his back on the (invisible) ground, the feather fan fallen beside him; same robe',
     'EMPTY CARRIAGE 1: the same carriage alone with an empty seat, NO man and NO weapon, rolling away fast, spokes at one angle',
     'EMPTY CARRIAGE 2: the same empty carriage rolling, spokes at a half turn',
   ],
   b: (w) => [
-    'IDLE A (reference): carriage standing still, he sits upright with sword and fan — identical to the first cell of the previous sheet',
+    'IDLE A (reference): carriage standing still, he sits upright with the fan — identical to the first cell of the previous sheet',
     'SLOW ROLL 1: carriage rolling slowly forward, spokes upright (+ shape)',
     'SLOW ROLL 2: spokes turned an eighth of a turn (x shape)',
     'SLOW ROLL 3: spokes upright again but the wheel hub decoration a quarter turn on',
     'SLOW ROLL 4: spokes x shape, the canopy tassels swinging the other way',
     w.mid.replace(/torso leaning forward/, 'leaning forward in the seat'),
     w.late.replace(/over the horse's head/, 'over the front of the carriage'),
-    'RECOVER: sword brought back up to the ready position after a blow, he settles back into the seat',
-    'FEINT READY: sword pulled back a little, shoulders slightly turned, carriage still',
+    'RECOVER: fan brought back up to the ready position after a blow, he settles back into the seat',
+    'FEINT READY: fan pulled back a little, shoulders slightly turned, carriage still',
     w.jab,
-    'FEINT BACK: sword snatched straight back to the ready guard, he sits upright again',
-    'ALL-IN WIND-UP: he stands up on the carriage floor, body arched back, sword cocked high behind his head; the carriage rocks back onto its rear wheels',
-    'ALL-IN CUT: standing, body thrown far over the carriage front, sword arm fully stretched in a long lunge; the carriage lurching forward on its front wheels',
-    'OFF BALANCE: after a missed all-out blow — he lurches forward over the carriage front, sword swung past and down, almost falling out; one front wheel caught and the carriage tipping',
+    'FEINT BACK: fan snatched straight back to the ready guard, he sits upright again',
+    'ALL-IN WIND-UP: he stands up on the carriage floor, body arched back, the fan cocked high behind his head, the other hand gripping the carriage rail; the carriage rocks back onto its rear wheels',
+    'ALL-IN SWEEP: standing, body thrown far over the carriage front, fan arm fully stretched forward in a long lunge, the fan sweeping through at chest height; the carriage lurching forward on its front wheels',
+    'OFF BALANCE: after a missed all-out blow — he lurches forward over the carriage front, fan swung past and down, almost falling out; one front wheel caught and the carriage tipping',
     'HIT LIGHT: a small flinch — head and shoulders turned away, fan raised, carriage still',
     'RECOIL STEP: he recovers his seat after a blow, the carriage rolling back a short way',
   ],
 };
 const CARRIAGE = new Set(['诸葛亮']);
+const FAN_RULE = ' Weapon (critical): he carries NO sword and NO other weapon in any cell — his ONLY weapon is the white feather fan, held by its handle in his LEFT hand in EVERY cell, wind-up and strike included, so it never changes hands: seen from the front it is on the viewer\'s RIGHT, seen from the back on the viewer\'s LEFT. His right hand is always EMPTY: resting on his knee, gripping the carriage rail, or hidden in his sleeve. Exactly two hands in every cell; never a third hand on the armrest or knee.';
 
 // Turn sheet (--turn): the same rider seen square-on from the FRONT (riding toward the viewer, down the
 // 白兵 board) and from the BACK (riding away, up it), for moves and blows along a column. Same 8 poses per
@@ -153,6 +173,7 @@ const CARRIAGE = new Set(['诸葛亮']);
 const TURN_STRIKE = {
   blade: ['WIND-UP: the long polearm hauled up and back over his shoulder, blade high behind his head, torso twisted', 'STRIKE: a huge sweep straight ahead along his facing — the blade swung down and out in front of the horse at chest height of an enemy rider'],
   spear: ['WIND-UP: spear drawn back, rear hand at the hip, torso coiled', 'STRIKE: a full THRUST straight ahead along his facing, spear level and driven far out past the horse\'s head'],
+  fan: ['WIND-UP: the feather fan drawn high above his head, elbow up, torso leaning back', 'STRIKE: a forward FAN SWEEP straight ahead along his facing, fan arm extended past the carriage front at shoulder height'],
   sword: ['WIND-UP: sword raised high above his head, elbow up, torso leaning back', 'STRIKE: a forward CUT straight ahead along his facing, sword arm extended past the horse\'s head at shoulder height'],
 };
 function turnPrompt(key) {
@@ -166,15 +187,15 @@ function turnPrompt(key) {
   const [wind, strike] = TURN_STRIKE[cls];
   const mount = cart ? 'his four-wheeled war carriage' : 'his horse';
   const poses = cart ? [
-    'IDLE: carriage standing still, he sits upright with sword and feather fan', 'ROLL 1: carriage rolling, wheels at one angle, robe streaming', 'ROLL 2: rolling, wheels a quarter turn on',
+    'IDLE: carriage standing still, he sits upright holding the feather fan up in one hand, the other hand resting empty on his knee', 'ROLL 1: carriage rolling, wheels at one angle, robe streaming', 'ROLL 2: rolling, wheels a quarter turn on',
     'ROLL 3: rolling, wheels a half turn on', 'ROLL 4: rolling, wheels three quarters on', wind.replace(/torso.*$/, 'half-rising from the seat'), strike.replace(/the horse('s head)?/g, 'the carriage front'),
-    'HURT: jolted back against the seat, sword arm flung out, the carriage rocking'] : [
+    'HURT: jolted back against the seat, fan arm flung out, the carriage rocking'] : [
     'IDLE: horse standing square on all four hooves, rider upright holding the weapon ready', 'GALLOP 1: charging canter, both front legs reaching forward',
     'GALLOP 2: canter, legs gathered under the body, one front hoof planted', 'GALLOP 3: canter, hind legs reaching forward under the belly', 'GALLOP 4: canter, legs spread apart in suspension',
     `${wind}; horse gathers its hind legs`, `${strike}; horse lunges`, 'HURT: rider jolted backward in the saddle, weapon arm flung out; horse throws its head up'];
   return `Animation pose sheet (sprite sheet) for an HD-2D remake of the 1992 Famicom strategy game "Sangokushi II: Haou no Tairiku" — a general on ${mount} on a battlefield, viewed from a raised camera about 35 degrees above the ground.
 Subject: ${look}. Reference image 1 is his approved SIDE-VIEW duel action sheet; this new sheet shows the SAME rider${cart ? ' and carriage' : ' and horse'} from the FRONT and from the BACK.
-${generic ? '' : `Accent colour: ${accent(o)}.\n`}${weaponRule(look)}
+${generic ? '' : `Accent colour: ${accent(o)}.\n`}${weaponRule(look)}${cart ? FAN_RULE : ''}
 
 Layout (critical):
 - Landscape canvas 1536x1024 divided into an invisible 4-column × 4-row grid of 16 equal cells (384×256 each). Do NOT draw grid lines, borders, numbers or labels.
@@ -196,22 +217,22 @@ The ${cart ? 'wheels' : 'gallop'} must clearly change between cells so it animat
 // The third sheet for the carriage, cell for cell in FRAMES_C order: the cell named RIDERLESS HORSE REARING is
 // the empty carriage tipping up (the duel plays it as the mount rearing), and the man alone cells are the same.
 CART.c = (a) => [
-  'IDLE A (reference): carriage standing still, all four wheels on the ground, he sits upright with sword and fan — identical to the first cell of reference image 1',
-  'ALL-IN CHARGE 1: the carriage rushing forward at full speed, spokes blurred, the carriage body pitched forward; he crouches low over the carriage front, sword held low and forward, robe and canopy streaming back',
-  'ALL-IN CHARGE 2: still rushing, spokes a quarter turn on, front wheels bouncing off the ground; he crouches low, sword low and forward',
+  'IDLE A (reference): carriage standing still, all four wheels on the ground, he sits upright with the fan — identical to the first cell of reference image 1',
+  'ALL-IN CHARGE 1: the carriage rushing forward at full speed, spokes blurred, the carriage body pitched forward; he crouches low over the carriage front, fan held low and forward, the other hand gripping the rail, robe and canopy streaming back',
+  'ALL-IN CHARGE 2: still rushing, spokes a quarter turn on, front wheels bouncing off the ground; he crouches low, fan low and forward',
   `ALL-IN LEAP: the whole carriage bounding LEVEL through the air over a bump — all four wheels clearly off the ground, the lowest wheel a third of the carriage's height above the ground line, higher than any other cell; he stands up on the carriage floor, ${a.leap}`,
   `ALL-IN SMEAR: the carriage still airborne, front wheels reaching down to land; he flings his whole body forward over the carriage front, ${a.smear}`,
   `ALL-IN IMPACT: front wheels just striking the ground, rear wheels still in the air; he is thrown to the limit over the carriage front, ${a.impact.replace(/past the horse's head/, 'past the front of the carriage').replace(/over the neck/, 'over the carriage front')}`,
-  'ALL-IN LAND: all four wheels down, the carriage skidding, he pulls himself back upright in the seat, sword swinging back toward guard',
-  'CRUSHED: struck by a devastating blow from the RIGHT — he is bent far back over the seat, facing right with his head thrown back, sword arm flung wide behind him, almost thrown out; the carriage driven back and tipped up onto its rear wheels',
-  'SLUMPED: badly wounded — he slumps forward over the carriage front, one arm hanging, sword trailing down, fan dropped in his lap; carriage still',
-  'THROWN (the man alone, NO carriage): flung backwards through the air out of the carriage, body arched back and horizontal, arms and legs flailing, robe flying, sword flying out of his hand; draw him in the UPPER half of the cell, high above the ground line',
+  'ALL-IN LAND: all four wheels down, the carriage skidding, he pulls himself back upright in the seat, fan swinging back toward guard',
+  'CRUSHED: struck by a devastating blow from the RIGHT — he is bent far back over the seat, facing right with his head thrown back, fan arm flung wide behind him, almost thrown out; the carriage driven back and tipped up onto its rear wheels',
+  'SLUMPED: badly wounded — he slumps forward over the carriage front, one arm hanging, the fan dropped in his lap; carriage still',
+  'THROWN (the man alone, NO carriage): flung backwards through the air out of the carriage, body arched back and horizontal, arms and legs flailing, robe flying, the fan flying out of his hand; draw him in the UPPER half of the cell, high above the ground line',
   'HITS THE GROUND (the man alone, NO carriage): landing hard on his back and shoulder, legs still in the air, a small puff of dust under him, no weapon',
-  'STRUGGLING (the man alone, NO carriage, NO weapon): lying on the ground propped up on one elbow, the other arm reaching forward for his lost sword, head lifted',
+  'STRUGGLING (the man alone, NO carriage, NO weapon): lying on the ground propped up on one elbow, the other arm reaching forward for his lost fan, head lifted',
   'EMPTY CARRIAGE TIPPING (the carriage alone, empty seat, NO man, NO weapon): the carriage tipped up high onto its two rear wheels as if jolted, canopy tassels flying',
-  'THE WEAPON ALONE (NO man, NO carriage): his sword on its own, lying flat and level across the middle of the cell, full length, exactly the sword he carries',
-  'KNEELING IN SURRENDER (the man alone, NO carriage, NO weapon): on foot, kneeling on one knee on the ground, facing right, head bowed low, both empty hands clasped in front of him in a salute of surrender, the feather fan tucked in his belt',
-  'TRIUMPH: the victor — carriage standing still, he stands up on the carriage floor thrusting his sword STRAIGHT UP to the sky, the feather fan raised in the other hand, robe flying',
+  'THE WEAPON ALONE (NO man, NO carriage): his white feather fan on its own, lying flat and level across the middle of the cell, handle to the left, exactly the fan he carries',
+  'KNEELING IN SURRENDER (the man alone, NO carriage, NO weapon): on foot, kneeling on one knee on the ground, facing right, head bowed low, both empty hands clasped in front of him in a salute of surrender, the feather fan laid on the ground before him',
+  'TRIUMPH: the victor — carriage standing still, he stands up on the carriage floor raising the feather fan STRAIGHT UP to the sky in one hand, the other hand on the carriage rail, robe flying',
 ];
 function wheelPrompt(key) {
   const generic = key === 'attacker' || key === 'defender';
@@ -246,7 +267,7 @@ function wheelPrompt(key) {
   return `Animation pose sheet (sprite sheet) for an HD-2D remake of the 1992 Famicom strategy game "Sangokushi II: Haou no Tairiku" — a general on ${cart ? 'his four-wheeled war carriage' : 'his horse'} wheeling round on a battlefield.
 Subject: ${look}.
 Reference image 1 is his approved SIDE-VIEW action sheet (strict side, facing right). Reference image 2 is his approved FRONT and BACK sheet. This new sheet shows the SAME rider${cart ? ' and carriage' : ' and horse'} at the angles BETWEEN those views, the in-between frames of a turn, so that side → this → front plays as a smooth rotation.
-${generic ? '' : `Accent colour: ${accent(o)}.\n`}${weaponRule(look)}
+${generic ? '' : `Accent colour: ${accent(o)}.\n`}${weaponRule(look)}${cart ? FAN_RULE : ''}
 
 Layout (critical):
 - Landscape canvas 1536x1024 divided into an invisible 4-column × 4-row grid of 16 equal cells (384×256 each). Do NOT draw grid lines, borders, numbers or labels.
@@ -309,7 +330,7 @@ export function framePrompt(key, sheet = 'a') {
   ];
   return `Animation pose sheet (sprite sheet) for an HD-2D remake of the 1992 Famicom strategy game "Sangokushi II: Haou no Tairiku" — a ${cart ? 'one-on-one duel fought from a four-wheeled war carriage (no horse in any cell)' : 'mounted one-on-one duel'}.
 Subject: ${look}.
-${generic ? '' : `Accent colour: ${accent(o)}.\n`}${weaponRule(look)}
+${generic ? '' : `Accent colour: ${accent(o)}.\n`}${weaponRule(look)}${cart ? FAN_RULE : ''}
 
 Layout (critical):
 - Landscape canvas 1536x1024 divided into an invisible 4-column × 4-row grid of 16 equal cells (384×256 each). Do NOT draw grid lines, borders, numbers or labels.

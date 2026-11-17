@@ -224,7 +224,7 @@ export function makeInteract(wv) {
     const res = field.attack(a, s.t);
     await wv.playAttack(a, s.t, res); hud();
     st.strike = null; st.ask = null;
-    st.busy = false; if (a.gone) st.sel = null; showOptions(); stage(); wv.check(); // back on the map: the input that closed the report acts on nothing here (D32 §9.3)
+    st.busy = false; if (a.gone || a.side !== human) st.sel = null; showOptions(); stage(); wv.check(); // back on the map: the input that closed the report acts on nothing here (D32 §9.3)
   }
   // Esc / right click / 取消: puts away the 攻击 prompt, else leaves the 计略 target choice, else lets go of the selected
   // general, so his commands and card are put away (feedback R05, 2026-11-02). Spends nothing.

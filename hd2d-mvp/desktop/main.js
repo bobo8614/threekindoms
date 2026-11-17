@@ -1,9 +1,10 @@
 // Electron shell for the playtest build: serves desktop/app/ (made by build-app.mjs) from app://game/.
 // A fixed custom origin lets ES modules and fetch() work (file:// would not) and keeps localStorage saves
-// in the user's profile across reinstalls. F11 toggles fullscreen, Alt+Enter too.
+// in the user's profile across reinstalls. F11 toggles fullscreen, Alt+Enter too, and so does 系统 → 全屏 in the game,
+// which also has 退出游戏: preload.js is what the page may ask of the window.
 //   --smoke=<dir>  load, screenshot, log console errors and missing files to <dir>, then quit (for CI / checks)
-const { app, BrowserWindow, Menu, crashReporter, dialog, net, protocol, shell } = require('electron');
-const { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } = require('node:fs');
+const { app, BrowserWindow, Menu, crashReporter, dialog, ipcMain, net, protocol, screen, shell } = require('electron');
+const { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -85,10 +86,36 @@ const EXPECTED_MISS = /^assets\/audio\/(original|remix)\/|^assets\/audio\/(sfx|b
 const missing = [];
 let bootError = null, bootErrorAt = 0; // the first thing that stops the game reaching its title
 const noteBootError = (msg) => { if (!bootError) { bootError = msg; bootErrorAt = Date.now(); } };
+// The player's own data packs (docs/战略地图数据包扩展设计_2026-11-17.md §5.6): folders under 文稿/Three Kingdoms HD-2D/mods, served
+// at mods/<id>/ beside the shipped ones, which win on a clash. Only a pack's fixed JSON files (src/core/pack.js PACK_FILES) are
+// read, never through a link; mods/index.json is the shipped list plus every folder here with a readable pack.json.
+const USER_MODS = path.join(app.getPath('documents'), 'Three Kingdoms HD-2D', 'mods');
+const PACK_FILE = /^mods\/([a-z0-9][a-z0-9-]{0,39})\/(pack|cities|roads|factions|officers)\.json$/;
+const plainFile = (f) => { try { return lstatSync(f).isFile(); } catch { return false; } };
+function packIndex() {
+  let list = [];
+  try { list = JSON.parse(readFileSync(path.join(ROOT, 'mods', 'index.json'), 'utf8')); } catch {}
+  const have = new Set(list.map((p) => p.id));
+  let dirs = [];
+  try { dirs = readdirSync(USER_MODS); } catch {}
+  for (const id of dirs.sort()) {
+    const f = path.join(USER_MODS, id, 'pack.json');
+    if (have.has(id) || !PACK_FILE.test(`mods/${id}/pack.json`) || !plainFile(f)) continue;
+    try { const m = JSON.parse(readFileSync(f, 'utf8')); list.push({ id, name: String(m.name ?? id).slice(0, 24), version: String(m.version ?? ''), author: String(m.author ?? '').slice(0, 24), local: true }); }
+    catch { list.push({ id, name: id, version: '', author: '', local: true }); } // listed, so choosing it says what is wrong
+  }
+  return new Response(JSON.stringify(list), { headers: { 'content-type': 'application/json' } });
+}
 function serve(request) {
   const url = new URL(request.url);
   if (url.host !== 'game') return new Response('not found', { status: 404 });
   const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
+  if (rel === 'mods/index.json') return packIndex();
+  const own = PACK_FILE.exec(rel);
+  if (own && !existsSync(path.join(ROOT, 'mods', own[1]))) {
+    const f = path.join(USER_MODS, own[1], `${own[2]}.json`);
+    return plainFile(f) ? net.fetch(pathToFileURL(f).toString()) : new Response('not found', { status: 404 });
+  }
   const file = path.join(ROOT, rel);
   if (!file.startsWith(ROOT + path.sep) || !existsSync(file)) {
     missing.push(rel);
@@ -129,16 +156,81 @@ function watchPage(win) {
   }, 1000);
 }
 
+// Where the window stood last time (its place, maximized, fullscreen), kept beside the saves. The first run asks for
+// 1600x900 and gets no more than the screen has: on a 1920x1080 laptop at 150% the work area is 1280x680, and a window
+// made larger than that has its title bar and ✕ off the top and the game's bottom row under the taskbar. A place that
+// is on no screen any more (an unplugged monitor) is moved onto the nearest one.
+const STATE_FILE = path.join(app.getPath('userData'), 'window-state.json');
+const SIZE = [1600, 900], MIN = [1024, 600]; // MIN: the smallest window the game's layout is checked at (tests/sysmenu.test.mjs)
+function windowPlace() {
+  let saved = null;
+  try { saved = JSON.parse(readFileSync(STATE_FILE, 'utf8')); } catch { /* the first run, or a file that cannot be read */ }
+  const b = saved?.bounds;
+  if (b && [b.x, b.y, b.width, b.height].every(Number.isFinite)) {
+    const area = screen.getDisplayMatching(b).workArea;
+    const width = Math.min(b.width, area.width), height = Math.min(b.height, area.height);
+    const x = Math.min(Math.max(b.x, area.x), area.x + area.width - width), y = Math.min(Math.max(b.y, area.y), area.y + area.height - height);
+    return { bounds: { x, y, width, height }, area, maximized: !!saved.maximized, fullscreen: !!saved.fullscreen };
+  }
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(SIZE[0], area.width), height = Math.min(SIZE[1], area.height);
+  return { bounds: { x: area.x + Math.floor((area.width - width) / 2), y: area.y + Math.floor((area.height - height) / 2), width, height },
+    area, maximized: width < SIZE[0] || height < SIZE[1], fullscreen: false }; // a screen too small for it: every pixel there is
+}
+
 function createWindow() {
+  const place = smokeDir ? null : windowPlace(); // a check always runs in the same window and leaves no state behind
   const win = new BrowserWindow({
-    width: 1600, height: 900, minWidth: 1024, minHeight: 600, backgroundColor: '#000000',
+    ...(place ? place.bounds : { width: SIZE[0], height: SIZE[1] }), backgroundColor: '#000000',
+    minWidth: Math.min(MIN[0], place?.area.width ?? MIN[0]), minHeight: Math.min(MIN[1], place?.area.height ?? MIN[1]),
     title: '三国 HD-2D', autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, sandbox: true, devTools, backgroundThrottling: false },
+    webPreferences: { contextIsolation: true, sandbox: true, devTools, backgroundThrottling: false, preload: path.join(__dirname, 'preload.js') },
   });
-  win.webContents.on('before-input-event', (e, input) => {
+  const wc = win.webContents;
+  if (place?.maximized) win.maximize();
+  if (place?.fullscreen) win.setFullScreen(true);
+  const saveState = () => {
+    if (!place) return;
+    try { writeFileSync(STATE_FILE, JSON.stringify({ bounds: win.getNormalBounds(), maximized: win.isMaximized(), fullscreen: win.isFullScreen() })); }
+    catch (err) { log(`window state not saved: ${err}`); }
+  };
+  // Fullscreen has no title bar and the game has no menu bar, so the way back must be in the game too: F11, Alt+Enter
+  // and 系统 → 全屏 are one switch, and the page is told of every change to keep its row and its hint right.
+  const toggleFullscreen = () => win.setFullScreen(!win.isFullScreen());
+  ipcMain.on('desktop:fullscreen', (e) => { if (e.sender === wc) toggleFullscreen(); });
+  ipcMain.handle('desktop:is-fullscreen', (e) => e.sender === wc && win.isFullScreen());
+  win.on('enter-full-screen', () => wc.send('desktop:fullscreen', true));
+  win.on('leave-full-screen', () => wc.send('desktop:fullscreen', false));
+  wc.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
-    if (input.key === 'F11' || (input.alt && input.key === 'Enter')) { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }
-    if (devTools && input.key === 'F12') { win.webContents.toggleDevTools(); e.preventDefault(); }
+    if (input.key === 'F11' || (input.alt && input.key === 'Enter')) { toggleFullscreen(); e.preventDefault(); }
+    if (devTools && input.key === 'F12') { wc.toggleDevTools(); e.preventDefault(); }
+  });
+  // Closing the window (✕, Alt+F4, ⌘Q) with a game on asks first: nothing is saved automatically, and players lost
+  // hours to a stray click (feedback F03, 2026-11-02). The page says when a game is on (setUnsaved); a page that has
+  // gone, or a new one, has nothing to lose. The dialog is the system's, so it also shows over a page that is stuck.
+  // 退出游戏 in the game has asked already, in its own dialog (which can record first), and closes at once.
+  let unsaved = false, closing = false, asking = false;
+  ipcMain.on('desktop:unsaved', (e, on) => { if (e.sender === wc) unsaved = !!on; });
+  ipcMain.on('desktop:quit', (e) => { if (e.sender === wc) { closing = true; win.close(); } });
+  wc.on('did-navigate', () => { unsaved = false; });
+  wc.on('render-process-gone', () => { unsaved = false; });
+  win.on('session-end', () => { closing = true; }); // Windows is shutting down or logging off: it must not wait on a question
+  win.on('close', (e) => {
+    if (closing || !unsaved || smokeDir) return saveState();
+    e.preventDefault();
+    if (asking) return;
+    asking = true;
+    dialog.showMessageBox(win, { type: 'warning', title: '退出游戏', message: '未记录的进度会丢失。确定退出游戏吗？',
+      detail: '要先记录，请选「取消」，再用「☰ 系统 → 记录进度」；战争中用「☰ 系统 → 中断战斗」。', buttons: ['取消', '不记录，退出'], defaultId: 0, cancelId: 0, noLink: true })
+      .then(({ response }) => { asking = false; if (response === 1 && !win.isDestroyed()) { closing = true; win.close(); } }, () => { asking = false; });
+  });
+  // 记录编辑 holds the window open while changes are unwritten (its beforeunload). Electron then cancels the close without
+  // a word, so ✕ and Alt+F4 seemed dead there: ask, and close only on the player's word.
+  wc.on('will-prevent-unload', (e) => {
+    const leave = dialog.showMessageBoxSync(win, { type: 'warning', title: '记录编辑', message: '还有未写回的改动，关闭后会丢失。仍要关闭吗？',
+      buttons: ['取消', '放弃改动并关闭'], defaultId: 0, cancelId: 0, noLink: true }) === 1;
+    if (leave) e.preventDefault(); // preventDefault here lets the page unload
   });
   // Stay on the game origin; anything else opens in the user's browser.
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
@@ -206,13 +298,16 @@ async function smoke(win) {
   app.quit();
 }
 
-Menu.setApplicationMenu(null);
+// No menu bar. On a Mac that would also take ⌘Q away, so the application menu keeps the one item.
+const appMenu = () => (process.platform === 'darwin' ? Menu.buildFromTemplate([{ label: app.name, submenu: [{ role: 'quit', label: '退出游戏' }] }]) : null);
+if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
 app.on('child-process-gone', (_e, d) => log(`child process gone: ${d.type} ${d.reason} (exit ${d.exitCode})`)); // the GPU process among them
 app.whenReady().then(() => {
   log('app ready');
   if (!existsSync(path.join(ROOT, 'index.html'))) { fail('游戏文件不完整', '找不到游戏页面。请把压缩包完整解压后，再运行解压目录里的程序。'); return app.exit(1); }
   app.getGPUInfo('basic').then((info) => log(`gpu ${JSON.stringify(info.gpuDevice)} features ${JSON.stringify(app.getGPUFeatureStatus())}`), (err) => log(`gpu info: ${err}`));
   protocol.handle('app', serve);
+  if (process.platform === 'darwin') Menu.setApplicationMenu(appMenu());
   const win = createWindow();
   log('window created');
   if (smokeDir) { mkdirSync(smokeDir, { recursive: true }); smoke(win); }

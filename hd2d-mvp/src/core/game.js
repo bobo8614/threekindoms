@@ -4,14 +4,51 @@
 // of them, so outcomes follow the same ranges and rejection rules but not the original sequence.
 
 import { roll100 } from './origrng.js';
-export const NONE = 7; // city owner value for "no faction"
+import { withBaseMap, mergePack, readPack } from './pack.js';
+export const NONE = 7; // city owner value for "no faction"; with a pack's factions (8 on, core/pack.js) its slot is a placeholder
 export const DEAD = 3, SERVING = 2, UNAPPEARED = 1, RONIN = 0;
 export const FACTION_COLORS = ['#5a5a66', '#c8402f', '#7a4ad0', '#e0a020', '#3f8f4f', '#c060a0', '#2f9fb0'];
+// A faction's banner colour: the original seven's, a pack faction's own (core/pack.js).
+export const factionColor = (f) => D?.factions[f]?.colors?.flag ?? FACTION_COLORS[f];
 
-let D = null; // static data (data/game-data.json)
+let D = null, BASE = null; // static data (data/game-data.json with data/base-map.json, and a pack's when one is in use); BASE without the pack
 export const data = () => D;
-export async function loadData(url = 'data/game-data.json') { D = await (await fetch(url)).json(); return D; }
+export async function loadData(url = 'data/game-data.json') {
+  const [d, map] = await Promise.all([url, url.replace(/game-data\.json$/, 'base-map.json')].map(async (u) => (await fetch(u)).json()));
+  BASE = structuredClone(withBaseMap(d, map)); D = d; return D;
+}
 export const setData = (d) => (D = d);
+// Play on a data pack (mods/<id>/, core/pack.js): merged over the unchanged base data, so nothing of an earlier pack or of a
+// session's 阿会喃 copies stays behind. Returns the problems found; on any, the data is left as it was.
+export async function usePack(id, { regions, fetchJson = fetchOptional } = {}) {
+  if (!BASE) throw Error('loadData first');
+  const { pack, errors } = await readPack(id, fetchJson);
+  if (errors.length) return errors;
+  const { data: merged, errors: bad } = mergePack(BASE, pack, { regions });
+  if (bad.length) return bad;
+  D = merged; return [];
+}
+// The pack the page plays on: ?pack=<id> (?pack=none for none), else the one chosen on the title screen (kept in the browser).
+// { pack, errors }: errors when it would not load, the data then being the base game's.
+export const PACK_CHOICE = 'haou-hd2d-pack';
+export async function loadWithPack(search = globalThis.location?.search ?? '') {
+  await loadData();
+  let id = new URLSearchParams(search).get('pack');
+  if (id == null) { try { id = localStorage.getItem(PACK_CHOICE); } catch {} }
+  if (!id || id === 'none') return { pack: null, errors: [] };
+  const errors = await usePack(id, { regions: await loadRegions() });
+  return { pack: id, errors };
+}
+// The official extension regions that are open to packs (design §5.5): assets/ai/sandtable/regions/index.json, { name: { lon, lat } }.
+export async function loadRegions() {
+  try { return (await fetchOptional('assets/ai/sandtable/regions/index.json')) ?? {}; } catch { return {}; }
+}
+const fetchOptional = async (u) => { const r = await fetch(u, { cache: 'no-store' }); if (r.status === 404) return undefined; if (!r.ok) throw Error(`${u}: ${r.status}`); return r.json(); };
+// The officer whose pictures and sprites an officer uses: a pack's officer borrows a whole set (core/pack.js `like`), an 阿会喃
+// copy is 阿会喃's own.
+export const artOf = (id) => D?.officers[id]?.art ?? (D?.officers[id]?.clone ? 0 : id);
+// The original city whose painted battlefield a city's war uses (a pack's city borrows one whole, core/pack.js `like`).
+export const fieldArtOf = (cid) => D?.cities[cid]?.like ?? cid;
 // 体力上限: the ROM template's hp, unless the save editor set one on the record (o.maxHp). id for copies of a record.
 export const maxHp = (o, id = o.id) => o.maxHp ?? D.officers[id].hp;
 
@@ -38,8 +75,10 @@ export function newGame(playerFaction, level, seed = (Date.now() ^ (Math.random(
     id: o.id, hp: o.hp, war: o.war, int: o.int, loyalty: o.loyalty, virtue: o.virtue, exp: o.exp, soldiers: o.soldiers,
     weapon: o.weapon, armor: o.armor, level: o.level, army: o.army, status: o.appear === 'initial' ? SERVING : UNAPPEARED, loc: o.city,
   }));
-  g.factions = D.factions.map((f) => ({ id: f.id, ruler: f.ruler, city: D.officers[f.ruler].city, ai: f.id !== playerFaction, alliance: [0, 0, 0, 0, 0, 0, 0] }));
-  g.aiCursor = [0, 0, 0, 0, 0, 0, 0];
+  const n = D.factions.length; // 7, or with a pack's factions their last number + 1 (NONE's slot stays empty: core/pack.js)
+  g.factions = D.factions.map((f) => ({ id: f.id, ruler: f.ruler, city: f.ruler == null ? null : D.officers[f.ruler].city, ai: f.id !== playerFaction, alliance: new Array(n).fill(0) }));
+  g.aiCursor = new Array(n).fill(0);
+  if (D.pack) g.pack = { id: D.pack.id, version: D.pack.version };
   return g;
 }
 
@@ -71,7 +110,8 @@ export const factionName = (g, f) => {
   return who != null ? name(who) : D.factions[f].name;
 };
 export const troopsOf = (g, c) => c.officers.reduce((a, id) => a + g.officers[id].soldiers, 0);
-export const books = (g, f) => D.rules.books[citiesOf(g, f).length];
+// The table ends at 30 cities (13 books); a pack's realm past that keeps the last entry.
+export const books = (g, f) => D.rules.books[Math.min(citiesOf(g, f).length, D.rules.books.length - 1)];
 
 // ---------- Income (5.2): every city, ID 29→0, regardless of owner ----------
 const GOV_C = (t) => (t <= 50 ? 50 : t <= 70 ? 60 : t <= 80 ? 70 : t <= 90 ? 80 : t <= 99 ? 90 : 100);
@@ -310,7 +350,7 @@ export function unificationParts(g) {
   const ruler = g.factions[g.player].ruler;
   let n = 0, loy = 0, gov = 0;
   for (const c of g.cities) { gov += c.gov; for (const id of c.officers) if (id !== ruler) { n++; loy += g.officers[id].loyalty; } }
-  return { officers: n, loyalty: n ? Math.floor(loy / n) : 0, talent: Math.floor((n * 100) / 130), gov: Math.floor(gov / 30) };
+  return { officers: n, loyalty: n ? Math.floor(loy / n) : 0, talent: Math.floor((n * 100) / 130), gov: Math.floor(gov / g.cities.length) };
 }
 export function unificationScore(g) {
   const { loyalty, talent, gov } = unificationParts(g);
@@ -330,7 +370,7 @@ export async function run(g, io) {
   while (!g.over) {
     // Unification is judged before the turn can rotate: a war won with the last command book must not
     // roll into next month's deaths and successions first (the original checks at the command entry).
-    if (citiesOf(g, g.player).length === 30) { g.over = { type: 'unify', score: unificationScore(g) }; await io.event({ type: 'unify', score: g.over.score }); return; }
+    if (citiesOf(g, g.player).length === g.cities.length) { g.over = { type: 'unify', score: unificationScore(g) }; await io.event({ type: 'unify', score: g.over.score }); return; }
     if (g.current == null || g.books <= 0 || g.endTurn) { g.endTurn = false; await rotate(g, io); continue; }
     await io.playerTurn(g.current);
   }
@@ -357,7 +397,7 @@ export async function checkFactions(g, io) {
 async function rotate(g, io) {
   for (;;) {
     g.turnIdx++;
-    if (g.turnIdx >= 7) {
+    if (g.turnIdx >= D.rules.turn_orders[g.order].length) { // 7 houses, or with a pack's after them (core/pack.js)
       g.turnIdx = 0; g.monthDone = false; g.month++;
       if (g.month >= 12) { g.month = 0; g.year++; }
       for (const f of g.factions) f.alliance = f.alliance.map((t) => Math.max(0, t - 1));
@@ -448,7 +488,7 @@ export function reward(g, cid, target, gold, treasure = false) {
   if (treasure) { if (c.treasure < 1) return { ok: false, msg: '没有宝物' }; c.treasure--; inc = Math.floor(((Math.floor(V / 10) + 3) * (10 + r(7))) / 10); }
   else { if (gold < 10 || c.gold < gold) return { ok: false, msg: '金不足' }; c.gold -= gold; inc = Math.floor(((Math.floor(V / 10) + Math.floor(gold / 20)) * (7 + r(4))) / 10); }
   const before = o.loyalty; o.loyalty = Math.min(99, before + inc);
-  return { ok: true, msg: `${name(target)} 忠诚 +${o.loyalty - before}` };
+  return { ok: true, gain: o.loyalty - before, msg: `${name(target)} 忠诚 +${o.loyalty - before}` };
 }
 export function charity(g, cid, gold, rice) {
   const c = g.cities[cid], r = rng(g);
@@ -458,21 +498,23 @@ export function charity(g, cid, gold, rice) {
   const Vg = g.officers[c.officers[0]].virtue;
   const q = Math.floor(((gold + rice) * Vg) / 2000), d = Math.floor((q * (10 + r(7))) / 10);
   const before = c.gov; c.gov = Math.min(100, before + d);
-  return { ok: true, msg: `统治度 +${c.gov - before}` };
+  return { ok: true, gain: c.gov - before, msg: `统治度 +${c.gov - before}` };
 }
 // 武将不能读书 (g.noStudy, an option off by default and absent from older records; not in the ROM): no officer, the
 // player's or the computer's, raises 智力 by study. 学问所 is greyed out in the city menu, and the AI's study draw
 // (ai.js domestic) finds no one, as when every officer is outside 50–79.
 export const NO_STUDY = '已开启「武将不能读书」';
+// 学问所's fee and the least it raises 智力 (+0–4 on top), by the 智力 before (`0x386AD`: 80, then 30 / 60).
+export const studyFee = (int) => (int <= 30 ? [30, 5] : int <= 60 ? [20, 8] : [10, 6]);
 export function study(g, cid, id) {
   const c = g.cities[cid], o = g.officers[id], r = rng(g);
   if (g.noStudy) return { ok: false, msg: NO_STUDY };
   if (!D.cities[cid].facilities.school) return { ok: false, msg: '此城没有学问所' };
   if (o.int >= 80) return { ok: false, msg: '智力80以上无法再学' };
-  const [cost, base] = o.int <= 30 ? [30, 5] : o.int <= 60 ? [20, 8] : [10, 6];
+  const [cost, base] = studyFee(o.int);
   if (c.gold < cost) return { ok: false, msg: '金不足' };
   c.gold -= cost; const inc = base + r(5); o.int += inc;
-  return { ok: true, msg: `${name(id)} 智力 +${inc}（花费${cost}金）` };
+  return { ok: true, gain: inc, cost, msg: `${name(id)} 智力 +${inc}（花费${cost}金）` };
 }
 export function heal(g, cid, id) {
   const c = g.cities[cid], o = g.officers[id], r = rng(g), max = maxHp(o);
@@ -480,7 +522,7 @@ export function heal(g, cid, id) {
   if (o.hp >= max) return { ok: false, msg: '体力已满' };
   if (c.gold < 50) return { ok: false, msg: '金不足' };
   c.gold -= 50; const before = o.hp; o.hp = Math.min(max, o.hp + 35 + r(11));
-  return { ok: true, msg: `${name(id)} 体力 +${o.hp - before}` };
+  return { ok: true, gain: o.hp - before, cost: 50, msg: `${name(id)} 体力 +${o.hp - before}` };
 }
 export const conscriptMax = (c) => Math.floor(Math.min(Math.max(0, 10000 - c.reserve), Math.floor(c.gold / 20) * 100) / 100);
 export function conscript(g, cid, hundreds) {
@@ -640,26 +682,44 @@ function join(g, cid, id) {
 // written by a newer release is refused rather than misread.
 export const SLOTS = 8, SAVE_VERSION = 1;
 const MIGRATIONS = {};
-const KEY = 'haou-hd2d-save', slotKey = (n) => `${KEY}:${n}`, bakKey = (n) => `${KEY}:${n}:bak`;
-const QUICK_KEY = `${KEY}:quick`, QUICK_BAK = `${QUICK_KEY}:bak`;
+// A pack's records live under their own keys (`haou-hd2d-save@<pack>:1` …), so the original's slots never see them; a record
+// carries its pack ({ id, version }) and loads while the pack's major version is the same (design §5.3).
+let KEY = 'haou-hd2d-save', QUICK_KEY = `${KEY}:quick`, QUICK_BAK = `${QUICK_KEY}:bak`, AUTO_KEY = `${KEY}:auto`;
+const slotKey = (n) => `${KEY}:${n}`, bakKey = (n) => `${KEY}:${n}:bak`;
+const keys = () => {
+  const k = D?.pack ? `haou-hd2d-save@${D.pack.id}` : 'haou-hd2d-save';
+  if (k !== KEY) { KEY = k; QUICK_KEY = `${KEY}:quick`; QUICK_BAK = `${QUICK_KEY}:bak`; AUTO_KEY = `${KEY}:auto`; }
+};
+const majorOf = (v) => Number(String(v ?? '').split('.')[0]);
+export const samePack = (g) => (g.pack?.id ?? null) === (D?.pack?.id ?? null) && (!g.pack || majorOf(g.pack.version) === majorOf(D.pack.version));
+// Why a record cannot be played with the data in use, for the load screen and the editor (null when it can).
+export function packMismatch(g) {
+  if (!g || typeof g !== 'object' || samePack(g)) return null;
+  if (!g.pack) return '这是本体（未装数据包）的记录';
+  if (!D?.pack || g.pack.id !== D.pack.id) return `这是数据包「${g.pack.id}」的记录`;
+  return `这是数据包「${g.pack.id}」${g.pack.version} 版的记录，与当前 ${D.pack.version} 版的主版本号不同`;
+}
 const parse = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
 const read = (k) => { try { return parse(localStorage.getItem(k)); } catch { return null; } };
 export function upgrade(g) {
   if (!g || typeof g !== 'object') return null;
   try { g.version ??= 1; while (g.version < SAVE_VERSION) MIGRATIONS[g.version++](g); } catch { return null; }
   const ok = g.version === SAVE_VERSION && Number.isInteger(g.year) && Number.isInteger(g.month) && Number.isInteger(g.player)
-    && Array.isArray(g.officers) && Array.isArray(g.factions) && Array.isArray(g.cities) && g.cities.length === 30 && g.cities.every((c) => Array.isArray(c?.officers));
+    && Array.isArray(g.officers) && Array.isArray(g.factions) && Array.isArray(g.cities) && g.cities.length === (D?.cities.length ?? 30) && g.cities.every((c) => Array.isArray(c?.officers))
+    && samePack(g);
   return ok ? g : null;
 }
 const fromBak = new WeakSet();
 export const restored = (g) => fromBak.has(g);
 function migrate() {
+  keys();
   try {
     const old = localStorage.getItem(KEY); if (!old) return;
     for (let n = 1; n <= SLOTS; n++) if (!localStorage.getItem(slotKey(n))) { localStorage.setItem(slotKey(n), old); localStorage.removeItem(KEY); return; }
   } catch {}
 }
 export function save(g, slot = g.slot ?? 1) {
+  keys();
   try {
     const k = slotKey(slot), prev = localStorage.getItem(k);
     if (prev && upgrade(parse(prev))) localStorage.setItem(bakKey(slot), prev);
@@ -670,10 +730,18 @@ export function save(g, slot = g.slot ?? 1) {
 // The phone's 自动续玩 (src/app.js): the campaign as it stood when the page went out of sight, kept apart from the eight records
 // and the quick one. It is written when the page is hidden and dropped when the page comes back, so it only outlives a page the
 // system threw away; continuing from it takes it. It is no record: nothing is spent, and it cannot be loaded a second time.
-const AUTO_KEY = `${KEY}:auto`;
-export function saveAuto(g) { try { localStorage.setItem(AUTO_KEY, JSON.stringify({ ...g, savedAt: Date.now(), version: SAVE_VERSION })); return true; } catch { return false; } }
-export function loadAuto() { const g = upgrade(read(AUTO_KEY)); if (g) { registerClones(g); g.auto = true; } return g; }
-export function dropAuto() { try { localStorage.removeItem(AUTO_KEY); } catch {} }
+export function saveAuto(g) { keys(); try { localStorage.setItem(AUTO_KEY, JSON.stringify({ ...g, savedAt: Date.now(), version: SAVE_VERSION })); return true; } catch { return false; } }
+export function loadAuto() { keys(); const g = upgrade(read(AUTO_KEY)); if (g) { registerClones(g); g.auto = true; } return g; }
+export function dropAuto() { keys(); try { localStorage.removeItem(AUTO_KEY); } catch {} }
+// Why a numbered slot that holds something gives no record (load returns null): another pack's, an older major version, or damaged.
+// null for an empty slot. The load and save lists show it, so a record is never taken for an empty place and written over unawares.
+export function unreadable(slot) {
+  migrate();
+  let raw = null; try { raw = localStorage.getItem(slotKey(slot)); } catch {}
+  if (!raw || load(slot)) return null;
+  const g = parse(raw);
+  return packMismatch(g) ?? (Number.isInteger(g?.version) && g.version > SAVE_VERSION ? '这是更新版本的游戏的记录' : '记录已损坏');
+}
 export function load(slot) {
   migrate();
   let raw = null; try { raw = localStorage.getItem(slotKey(slot)); } catch {}
@@ -697,7 +765,7 @@ function quickUpgrade(g) {
     || !Number.isInteger(g.turnIdx) || g.turnIdx < -1 || g.turnIdx >= g.factions.length
     || (g.current != null && (!Number.isInteger(g.current) || !g.factions[g.current]))
     || !Number.isInteger(g.books) || g.books < 0
-    || !Array.isArray(g.aiCursor) || g.aiCursor.length < g.factions.length || g.aiCursor.some((i) => !Number.isInteger(i) || i < 0 || i > 30)) return null;
+    || !Array.isArray(g.aiCursor) || g.aiCursor.length < g.factions.length || g.aiCursor.some((i) => !Number.isInteger(i) || i < 0 || i > g.cities.length)) return null;
   const f = g.factions[g.player], ruler = f?.ruler, city = f?.city;
   if (g.clones != null && !Array.isArray(g.clones)) return null;
   const clones = new Set(g.clones ?? []);
@@ -711,9 +779,10 @@ function quickUpgrade(g) {
   return g;
 }
 // The raw value is also a change token while an overwrite confirmation is open in another tab.
-export function quickToken() { try { return localStorage.getItem(QUICK_KEY); } catch { return undefined; } }
+export function quickToken() { keys(); try { return localStorage.getItem(QUICK_KEY); } catch { return undefined; } }
 export function hasQuick() { return !!quickToken(); }
 export function saveQuick(g) {
+  keys();
   try {
     const id = g.quickId || newQuickId();
     const text = JSON.stringify({ ...g, quickId: id, savedAt: Date.now(), version: SAVE_VERSION });
@@ -728,6 +797,7 @@ export function saveQuick(g) {
 // Every game/editor writer checks and writes inside the same origin-wide lock. A token check outside
 // the lock alone cannot protect two tabs that both see the empty slot at the same instant.
 export async function saveQuickChecked(g, expected, { isCurrent = () => true, onSaved = () => {} } = {}) {
+  keys();
   const locks = globalThis.navigator?.locks;
   if (!locks?.request) return 'unavailable';
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 5000);
@@ -745,6 +815,7 @@ export async function saveQuickChecked(g, expected, { isCurrent = () => true, on
   finally { clearTimeout(timer); }
 }
 export function loadQuick() {
+  keys();
   let raw = null; try { raw = localStorage.getItem(QUICK_KEY); } catch {}
   if (!raw) return null;
   const parsed = parse(raw);
@@ -827,5 +898,5 @@ export function sow(g, actor, id) {
   const loss = Math.floor(a.int / 20) + (r(256) & 3);
   if (!loss) return { ok: true, msg: `离间${name(id)}失败`, failed: true };
   o.loyalty = Math.max(0, o.loyalty - loss);
-  return { ok: true, msg: `${name(id)}忠诚 −${loss}（现${o.loyalty}）` };
+  return { ok: true, gain: loss, msg: `${name(id)}忠诚 −${loss}（现${o.loyalty}）` };
 }

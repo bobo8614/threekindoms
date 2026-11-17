@@ -21,7 +21,7 @@ const store = (k, v) => { try { if (v === undefined) return localStorage.getItem
 
 export class Audio {
   constructor(files, music = {}) {
-    this.files = files; this.music = music; this.ctx = null; this.bgm = null; this.bgmKey = null; this.muted = false; this.cache = {}; this.bufs = new Map();
+    this.files = files; this.music = music; this.ctx = null; this.bgm = null; this.bgmKey = null; this.muted = store('hd2d-muted') === '1'; this.cache = {}; this.bufs = new Map();
     this.sets = SETS.filter(([, , re]) => (music['bgm-strategy'] || []).some((u) => re.test(u))).map(([id, label]) => ({ id, label }));
     this.set = this.sets.find((t) => t.id === store('hd2d-music'))?.id ?? this.sets[0]?.id;
     this.volume = Math.min(1, Math.max(0, Number(store('hd2d-music-volume') ?? 1)));
@@ -42,13 +42,20 @@ export class Audio {
     this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = level(this.sfxVolume); this.sfxGain.connect(this.master); // every sound effect, under its own slider
   }
 
+  // Start the context again when it is not running, whatever the browser calls why: 'suspended' (autoplay, the page hidden),
+  // or iOS Safari's 'interrupted', where a page back from the background stays until it is resumed from a touch; a check for
+  // 'suspended' alone left it silent until the game was restarted (我还在线@bilibili, 2026-11-16).
+  wake() { if (this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this.ctx.resume().catch(() => {}); }
+
   unlock() {
     this.ensureCtx();
-    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    this.wake();
     if (this.bgmKey && !this.bgm) { const k = this.bgmKey; this.bgmKey = null; this.playBgm(k); }
   }
 
-  setMuted(m) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.5; }
+  // 声音 开／关 is the player's and outlives a reload (读取记录 reloads the page), as the volume and the music set do. keep: false
+  // (?mute, for tools and tests) silences this page only.
+  setMuted(m, { keep = true } = {}) { this.muted = m; if (keep) store('hd2d-muted', m ? '1' : '0'); if (this.master) this.master.gain.value = m ? 0 : 0.5; }
   setVolume(v) { this.volume = v; store('hd2d-music-volume', String(v)); if (this.musicGain) this.musicGain.gain.setTargetAtTime(0.9 * level(v), this.ctx.currentTime, 0.03); }
   setSfxVolume(v) { this.sfxVolume = v; store('hd2d-sfx-volume', String(v)); if (this.sfxGain) this.sfxGain.gain.setTargetAtTime(level(v), this.ctx.currentTime, 0.03); }
   setMusicSet(id) {
@@ -67,7 +74,7 @@ export class Audio {
     const url = this.url(key);
     if (url) {
       this.ensureCtx();
-      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+      this.wake();
       const bgm = this.bgm = { key };
       // The chosen version first, then any other that exists. If none loads, the slot is left empty with the
       // key kept, so the next gesture (unlock) or the next playBgm of this key tries again.

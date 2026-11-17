@@ -1,6 +1,6 @@
 {
   "name": "threekindoms",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "三国 HD-2D",
   "main": "main.js",
   "scripts": {
@@ -29,6 +29,7 @@
     },
     "files": [
       "main.js",
+      "preload.js",
       "app/**/*",
       "package.json"
     ],

@@ -44,6 +44,6 @@ test('不为所动 keeps the duel going; 投降 ends the 白兵', () => {
     const t = new Tactical(g, live[0].id, live[1].id, 2, () => 0, { human: p }), f = p === 'a' ? 'd' : 'a';
     const d = t.startDuel(p).duel; Object.assign(t.side[f].o, { loyalty: 90, hp: 90 });
     d.r = () => d.persuadeTable(p).indexOf(1); d.act(p, 'persuade'); assert.equal(d.result, null);
-    const e4 = persuaded(p, 4, p); assert.equal(e4.t.over.why, 'capture');
+    const e4 = persuaded(p, 4, p); assert.equal(e4.t.over.why, 'defect');
   }
 });

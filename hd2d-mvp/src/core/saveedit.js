@@ -6,7 +6,7 @@
 // 体力 is the one exception to "as the game keeps it": the original caps healing at the ROM template's hp and never
 // stores a cap on the record. Here editing 体力 sets the officer's 体力上限 (o.maxHp) to the same value, so an edited
 // officer is at full 体力 and the 病院, AI healing and the cards all read the edited cap (game.js maxHp).
-import { DEAD, maxHp } from './game.js';
+import { DEAD, maxHp, data, packMismatch } from './game.js';
 
 // 体力 as the editor shows and compares it: current / cap, so a change to either one counts.
 export const hpText = (o) => `${o.hp}/${maxHp(o)}`;
@@ -51,7 +51,9 @@ export function setAlliance(g, a, b, v) {
 export function checkRecord(g) {
   if (!g || typeof g !== 'object') return '不是记录';
   if (!Array.isArray(g.officers) || !Array.isArray(g.cities) || !Array.isArray(g.factions)) return '缺少武将、城市或势力';
-  if (g.cities.length !== 30) return `城市数为 ${g.cities.length}，应为 30`;
+  const n = data()?.cities.length ?? 30; // 30, or the pack's count (core/pack.js)
+  if (g.cities.length !== n) return `城市数为 ${g.cities.length}，应为 ${n}`;
+  const other = packMismatch(g); if (other) return other;
   if (g.cities.some((c) => !Array.isArray(c.officers))) return '城市名册损坏';
   return null;
 }
@@ -60,6 +62,7 @@ export function checkRecord(g) {
 export const BUGS = [['ahuinan', '阿会喃复制（王莆）']];
 export function setBug(g, key, on) {
   if (!BUGS.some(([k]) => k === key)) return null;
+  if (key === 'ahuinan' && on && data()?.pack) return null; // its table bytes past city 29 are the original's map alone
   g.bugs = { ...(g.bugs ?? {}), [key]: !!on }; g.edited = true;
   return g.bugs[key];
 }

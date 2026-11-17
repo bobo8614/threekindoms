@@ -48,7 +48,17 @@ body.phone[data-screen="strategy"] .topbar { max-width: calc(100vw - var(--g) - 
 body.phone .topbar .date { font-size: 17px; }
 body.phone .topbar .season { font-size: 12px; margin-left: 4px; padding: 0 4px; }
 body.phone .topbar .who > :not(.books) { display: none; } /* whose turn: the AI turn's plaque says it */
-body.phone .topbar .res { gap: 8px; }
+body.phone .topbar .who.turn { display: none; } /* (its words are a span since D88: as bare text they stayed and pushed the figures out) */
+/* the figures never go under the bar's edge (会吹管的松鼠@bilibili, D88): short of room they break onto a second line, 金 and 米
+   under 城 将 兵, in the bar's own height */
+body.phone .topbar .res { gap: 0 8px; flex-wrap: wrap; line-height: 15px; }
+body.phone .topbar .res .resg { display: flex; gap: 8px; }
+/* (the narrowest, iPhone SE class, 568 px across) a little less air between the pieces, so six-figure totals fit too */
+@media (max-width: 600px) {
+  body.phone .topbar { gap: 6px; padding: 1px 7px; }
+  body.phone .topbar .res, body.phone .topbar .res .resg { column-gap: 6px; }
+  body.phone .topbar .tbtns .btn { padding: 0 6px; }
+}
 body.phone .topbar .tbtns { gap: 4px; column-gap: 4px; }
 body.phone .topbar .tbtns .btn { min-height: 28px; padding: 0 8px; font-size: 13px; }
 body.phone .rightcol { display: none; }
@@ -244,7 +254,7 @@ body.phone .tq-ctrl .tq-btn { min-height: 32px; }
 body.phone .vig.floating { width: min(94vw, calc((var(--vh) * .78 - 62px) * 1.5 + 28px)); padding: 6px 6px 6px; }
 body.phone .vig canvas { image-rendering: auto; }
 body.phone .vig-frame { padding: 4px; }
-body.phone .vig-cap { margin-top: 4px; font-size: 15px; line-height: 1.5; letter-spacing: 1px; min-height: 1.5em; }
+body.phone .vig-cap { margin-top: 4px; padding: 0 26px; font-size: 15px; line-height: 1.5; letter-spacing: 1px; min-height: 1.5em; }
 body.phone .vig-more { right: 10px; bottom: 6px; font-size: 12px; }
 
 /* 战略地图: panels that used to land on each other.
@@ -399,3 +409,9 @@ body.phone .setup-note p { position: absolute; top: 2px; left: 0; right: 0; marg
 body.phone .setup-note b { color: var(--gold); }
 /* 战场: the row above the four slots sleeps for a moment after 确认移动 (app.js warUnit), so a run of taps does not reach 退却 */
 body.phone .unitpanel .acts .btn.asleep { pointer-events: none; opacity: .6; }
+/* Choosing a target (2026-11-17): the hint stays on a phone, the greyed 施展 / 进入白兵战 says what it waits for, and tapped
+   it lights the target rows (app.js nudgeTargets). */
+body.phone .actpanel:is(.targets, .attacks) .ap-sum .hint { display: block; }
+body.phone .actpanel .ap-btns .ap-go.idle { letter-spacing: 1px; font-size: 14px; }
+body.phone .actpanel .ap-body.targets .btn.nudge { animation: apNudge .9s ease-out; }
+@keyframes apNudge { 0%, 60% { outline: 2px solid var(--gold); outline-offset: 1px; background-color: rgba(255, 210, 122, .22); } 100% { outline: 2px solid transparent; outline-offset: 1px; } }

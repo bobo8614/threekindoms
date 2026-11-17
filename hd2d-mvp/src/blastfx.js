@@ -58,9 +58,26 @@ export function blastRig(scene) {
   // from: the thrower's hand; to: the middle of the 3×3 on the ground; d: the view's pace (ms at 1× → ms now);
   // onBurst() lands the blow (damage, recoil) the moment the explosion goes off; shake(k) shakes the camera.
   // Resolves once the fire has broken into smoke, when the field can go on; the smoke and the scorch carry on.
-  function play({ from, to, d, onBurst, shake }) {
+  // dud: thrown off the board (the original ends the flight at the edge, B440): the pot flies on out of sight, fading, and
+  // nothing bursts.
+  function play({ from, to, d, onBurst, shake, dud = false }) {
     const run = last.then(async () => {
       const has = await ready;
+      if (dud) {
+        if (!has) return;
+        const far = to.clone().sub(from).setY(0).multiplyScalar(0.6).add(to), fly = d(560);
+        bomb.scale.setScalar(0.42); fuse.material.opacity = 1; shadow.material.opacity = 0.4;
+        await animate(fly, (k) => {
+          bomb.position.lerpVectors(from, far, k); bomb.position.y += Math.sin(Math.min(1, k * 1.25) * Math.PI) * 1.8 - Math.max(0, k - 0.8) * 3;
+          bomb.material.rotation = -k * Math.PI * 3; bomb.material.opacity = k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4;
+          const r = 0.21, a = bomb.material.rotation + Math.PI * 0.32;
+          fuse.position.set(bomb.position.x + Math.cos(a) * r, bomb.position.y + Math.sin(a) * r, bomb.position.z + 0.01);
+          fuse.scale.setScalar(0.22 + Math.random() * 0.14); fuse.material.opacity = bomb.material.opacity;
+          shadow.position.set(bomb.position.x, to.y + 0.02, bomb.position.z); shadow.material.opacity = 0.4 * bomb.material.opacity;
+        });
+        park(bomb, fuse, shadow);
+        return;
+      }
       const dist = from.distanceTo(to), arc = 1.4 + dist * 0.18, fly = d(420 + dist * 22);
       // the throw: the pot spins along its arc, the fuse sparkling at its mouth, its shadow closing in under it
       if (has) {

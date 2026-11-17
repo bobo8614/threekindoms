@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { U, SEASON_GLSL, SAND_REF, seasonalPiece, seasonalWater } from './seasons.js';
 import { NONE } from './core/game.js';
+import { townSeat } from './packgeo.js';
 
 const DIR = 'assets/ai/sandtable/board';
 const STAGED_DIR = 'assets/ai/sandtable/source/ranges-board'; // ?board=staged: review the mountain side bake before installation
@@ -29,6 +30,8 @@ const SEA_DEEP = [0.006, 0.034, 0.105], SEA_MID = [0.014, 0.08, 0.2], SEA_SHALLO
 const SEA_SHELF_BIAS = 5.5, SEA_SHELF = [0.05, 0.75], SEA_SHELF_TINT = 0.45, SEA_GRAIN = 0.3, SEA_CREST = 0.12;
 // Wash colours keep the flags' identities in snow and ochre fields; the wash changes chroma, not the painted texture.
 export const TERRITORY_PALETTE = ['#5a5a66', '#d12d3e', '#7a4ad0', '#f5c51a', '#3f8f4f', '#c060a0', '#2f9fb0'];
+// A pack's house (8 and up) washes in its own land colour; a slot with no house stays grey so no seam can read as black.
+export const territoryHex = (f, factions) => TERRITORY_PALETTE[f] ?? factions?.[f]?.colors?.land ?? '#8a8a8a';
 export const TERRITORY_FILL = [0.008, 0.5], TERRITORY_RIM_FILL = 0.2, TERRITORY_BAND_WORLD = [0.35, 4.5];
 export const TERRITORY_MID_BOOST = 0.08; // more chroma between the accepted near and far looks, without changing either end
 export const TERRITORY_BORDER_HALF_PX = 1.35, TERRITORY_NEUTRAL_BORDER = 0.55, TERRITORY_FOCUS_SCALE = 0.7;
@@ -40,6 +43,16 @@ const TERRITORY_OWNER_EDGE = [0.5, 0.55], TERRITORY_GAMUT_CEILING = 1, TERRITORY
 const TERRITORY_ROAD_MASK_MIN = 128 / 255; // matches ROAD_MASK_MIN_ALPHA in the bake; nonzero alpha preserves mask RGB on roads
 const TERRITORY_SMOOTH_WEIGHTS = [1, 12, 66, 220, 495, 792, 924, 792, 495, 220, 66, 12, 1], TERRITORY_SMOOTH_TOTAL = 4096; // round grid corners before the fragment-level line
 const TERRITORY_NEUTRAL_EDGE = [0.6, 0.95], TERRITORY_MINE_EDGE = [0.12, 0.38];
+
+// A gentle world-space warp bends the Voronoi seams; it is fixed for the board and the flat-map projection. The index in `cities` ({x, z})
+// of the city a point of the board belongs to (the 2D map gives a pack's towns their land by the same rule).
+export function nearestSeat(x, z, cities) {
+  const wx = x + TERRITORY_WARP * (Math.sin(z * TERRITORY_WARP_X[0] + x * TERRITORY_WARP_X[1]) + TERRITORY_WARP_FINE * Math.sin(z * TERRITORY_WARP_X[2] - x * TERRITORY_WARP_X[3]));
+  const wz = z + TERRITORY_WARP * (Math.sin(x * TERRITORY_WARP_Z[0] - z * TERRITORY_WARP_Z[1]) + TERRITORY_WARP_FINE * Math.sin(x * TERRITORY_WARP_Z[2] + z * TERRITORY_WARP_Z[3]));
+  let best = 0, bd = Infinity;
+  for (let ci = 0; ci < cities.length; ci++) { const c = cities[ci], q = (wx - c.x) ** 2 + (wz - c.z) ** 2; if (q < bd) { bd = q; best = ci; } }
+  return best;
+}
 
 export async function loadSandtable() {
   const board = new URLSearchParams(location.search).get('board');
@@ -82,14 +95,19 @@ function partsOf(root, kind) {
   return out;
 }
 
-export function buildSandtable(scene, S) {
+// opts.cities: the game's city list; any past the bake's (a data pack's, docs/战略地图数据包扩展设计_2026-11-17.md) stand at their
+// seat with the tier's model, and the small pieces under their walls are lifted. opts.factions: more than eight houses take
+// a fourth owner bit in the territory field (owner 7 stays the unowned side). Without a pack both are as before.
+export function buildSandtable(scene, S, opts = {}) {
   const { meta } = S, [X0, X1, Z0, Z1] = meta.box, [GW, GH] = meta.grid, SEA_Y = meta.sea;
   const N = GW * GH, [dx, dz] = meta.step;
   const smoothN = TERRITORY_SMOOTH_WEIGHTS.length, smoothMid = (smoothN - 1) / 2;
   let smoothX, smoothY; // the border grid is only needed if the player asks to see territory
   const uDetailFade = { value: 0 }; // bakeView disables the live-only sea and hamlet fade
   const uTerritory = { value: new THREE.Vector4() };
-  const territoryColors = new Float32Array(8 * 3); TERRITORY_PALETTE.forEach((c, i) => new THREE.Color(c).toArray(territoryColors, i * 3));
+  const HI = (opts.factions?.length ?? 0) > 8, SLOTS = HI ? 16 : 8;
+  const territoryColors = new Float32Array(SLOTS * 3); TERRITORY_PALETTE.forEach((c, i) => new THREE.Color(c).toArray(territoryColors, i * 3));
+  for (let f = 8; f < SLOTS; f++) new THREE.Color(territoryHex(f, opts.factions)).toArray(territoryColors, f * 3);
   const uTerritoryColors = { value: territoryColors }; // already flat, so uniform upload needs no per-frame colour-array conversion
   let detailDist = NaN, detailEnabled = true, detailLastEnabled = true, territoryEnabled = false, territoryFocus = false, detailFocus = false, detailDpr = 0;
   // height.bin: the sculpted heights, then the game's own (snow), each 16-bit over its range; row 0 is the north.
@@ -108,7 +126,7 @@ export function buildSandtable(scene, S) {
   };
 
   // ---- Ground ----
-  const pos = new Float32Array(N * 3), uv = new Float32Array(N * 2), ownerTint = new Float32Array(N * 4), borders = new Float32Array(N * 4), borderInfo = new Float32Array(N * 4), borderSmooth = new Float32Array(N * 3), idx = new Uint32Array((GW - 1) * (GH - 1) * 6);
+  const pos = new Float32Array(N * 3), uv = new Float32Array(N * 2), ownerTint = new Float32Array(N * 4), borders = new Float32Array(N * 4), borderInfo = new Float32Array(N * 4), borderSmooth = new Float32Array(N * 3), bordersHi = HI ? new Float32Array(N) : null, smoothHi = HI ? new Float32Array(N) : null, idx = new Uint32Array((GW - 1) * (GH - 1) * 6);
   for (let j = 0; j < GH; j++) for (let k = 0; k < GW; k++) {
     const i = j * GW + k, x = X0 + k * dx, z = Z0 + j * dz;
     pos[i * 3] = x; pos[i * 3 + 1] = H[i]; pos[i * 3 + 2] = z;
@@ -121,22 +139,23 @@ export function buildSandtable(scene, S) {
   geo.setAttribute('territory', new THREE.BufferAttribute(ownerTint, 4).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('territoryBorder', new THREE.BufferAttribute(borders, 4).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('territoryDistance', new THREE.BufferAttribute(borderInfo, 4).setUsage(THREE.DynamicDrawUsage)); geo.setAttribute('h0', new THREE.BufferAttribute(H0, 1));
+  if (HI) geo.setAttribute('territoryBorderHi', new THREE.BufferAttribute(bordersHi, 1).setUsage(THREE.DynamicDrawUsage));
   geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeVertexNormals();
   // Unlit but for the bake: albedo × (lamp × baked lamp light + sky × baked sky light). strategy.js feeds the
   // month's lamp and sky (lightUniforms) so the board answers the same light as the pieces on it.
   const uSun = { value: new THREE.Color(1, 1, 1) }, uSky = { value: new THREE.Color(0.3, 0.3, 0.3) }, uWoodsFloor = { value: new THREE.Color(0, 0, 0) };
   const groundMat = new THREE.MeshBasicMaterial({ map: S.albedo });
-  groundMat.customProgramCacheKey = () => 'sandGround';
+  groundMat.customProgramCacheKey = () => (HI ? 'sandGroundHi' : 'sandGround');
   groundMat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U, { uLatFix: { value: 0 }, uSnowH: { value: 2.6 }, uPatch: { value: 1.6 }, uSnowMax: { value: 1 } },
       { uLight: { value: S.light }, uMask: { value: S.mask }, uSun, uSky, uWoodsFloor, uTerritory, uTerritoryColors, uRefG: { value: SAND_REF.grass }, uRefF: { value: SAND_REF.forest }, uRefM: { value: SAND_REF.farm } });
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float h0; attribute vec4 territory, territoryBorder, territoryDistance; varying float vH0; varying vec3 vWPos; varying vec3 vWNrm; varying vec4 vTerritory, vTerritoryBorder, vTerritoryDistance;')
-      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvH0 = h0; vWPos = (modelMatrix * vec4(transformed, 1.)).xyz; vWNrm = normalize(mat3(modelMatrix) * normal); vTerritory = territory; vTerritoryBorder = territoryBorder; vTerritoryDistance = territoryDistance;');
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nattribute float h0; attribute vec4 territory, territoryBorder, territoryDistance; varying float vH0; varying vec3 vWPos; varying vec3 vWNrm; varying vec4 vTerritory, vTerritoryBorder, vTerritoryDistance;${HI ? ' attribute float territoryBorderHi; varying float vTerritoryBorderHi;' : ''}`)
+      .replace('#include <fog_vertex>', `#include <fog_vertex>\nvH0 = h0; vWPos = (modelMatrix * vec4(transformed, 1.)).xyz; vWNrm = normalize(mat3(modelMatrix) * normal); vTerritory = territory; vTerritoryBorder = territoryBorder; vTerritoryDistance = territoryDistance;${HI ? ' vTerritoryBorderHi = territoryBorderHi;' : ''}`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
       uniform vec3 uGrass[5], uForest[5], uFarm[5], uLeaf[5], uCrimson[5];
       ${SEASON_GLSL}
-      uniform sampler2D uLight, uMask; uniform vec3 uSun, uSky, uRefG, uRefF, uRefM, uWoodsFloor, uTerritoryColors[8]; uniform vec4 uTerritory;
-      varying float vH0; varying vec3 vWPos; varying vec3 vWNrm; varying vec4 vTerritory, vTerritoryBorder, vTerritoryDistance;`)
+      uniform sampler2D uLight, uMask; uniform vec3 uSun, uSky, uRefG, uRefF, uRefM, uWoodsFloor, uTerritoryColors[${SLOTS}]; uniform vec4 uTerritory;
+      varying float vH0; varying vec3 vWPos; varying vec3 vWNrm; varying vec4 vTerritory, vTerritoryBorder, vTerritoryDistance;${HI ? ' varying float vTerritoryBorderHi;' : ''}`)
       .replace('#include <map_fragment>', /* glsl */`
         vec3 c = texture2D(map, vMapUv).rgb;
         vec3 wn = normalize(vWNrm);
@@ -183,14 +202,14 @@ export function buildSandtable(scene, S) {
         diffuseColor.rgb = max(diffuseColor.rgb, min(dot(c, vec3(.2126, .7152, .0722)), .25) * uWoodsFloor * msk.g * (1. - smoothstep(.1, .4, cover))); // zero in play; the 2D map's pictures fill the woods' floor (strategy.js bakeView)
         // The uniform branch skips the whole overlay when off; derivatives still run before the divergent coast branch.
         if (uTerritory.x > 0.) {
-          vec3 territoryRate = fwidth(vTerritoryBorder.xyz);
+          vec3 territoryRate = fwidth(vTerritoryBorder.xyz);${HI ? ' float territoryRateHi = fwidth(vTerritoryBorderHi);' : ''}
           // Change hue at the texel's own luminance, retaining the texture and keeping snow bright; the sea has no ownership.
           if (vWPos.y >= ${SEA_Y.toFixed(6)}) {
           vec3 luma = vec3(.2126, .7152, .0722), base = diffuseColor.rgb;
           // Use the same bent contour for fill ownership and the line, including the neutral side.
           float bend = (sin(vWPos.x * ${TERRITORY_BORDER_WAVE[0]} + sin(vWPos.z * ${TERRITORY_BORDER_WAVE[1]})) + sin(vWPos.z * ${TERRITORY_BORDER_WAVE[2]} - vWPos.x * ${TERRITORY_BORDER_WAVE[3]}) * ${TERRITORY_BORDER_WAVE[4]}) * ${TERRITORY_BORDER_NOISE.toFixed(3)};
           vec3 side = vTerritoryBorder.xyz + bend;
-          int owner = int(step(0., side.x)) + 2 * int(step(0., side.y)) + 4 * int(step(0., side.z));
+          int owner = int(step(0., side.x)) + 2 * int(step(0., side.y)) + 4 * int(step(0., side.z));${HI ? ' float sideHi = vTerritoryBorderHi + bend; owner += 8 * int(step(0., sideHi));' : ''}
           if (vTerritory.a > .001 && owner != 7) { // a blurred owner attribute must not colour the unowned side
             vec3 hue = vTerritory.rgb / vTerritory.a;
             float owned = smoothstep(${TERRITORY_OWNER_EDGE[0].toFixed(2)}, ${TERRITORY_OWNER_EDGE[1].toFixed(2)}, vTerritory.a);
@@ -210,7 +229,7 @@ export function buildSandtable(scene, S) {
           // Signed distances per owner bit cross zero only where that bit changes. The smooth perturbation
           // hides the grid at close range; derivatives keep the luminous line a few CSS pixels wide.
           vec3 pixels = abs(side) / max(territoryRate * uTerritory.y, vec3(.00001));
-          float distPx = min(min(pixels.x, pixels.y), pixels.z);
+          float distPx = min(min(pixels.x, pixels.y), pixels.z);${HI ? ' distPx = min(distPx, abs(sideHi) / max(territoryRateHi * uTerritory.y, .00001));' : ''}
           float gate = 1. - smoothstep(${(Math.max(dx, dz) * TERRITORY_BORDER_GATE[0]).toFixed(4)}, ${(Math.max(dx, dz) * TERRITORY_BORDER_GATE[1]).toFixed(4)}, vTerritoryDistance.x);
           float edge = (1. - smoothstep(${(TERRITORY_BORDER_HALF_PX * TERRITORY_CORE_FEATHER[0]).toFixed(3)}, ${(TERRITORY_BORDER_HALF_PX * TERRITORY_CORE_FEATHER[1]).toFixed(3)}, distPx)) * gate;
           float weight = mix(${TERRITORY_NEUTRAL_BORDER.toFixed(3)}, 1., smoothstep(${TERRITORY_NEUTRAL_EDGE[0].toFixed(2)}, ${TERRITORY_NEUTRAL_EDGE[1].toFixed(2)}, vTerritory.a));
@@ -343,12 +362,20 @@ export function buildSandtable(scene, S) {
   };
   // A tile nearer the camera than LOD_NEAR draws its full meshes, further than LOD_FAR its light ones (the gap stops it flickering).
   const LOD_NEAR = 15, LOD_FAR = 16.5, lods = [], hamletMats = [];
+  // A pack's towns: their seats on the board, and the small pieces their walls would stand in lifted (a tree through a
+  // roof). The long ranges and massifs stay; tools/check_pack.mjs warns a pack author off them.
+  const extra = (opts.cities ?? []).slice(meta.cities.length).map((c) => {
+    const { x, z, y } = townSeat(c, meta.size, heightAt);
+    return { id: c.id, name: c.name, tier: c.tier, x, z, mx: x, mz: z, y, ms: 1, mod: true };
+  });
+  const STAY = new Set(['range-a', 'range-b', 'massif', 'ridge']);
+  const lifted = (kind, x, z) => !STAY.has(kind) && extra.some((c) => Math.hypot(x - c.x, z - c.z) < meta.size[TIER[c.tier]] * 0.65 + (meta.size[kind] ?? 0) / 2);
   for (const [kind, arr] of Object.entries(meta.pieces)) {
     const parts = partsOf(S.models[kind], kind), tiles = new Map(), grid = RANGE_PIECES.has(kind) ? RANGE_TILES : T;
     if (kind === 'hamlet') for (const { mat } of parts) { mat.transparent = true; hamletMats.push(mat); }
     const farGeos = []; S.farModels?.[kind]?.updateMatrixWorld(true); S.farModels?.[kind]?.traverse((o) => { if (o.isMesh) farGeos.push(o.geometry.clone().applyMatrix4(o.matrixWorld)); });
     if (SEASONED[kind]) farGeos.forEach((g, i) => { if (parts[i]) fitFarFootprint(parts[i].geo, g, kind); });
-    for (let i = 0; i < arr.length / 6; i++) { const t = tileOf(arr[i * 6], arr[i * 6 + 2], grid); if (!tiles.has(t)) tiles.set(t, []); tiles.get(t).push(i); }
+    for (let i = 0; i < arr.length / 6; i++) { if (extra.length && lifted(kind, arr[i * 6], arr[i * 6 + 2])) continue; const t = tileOf(arr[i * 6], arr[i * 6 + 2], grid); if (!tiles.has(t)) tiles.set(t, []); tiles.get(t).push(i); }
     for (const [t, ids] of tiles) {
       const neighbors = treeNeighbors.get(kind), keep = (i) => kind === 'grove' || neighbors[i] > TREE_ISOLATED_MAX_NEIGHBORS;
       let kept = ids.length;
@@ -389,7 +416,7 @@ export function buildSandtable(scene, S) {
   };
 
   // Cities: the model seat (the bake moved a few off the water) and each road's course as drawn.
-  const cities = meta.cities.map((c) => ({ ...c, pos: new THREE.Vector3(c.mx, c.y, c.mz) }));
+  const cities = [...meta.cities, ...extra].map((c) => ({ ...c, pos: new THREE.Vector3(c.mx, c.y, c.mz) }));
   const roads = new Map(meta.roads.map((r) => [r.a < r.b ? `${r.a}-${r.b}` : `${r.b}-${r.a}`, r]));
   const roadPath = (a, b) => {
     const r = roads.get(a < b ? `${a}-${b}` : `${b}-${a}`); if (!r) return null;
@@ -397,22 +424,16 @@ export function buildSandtable(scene, S) {
     return r.a === a ? pts : pts.reverse();
   };
   const tiers = new Map(), cityModel = (tier) => {
-    if (!tiers.has(tier)) tiers.set(tier, partsOf(S.models[TIER[tier]], TIER[tier]));
+    if (!tiers.has(tier)) tiers.set(tier, partsOf(S.models[TIER[tier] ?? tier], TIER[tier] ?? tier));
     return tiers.get(tier);
   };
 
-  // A gentle world-space warp bends the Voronoi seams; it is fixed for the board and the flat-map projection.
-  const nearestCity = (x, z) => {
-    const wx = x + TERRITORY_WARP * (Math.sin(z * TERRITORY_WARP_X[0] + x * TERRITORY_WARP_X[1]) + TERRITORY_WARP_FINE * Math.sin(z * TERRITORY_WARP_X[2] - x * TERRITORY_WARP_X[3]));
-    const wz = z + TERRITORY_WARP * (Math.sin(x * TERRITORY_WARP_Z[0] - z * TERRITORY_WARP_Z[1]) + TERRITORY_WARP_FINE * Math.sin(x * TERRITORY_WARP_Z[2] + z * TERRITORY_WARP_Z[3]));
-    let best = 0, bd = Infinity;
-    for (let ci = 0; ci < cities.length; ci++) { const c = cities[ci], q = (wx - c.x) ** 2 + (wz - c.z) ** 2; if (q < bd) { bd = q; best = ci; } }
-    return best;
-  };
+  const nearestCity = (x, z) => nearestSeat(x, z, cities);
   // Each vertex belongs to the nearest city in the warped board. This geometry never changes when an owner changes.
   let near = null; const cityOwner = new Int16Array(cities.length), cityHue = new Array(cities.length);
   return {
     heightAt, surfaceAt, ground, table, cities, roadPath, cityModel, size: meta.size, sea: SEA_Y,
+    pieceModel: (kind) => cityModel(kind), // any baked piece's meshes (a pack road's bridge)
     lightUniforms: { uSun, uSky }, uWoodsFloor,
     disableDetail() { detailEnabled = false; }, // bakeView restores full sea crests and opaque hamlets
     setTerritory(on) { on = !!on; if (on === territoryEnabled) return; territoryEnabled = on; if (!on) uTerritory.value.x = 0; detailDist = NaN; },
@@ -437,7 +458,7 @@ export function buildSandtable(scene, S) {
       for (let i = 0; i < N; i++) {
         const ci = near[i], faction = cityOwner[ci], hue = H[i] >= SEA_Y ? cityHue[ci] : null, p = i * 4;
         ownerTint[p] = hue?.r ?? 0; ownerTint[p + 1] = hue?.g ?? 0; ownerTint[p + 2] = hue?.b ?? 0; ownerTint[p + 3] = hue ? 1 : 0;
-        borders[p] = borders[p + 1] = borders[p + 2] = TERRITORY_DISTANCE_MAX;
+        borders[p] = borders[p + 1] = borders[p + 2] = TERRITORY_DISTANCE_MAX; if (HI) bordersHi[i] = TERRITORY_DISTANCE_MAX;
         borders[p + 3] = player !== NONE && faction === player ? 1 : 0;
         borderInfo[p] = TERRITORY_DISTANCE_MAX; borderInfo[p + 1] = hue?.r ?? 0; borderInfo[p + 2] = hue?.g ?? 0; borderInfo[p + 3] = hue?.b ?? 0;
       }
@@ -447,6 +468,7 @@ export function buildSandtable(scene, S) {
         const fa = cityOwner[near[a]], fb = cityOwner[near[b]], bits = fa ^ fb;
         if (!bits) return;
         for (let k = 0; k < 3; k++) if (bits & (1 << k)) { borders[a * 4 + k] = Math.min(borders[a * 4 + k], step / 2); borders[b * 4 + k] = Math.min(borders[b * 4 + k], step / 2); }
+        if (HI && bits & 8) { bordersHi[a] = Math.min(bordersHi[a], step / 2); bordersHi[b] = Math.min(bordersHi[b], step / 2); }
         // The unowned side borrows the neighbour's colour for its faint half of the line only.
         for (const [v, other] of [[a, b], [b, a]]) if (cityOwner[near[v]] === NONE) {
           const c = cityHue[near[other]], p = v * 4; if (c) { borderInfo[p + 1] = c.r; borderInfo[p + 2] = c.g; borderInfo[p + 3] = c.b; }
@@ -460,6 +482,7 @@ export function buildSandtable(scene, S) {
       const diag = Math.hypot(dx, dz), relax = (i, j, step) => {
         const p = i * 4, q = j * 4;
         for (let k = 0; k < 3; k++) borders[p + k] = Math.min(borders[p + k], borders[q + k] + step);
+        if (HI) bordersHi[i] = Math.min(bordersHi[i], bordersHi[j] + step);
       };
       for (let j = 0; j < GH; j++) for (let k = 0; k < GW; k++) {
         const i = j * GW + k;
@@ -473,20 +496,24 @@ export function buildSandtable(scene, S) {
         const p = i * 4, faction = cityOwner[near[i]];
         borderInfo[p] = Math.min(borders[p], borders[p + 1], borders[p + 2]);
         for (let k = 0; k < 3; k++) if (!(faction & (1 << k))) borders[p + k] = -borders[p + k];
+        if (HI) { borderInfo[p] = Math.min(borderInfo[p], bordersHi[i]); if (!(faction & 8)) bordersHi[i] = -bordersHi[i]; }
       }
       // Filter each signed bit independently: all samples of one owner keep the same sign, while
       // a turn through the grid becomes a rounded contour. The unsigned distance still guards coasts.
       for (let j = 0; j < GH; j++) for (let k = 0; k < GW; k++) {
         let r = 0, g = 0, b = 0;
         for (let q = 0; q < smoothN; q++) { const p = (j * GW + smoothX[k * smoothN + q]) * 4, w = TERRITORY_SMOOTH_WEIGHTS[q]; r += w * borders[p]; g += w * borders[p + 1]; b += w * borders[p + 2]; }
+        if (HI) { let h = 0; for (let q = 0; q < smoothN; q++) h += TERRITORY_SMOOTH_WEIGHTS[q] * bordersHi[j * GW + smoothX[k * smoothN + q]]; smoothHi[j * GW + k] = h / TERRITORY_SMOOTH_TOTAL; }
         const p = (j * GW + k) * 3; borderSmooth[p] = r / TERRITORY_SMOOTH_TOTAL; borderSmooth[p + 1] = g / TERRITORY_SMOOTH_TOTAL; borderSmooth[p + 2] = b / TERRITORY_SMOOTH_TOTAL;
       }
       for (let j = 0; j < GH; j++) for (let k = 0; k < GW; k++) {
         let r = 0, g = 0, b = 0;
         for (let q = 0; q < smoothN; q++) { const p = (smoothY[j * smoothN + q] + k) * 3, w = TERRITORY_SMOOTH_WEIGHTS[q]; r += w * borderSmooth[p]; g += w * borderSmooth[p + 1]; b += w * borderSmooth[p + 2]; }
+        if (HI) { let h = 0; for (let q = 0; q < smoothN; q++) h += TERRITORY_SMOOTH_WEIGHTS[q] * smoothHi[smoothY[j * smoothN + q] + k]; bordersHi[j * GW + k] = h / TERRITORY_SMOOTH_TOTAL; }
         const p = (j * GW + k) * 4; borders[p] = r / TERRITORY_SMOOTH_TOTAL; borders[p + 1] = g / TERRITORY_SMOOTH_TOTAL; borders[p + 2] = b / TERRITORY_SMOOTH_TOTAL;
       }
       geo.attributes.territory.needsUpdate = true; geo.attributes.territoryBorder.needsUpdate = true; geo.attributes.territoryDistance.needsUpdate = true;
+      if (HI) geo.attributes.territoryBorderHi.needsUpdate = true;
     },
     update(t, camera, dist, pixelRatio) {
       for (const u of flowing) u.value = t;

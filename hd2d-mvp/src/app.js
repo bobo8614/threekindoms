@@ -26,6 +26,7 @@ import { FLAT_INSET } from './warmap2d.js';
 import { PHONE, hint } from './phone.js';
 import { unitCard } from './warcard.js';
 import * as G from './core/game.js';
+import * as B from './core/batch.js';
 import { aiTurn, aiDomestic } from './core/ai.js';
 import { suspend, peekSuspend, takeSuspend, dropSuspend, withSuspendLock } from './core/suspend.js';
 import { warFate } from './warreport.js';
@@ -38,6 +39,7 @@ import { shakeLevel, setShakeLevel, onShake } from './fx.js';
 import { controls, quickSaveKey } from './controls.js';
 import { createPad, sendKey, walk, focusFirst, firstIn, focusables, isControl, shown, glyphOf } from './pad.js';
 import { fresh as freshInput, padPressed, GUARD } from './commitguard.js';
+import { PREF, readFlag, writeFlag, readPref, writePref } from './prefs.js';
 
 const { name, cityName, NONE } = G;
 const factionName = (f) => G.factionName(g, f);
@@ -45,8 +47,10 @@ const factionName = (f) => G.factionName(g, f);
 // fetched one after another, and is applied in the same order (the portrait list over the manifest's).
 const json = (url) => fetch(url, { cache: 'no-store' }).then((r) => r.json());
 const optional = (p) => p.catch(() => null);
+// The data pack in play (core/pack.js, ?pack= or the title screen's choice): { pack, errors }, errors when it would not load.
+let packLoad = null;
 const [D, files, portraitList, faceList, halfbodyList, titleArt, officerList, duelList, marchList, troopList] = await Promise.all([
-  G.loadData(), loadManifest(),
+  G.loadWithPack().then((r) => { packLoad = r; return G.data(); }), loadManifest(),
   optional(json('assets/ai/portraits/index.json')), optional(json('assets/ai/faces/index.json')), optional(json('assets/ai/halfbody/index.json')),
   fetch('assets/ai/title.webp', { method: 'HEAD' }).then((r) => r.ok, () => false),
   optional(json('assets/ai/sprites/officers/index.json')), optional(json('assets/ai/sprites/duel/index.json')),
@@ -62,7 +66,7 @@ if (titleArt) files.titleArt = 'assets/ai/title.webp';
 const T = terrainTextures();
 const audio = new Audio(files.audio, files.music);
 // ?mute: silent page for development and automated tests (AGENTS.md).
-if (new URLSearchParams(location.search).has('mute')) audio.setMuted(true);
+if (new URLSearchParams(location.search).has('mute')) audio.setMuted(true, { keep: false });
 const sprites = {};
 // Star officers' own battle sprites (tools/gen_sprites_codex.sh); loaded when they take the field.
 const officerSprites = Array.isArray(officerList) ? officerList : [];
@@ -87,7 +91,10 @@ const loadMarch = async (key) => {
   try { sprites[`march-${key}`] = { meta: await (await fetch(`assets/ai/sprites/march/${key}.json`, { cache: 'no-store' })).json(), tex: await loadPixelTexture(`assets/ai/sprites/march/${key}.png`) }; } catch {}
 };
 const marchStrips = Array.isArray(marchList) ? marchList : [];
-const loadOfficerMarch = (ids) => Promise.all(ids.filter((id) => marchStrips.includes(String(id)) && !sprites[`march-${id}`]).map(loadMarch));
+// A pack's officer rides in the strips of the officer he borrows his pictures from (core/pack.js `like`): loaded under that one's
+// key, then known by his own as well, so every lookup by id finds them.
+const loadOfficerMarch = (ids) => Promise.all(ids.map((id) => [id, G.artOf(id)]).filter(([, a]) => marchStrips.includes(String(a)))
+  .map(async ([id, a]) => { if (!sprites[`march-${a}`]) await loadMarch(a); if (id !== a && sprites[`march-${a}`]) sprites[`march-${id}`] = sprites[`march-${a}`]; }));
 // 白兵 troop action strips (tools/slice_troop_frames.py): <side>-<soldier|archer|cavalry>[-v2], each with its -turn strip.
 const loadTroops = async () => {
   try {
@@ -104,8 +111,13 @@ await Promise.all([
   ...['attacker', 'defender'].map(loadMarch), loadTroops(),
 ]);
 async function loadOfficerSprites(ids) {
-  for (const id of ids) if (officerSprites.includes(id) && !sprites[`officer-${id}`]) sprites[`officer-${id}`] = await loadPixelTexture(`assets/ai/sprites/officers/${id}.png`);
-  await Promise.all([...ids, 'attacker', 'defender'].map(loadDuelStrip));
+  for (const id of ids) {
+    const a = G.artOf(id);
+    if (officerSprites.includes(a) && !sprites[`officer-${a}`]) sprites[`officer-${a}`] = await loadPixelTexture(`assets/ai/sprites/officers/${a}.png`);
+    if (a !== id && sprites[`officer-${a}`]) sprites[`officer-${id}`] = sprites[`officer-${a}`];
+  }
+  await Promise.all([...ids.map(G.artOf), 'attacker', 'defender'].map(loadDuelStrip));
+  for (const id of ids) { const a = G.artOf(id); if (a !== id && sprites[`duel-${a}`]) sprites[`duel-${id}`] = sprites[`duel-${a}`]; }
 }
 
 // ---------- Renderer ----------
@@ -144,7 +156,13 @@ $('#stage').appendChild(renderer.domElement);
 }
 const labels = new CSS2DRenderer(); labels.domElement.className = 'labels'; $('#stage').appendChild(labels.domElement);
 const post = createPost(renderer, new THREE.Scene(), new THREE.PerspectiveCamera());
-let mode = null, g = null, sel = null, war = null;
+// HD-2D 开/关 as left last time (src/prefs.js). Kept while the flat 战略地图 shows the row as 不可用: the 白兵 and 单挑 still use it.
+post.setEnabled(readFlag(PREF.hd2d, true));
+const toggleHd2d = () => { post.setEnabled(!post.enabled); writeFlag(PREF.hd2d, post.enabled); syncHd2dRow(); };
+// mode starts undefined, not null: until the first setMode() (the boot splash, the title loading) it must not equal war, which is
+// null outside a war, or every `mode === war` check would pass and reach into a missing war map (思念漂泊凛冬@bilibili, D86: a
+// mouse leaving the canvas during the boot threw from war.hoverCell).
+let mode, g = null, sel = null, war = null;
 let warNav = null; // the 3D war map's minimap, edge markers and edge scrolling (src/warnav.js); none on the flat map
 // The 战略地图's UI colours turn with the map's month (ui.css body[data-season]): a new season eases in with it, unless the
 // map jumps to it. Other screens keep their own colours, whatever is set here.
@@ -160,7 +178,7 @@ function seasonUi(month, instant) {
 const PIN_FLAT = new URLSearchParams(location.search).has('flat');
 const strategy = await createStrategyShell({
   // A city picked on the map with the mouse (its model or its tag) comes out from under the HUD (D53).
-  ctx: { data: D, renderer, onCity: (cid) => { onCity(cid); if (cid != null && sel === cid) keepClear(cid); }, onSeason: seasonUi },
+  ctx: { data: D, renderer, hudTop: strategyHudTop, onCity: (cid) => { onCity(cid); if (cid != null && sel === cid) keepClear(cid); }, onSeason: seasonUi },
   start: PIN_FLAT || savedQuality() === 'low' ? 'flat' : '3d', fallback3d: !PIN_FLAT,
   flat: createStrategyFlat,
   // At boot, no sand table means the procedural board as ever; a map already up stays rather than give way to that.
@@ -229,7 +247,16 @@ addEventListener('pointerdown', () => audio.unlock(), { capture: true });
 // A touch only counts as the gesture that may start sound when the finger lifts (pointerup, touchend, click), so those unlock it too.
 for (const t of ['pointerup', 'touchend', 'click']) addEventListener(t, () => audio.unlock(), { capture: true });
 // A phone's browser keeps a hidden page's sound playing (another app in front, the screen locked): the sound stops with the page and comes back with it.
-if (PHONE) document.addEventListener('visibilitychange', () => { const c = audio.ctx; if (!c) return; if (document.hidden) c.suspend?.().catch(() => {}); else c.resume?.().catch(() => {}); });
+// Phone: how far down the 战略地图's top bar reaches, for strategy.js to centre its view below it (2026-11-17); 0 elsewhere and
+// while it is hidden (欣赏模式). Read at most twice a second: the bar is redrawn often, its height seldom changes.
+let barReadAt = -Infinity, barBottom = 0;
+function strategyHudTop() {
+  if (!PHONE || document.body.dataset.screen !== 'strategy') return 0;
+  const t = performance.now();
+  if (t - barReadAt > 500) { barReadAt = t; const b = document.querySelector('.topbar'); barBottom = b && b.offsetParent ? Math.max(0, b.getBoundingClientRect().bottom) : 0; }
+  return barBottom;
+}
+if (PHONE) document.addEventListener('visibilitychange', () => { const c = audio.ctx; if (!c) return; if (document.hidden) c.suspend?.().catch(() => {}); else audio.wake(); });
 // 自动续玩 (phone): a phone's browser may throw a hidden page away (another app in front for a while) and the campaign with it.
 // As the page goes out of sight the game is put down where 中断战斗 or a record would put it: the war in progress as a suspended
 // battle, the 战略地图 on the player's turn as the auto record (src/core/game.js). Both are dropped when the page comes back,
@@ -381,7 +408,8 @@ addEventListener('keyup', (e) => { if (keyName(e) === 't' && terrainHeld) { terr
 addEventListener('blur', () => { terrainHeld = false; terrainView(); });
 // The enemy's threat range (第 3 期): R held, or the 威胁 button pinned, shows the cells any one enemy general could strike when his
 // side next acts (core/field.js threat); with the pointer on an enemy, his alone. A view only: nothing is rolled or changed.
-let threatHeld = false, threatPinned = false;
+let threatHeld = false, threatPinned = readFlag(PREF.threat); // the pin is remembered (src/prefs.js); R held is not
+const pinThreat = (on) => { threatPinned = on; writeFlag(PREF.threat, on); threatView(); };
 const threatView = () => { const on = threatHeld || threatPinned; document.body.classList.toggle('threat-view', on); $('.wardock .threatbtn')?.setAttribute('aria-pressed', String(threatPinned)); war?.setThreatView?.(on); };
 addEventListener('keydown', (e) => { if (keyName(e) === 'r' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && mode === war && war && !e.target.closest?.('input, .shade')) { threatHeld = true; threatView(); } });
 addEventListener('keyup', (e) => { if (keyName(e) === 'r' && threatHeld) { threatHeld = false; threatView(); } });
@@ -419,7 +447,7 @@ addEventListener('keydown', (e) => {
   // (the 系统 menu keeps Tab for its buttons)
   if (e.key === 'Tab' && mode === war && war.tactical && !dialogOpen() && !e.target.closest?.('.actpanel') && !$('.sysmenu-list:not([hidden])') && !e.target.closest?.('.sysmenu-list, .sysmenu-btn')) { e.preventDefault(); if (!e.repeat) war.tactical(); }
   if (/^[wasd]$/.test(k)) held.add(k);
-  if (k === 'h' && !hd2dMoot()) { post.setEnabled(!post.enabled); syncHd2dRow(); }
+  if (k === 'h' && !hd2dMoot()) toggleHd2d();
   if (k === 'r' && g && document.body.dataset.screen === 'strategy' && !blocking()) roster();
   if (k === 'g' && mode === strategy && document.body.dataset.screen === 'strategy') toggleRoads();
   if (mode === war && k === 'z') war.undo();
@@ -516,7 +544,7 @@ const pad = createPad({
     if (phase === 'tap') {
       if (k === 'view' && mode === war && zone === 'map' && war.tactical && !padBound(zone, 'view')) war.tactical();
       // A short Y on the war map: the enemy's threat range, pinned and unpinned (the 威 button, R held on the keys). The long Y ends the day.
-      if (k === 'y' && mode === war && zone === 'map' && !blocking() && !war.st.deploying) { threatPinned = !threatPinned; threatView(); } // (not while deploying: Y there is 布阵完成 alone)
+      if (k === 'y' && mode === war && zone === 'map' && !blocking() && !war.st.deploying) pinThreat(!threatPinned); // (not while deploying: Y there is 布阵完成 alone)
       return;
     }
     // A press.
@@ -844,8 +872,9 @@ renderer.setAnimationLoop((t) => {
 });
 
 function help() {
-  return modal('说明', () => h('div', { class: 'help' },
-    h('h4', {}, '操作'), controls({ input: pad.active ? 'pad' : 'keys', family: pad.family, east: pad.confirm === 'east', label: padKey }),
+  // 关闭 stays at the foot (sticky on a phone): the help fills a phone's screen, with no backdrop left to tap and no Esc (Wrz0903@bilibili).
+  return modal('说明', (close) => [h('div', { class: 'help' },
+    h('h4', {}, '操作'), controls({ input: pad.active ? 'pad' : PHONE ? 'touch' : 'keys', touch: PHONE, family: pad.family, east: pad.confirm === 'east', label: padKey }),
     h('h4', {}, '战略'), h('p', {}, '一个势力行动一轮为一个月。每月按占城数发放命令书（1–3城3张……28–30城13张），点击己方城市，在下方菜单下令；命令书用完即结束本月。4月收税金，10月收米；统治度低于50易生暴乱；5–6月洪水、8–9月旱灾，防灾可减损。'),
     h('p', {}, '武将到史实卒年后一年比一年易病逝；开局或「☰ 系统」可选「武将不老」，「武将不战死」（体力归零改为被俘，体力回复至30；君主照常阵亡），「三顾模式」（同一位人才在该城至多搜索3次必定出仕），「武将不能读书」（敌我都不能入学问所提高智力），以及「免费记录」（存档不消耗命令书）。进度不会自动保存：城市菜单「城 → 记录」或「☰ 系统 → 记录进度」存入八个记录位置之一（消耗一张命令书，免费记录除外），「☰ 系统 → 读取记录」或标题画面读取。战争中可「☰ 系统 → 中断战斗」回到标题，之后从标题「继续战斗」接着打（不占记录位置，只能继续一次）。'),
     h('p', {}, `快捷存档（${quickSaveKey}）另有一个位置，不占八个普通记录；与普通记录一样，默认消耗一张命令书，开启免费记录后不消耗。己方回合的战略地图可存档，F8 快捷读档；在我军回合的战场读取会放弃当前战斗。快捷记录可以反复读取，不是只能继续一次的战场中断。`),
@@ -858,7 +887,8 @@ function help() {
     h('p', {}, '两将相邻即进入单挑，我方武将单挑时可选择攻击、牵制、舍身、说得、骂倒或退却，也可查看资料；体力归零即阵亡。在单挑中斩杀君主有50%得到龙牙刀，全局只此一把；曹操、董卓、马腾、刘备各有专属宝物与条件。宝物只在单挑中斩杀时得到，白兵中击杀或对方退却都不会得到；宝物会替换胜者原有的装备。'),
     h('p', {}, `${FLAT_RULE}：用左键拖动平移、滚轮缩放，H不起作用。${WAR_RULE}；平面战场不能旋转与远近缩放。`),
     // What the help used to leave out (feedback R11, 2026-11-02) is in the 操作 page's 键鼠 tabs (src/controls.js).
-    h('p', {}, '节奏：电脑回合、AI之间的战争、计略与白兵默认按原版时长播放；「☰ 系统 → 游戏速度」可改为快速（2倍）或最快（4倍），演出中按 Enter／空格可跳过当前一段。')), { wide: true });
+    h('p', {}, '节奏：电脑回合、AI之间的战争、计略与白兵默认按原版时长播放；「☰ 系统 → 游戏速度」可改为快速（2倍）或最快（4倍），演出中按 Enter／空格可跳过当前一段。')),
+  h('div', { class: 'foot' }, h('button', { class: 'btn primary', onclick: () => close(null) }, '关闭'))], { wide: true });
 }
 
 // ---------- Title ----------
@@ -880,6 +910,22 @@ const SHAKES = [[1, '标准'], [0.4, '减弱'], [0, '关']], shakeText = () => (
 const resetCamera = () => mode?.resetView?.(mode === strategy ? sel ?? g?.factions[g.player]?.city : undefined);
 // Low-frequency switches live behind one 系统 button so they never sit over the field or a unit label.
 let sysTab = null; // the phone's 系统 menu: the tab last looked at
+// The desktop window (desktop/preload.js); a browser, a phone and the Android package have none, and show neither row.
+// 全屏 is the same switch as F11 / Alt+Enter: fullscreen has no title bar and the game no menu bar, so players who found
+// their way in could not find the way out, nor a way to leave the game at all (2026-11-17).
+const desk = window.desktop ?? null;
+let fullscreen = false;
+const fullscreenText = () => `全屏 ${fullscreen ? '开' : '关'}`;
+const fullscreenKeys = desk?.mac ? '⌥Enter' : 'F11 或 Alt+Enter';
+if (desk) {
+  const set = (on, tell) => {
+    const was = fullscreen; fullscreen = !!on;
+    for (const b of $$('.fullscreen-row')) b.textContent = fullscreenText();
+    if (tell && fullscreen && !was) toast(`已全屏：按 ${fullscreenKeys}，或「☰ 系统 → 全屏」恢复窗口`, 4500);
+  };
+  Promise.resolve(desk.isFullscreen()).then((on) => set(on, false), () => {});
+  desk.onFullscreen((on) => set(on, true));
+}
 function sysButtons() {
   const list = h('div', { class: 'sysmenu-list', role: 'menu', hidden: true });
   const item = (label, f, title) => h('button', { class: 'btn', role: 'menuitem', title, onclick: (e) => { e.stopPropagation(); f(e.currentTarget); } }, label());
@@ -907,7 +953,7 @@ function sysButtons() {
     // The 3D war map's minimap, put away or brought back (M; its own button is the mouse's). A pad has no button left on the war map
     // for it, so the row is here, and only once a pad has been used: the list is at its height at 1024x600 without it.
     warNav && pad.seen && mode === war ? item(() => `小地图 ${warNav.open ? '开' : '关'}`, (b) => { warNav.toggleMini(); b.textContent = `小地图 ${warNav.open ? '开' : '关'}`; }, '收起或显示战场右下角的小地图（M）') : '',
-    hd2dRow(item(hd2dText, () => { post.setEnabled(!post.enabled); syncHd2dRow(); })),
+    hd2dRow(item(hd2dText, toggleHd2d)),
     item(qualityText, (b) => {
       const was = [mapLabel(), nextWarLabel()]; quality.cycle(); syncQualityRows();
       const mapTo = mapLabel() !== was[0] ? mapLabel() : null, warTo = nextWarLabel() !== was[1] ? nextWarLabel() : null;
@@ -925,6 +971,7 @@ function sysButtons() {
       warView.cycle(); syncQualityRows();
       if (inWar() && nextWarLabel() !== warViewLabel()) toast(`本场仍为${warViewLabel()}战场，下一场战争起为${nextWarLabel()}战场`, 4500);
     }, '战场用平面画面还是3D画面　随画质：画质「低」时平面，中、高时3D　平面：始终平面，不能旋转与远近缩放，适合核显　3D：始终为可旋转、缩放的3D战场。开战时决定：战争中更改，从下一场战争起生效'),
+    desk ? (() => { const b = item(fullscreenText, () => desk.toggleFullscreen(), `铺满整个屏幕，再选一次恢复窗口（${fullscreenKeys}）`); b.classList.add('fullscreen-row'); return b; })() : '',
     item(() => `帧率 ${frameCap.label}`, (b) => { frameCap.toggle(); b.textContent = `帧率 ${frameCap.label}`; },
       '60：每秒最多绘制60帧，在120Hz等高刷新率屏幕上更省电、风扇更安静　不限：按屏幕刷新率绘制。动作与计时快慢不受影响'),
     // Shown once a pad has been used here: which face button confirms (the other cancels).
@@ -974,7 +1021,10 @@ function sysButtons() {
       g ? item(() => `快捷存档 ${quickSaveKey}`, () => { close(); quickRecord(); },
         `存入独立的快捷记录，不占八个普通位置；消耗遵循「记录消耗」设置，己方回合、战略地图上可用（${quickSaveKey}）`) : '',
       item(() => '快捷读档 F8', () => { close(); quickLoad(); }, '读取快捷记录，当前未记录的进度将不保留（F8）')) : '',
-    g ? item(() => '回到标题', () => { close(); backToTitle(); }, '结束本局回到标题画面（记录编辑在那里打开）。未记录的进度会丢失，可先记录') : '',
+    // 退出游戏 shares 回到标题's row in a game: the right column is at its height in a 1024x600 window (tests/sysmenu.test.mjs).
+    g || desk ? h('div', { class: 'sysmenu-pair' },
+      g ? item(() => '回到标题', () => { close(); backToTitle(); }, '结束本局回到标题画面（记录编辑在那里打开）。未记录的进度会丢失，可先记录') : '',
+      desk ? item(() => '退出游戏', () => { close(); quitGame(); }, `关闭游戏${g ? '。未记录的进度会丢失，可先记录' : ''}（${desk.mac ? '⌘Q' : 'Alt+F4'}）`) : '') : '',
     ), group('其他',
     g ? item(() => '欣赏模式', () => { close(); if (!canScenic()) return toast('<em>欣赏模式在己方回合的战略地图上可用</em>', 2500); setScenic(true); }, `隐藏界面欣赏地图与音乐，地图仍可${strategy.flat ? '' : '旋转、'}缩放、平移；按 V 或 Esc 恢复（V）`) : '',
     // The save editor (save-editor.html, same origin, so the same record slots) is opened from the title only, where no
@@ -1013,14 +1063,17 @@ const recordAt = (n) => n === 'quick' ? G.loadQuick() : G.load(n);
 function pickSlot(mode, list, current = null) {
   const rows = list.map((s, i) => ({ s, n: i + 1 }));
   if (mode === 'load') rows.unshift({ s: G.loadQuick(), n: 'quick' });
+  // A slot with a record this game cannot read (another pack's, a major version apart) says why rather than looking empty.
+  const why = (n) => (typeof n === 'number' ? G.unreadable(n) : null);
   return modal(mode === 'save' ? '记录' : '读取记录', (close) => [
     mode === 'save' ? h('p', {}, g.freeSave ? '选择记录位置（免费记录：不消耗命令书）' : '选择记录位置（消耗一张命令书，与原版相同）') : null,
     h('div', { class: 'slots' }, rows.map(({ s, n }) => h('button', { class: `btn slot ${s ? '' : 'empty'} ${n === current ? 'on' : ''}`, disabled: mode === 'load' && !s,
       onclick: async () => {
         if (mode === 'save' && s && n !== current && !(await confirmBox('覆盖记录', `${recordName(n)}（${recordLine(s)}）将被覆盖，确定吗？`))) return;
+        if (mode === 'save' && !s && why(n) && !(await confirmBox('覆盖记录', `${recordName(n)}里有一份读不了的记录（${why(n)}），将被覆盖，确定吗？`))) return;
         close(mode === 'load' ? { n, record: s } : n);
       } },
-      h('b', {}, recordName(n)), s ? [h('span', {}, recordLine(s)), h('small', {}, `${s.ageless ? '武将不老 · ' : ''}${s.noWarDeath ? '不战死 · ' : ''}${s.sangu ? '三顾 · ' : ''}${s.warlike ? '电脑好战 · ' : ''}${s.noStudy ? '不能读书 · ' : ''}${s.freeSave ? '免费记录 · ' : ''}${stamp(s.savedAt)}`)] : h('span', {}, n === 'quick' && G.hasQuick() ? '无法读取' : '空')))),
+      h('b', {}, recordName(n)), s ? [h('span', {}, recordLine(s)), h('small', {}, `${s.ageless ? '武将不老 · ' : ''}${s.noWarDeath ? '不战死 · ' : ''}${s.sangu ? '三顾 · ' : ''}${s.warlike ? '电脑好战 · ' : ''}${s.noStudy ? '不能读书 · ' : ''}${s.freeSave ? '免费记录 · ' : ''}${stamp(s.savedAt)}`)] : why(n) ? h('span', { class: 'unreadable' }, `读不了：${why(n)}`) : h('span', {}, n === 'quick' && G.hasQuick() ? '无法读取' : '空')))),
     h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'))]);
 }
 
@@ -1072,21 +1125,32 @@ async function quickLoad() {
 }
 // Leaving also starts the page over, for the same reason, with the title's opening skipped as on the way back from
 // 记录编辑. Nothing is left until the player says so: 取消, Esc, a failed record and backing out of the slots all stay.
-async function backToTitle() {
+// leaveGame asks; true once the player has said to go (and the record, if he chose one first, is written).
+async function leaveGame(heading, question, go) {
   const why = saveBlocked();
-  const act = await modal('回到标题', (close) => [
-    h('p', {}, '未记录的进度会丢失。确定回到标题画面吗？'),
+  const act = await modal(heading, (close) => [
+    h('p', {}, question),
     why ? h('p', { class: 'hint' }, `现在不能先记录：${why}`) : null,
     h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'),
-      h('button', { class: 'btn', onclick: () => close('leave') }, '不记录，回到标题'),
+      h('button', { class: 'btn', onclick: () => close('leave') }, go),
       why ? null : h('button', { class: 'btn primary', onclick: () => close('save') }, '先记录'))]);
-  if (!act) return;
+  if (!act) return false;
   if (act === 'save') {
-    const n = await pickSlot('save', G.saves(), g.slot); if (!n) return;
-    if (!writeRecord(n)) return toast('<em>记录失败：浏览器存储不可用或已满，仍在本局</em>', 3500);
+    const n = await pickSlot('save', G.saves(), g.slot); if (!n) return false;
+    if (!writeRecord(n)) { toast('<em>记录失败：浏览器存储不可用或已满，仍在本局</em>', 3500); return false; }
   }
+  return true;
+}
+async function backToTitle() {
+  if (!(await leaveGame('回到标题', '未记录的进度会丢失。确定回到标题画面吗？', '不记录，回到标题'))) return;
   try { sessionStorage.setItem('hd2d-title-seen', '1'); } catch {}
   await fade(true); location.reload();
+}
+// 退出游戏 (the desktop game): with a game on it asks as 回到标题 does; from the title there is nothing to lose.
+// The window's own ✕ asks too, in the shell (desktop/main.js), where it also works over a page that is busy.
+async function quitGame() {
+  if (g && !(await leaveGame('退出游戏', '未记录的进度会丢失。确定退出游戏吗？', '不记录，退出'))) return;
+  desk.quit();
 }
 async function pendingLoad() {
   let raw = null;
@@ -1109,9 +1173,46 @@ async function pendingLoad() {
   return { state, keepSuspend: true, pendingRaw: raw, expectedHeld: pending.held, source: pending.kind };
 }
 
+// 数据包 (docs/战略地图数据包扩展设计_2026-11-17.md): the title's choice, from the packs mods/index.json lists (tools/check_pack.mjs
+// --index); it holds for this browser until changed and takes a fresh page, as the boards and rules are built from it at boot.
+// ?pack=<id> on the address wins over it, so the choice drops that parameter.
+const packMenu = () => !!G.data().pack || new URLSearchParams(location.search).has('packs');
+async function pickPack() {
+  let list = [];
+  try { const r = await fetch('mods/index.json', { cache: 'no-store' }); if (r.ok) list = await r.json(); } catch {}
+  const now = G.data().pack?.id ?? null;
+  const choice = await modal('数据包', (close) => [
+    h('p', { class: 'hint' }, '数据包加入新的城、道路、势力和武将。装了数据包的记录单独存放，与本体的记录互不影响。'),
+    // The desktop build also reads the player's own packs (desktop/main.js USER_MODS).
+    location.protocol === 'app:' ? h('p', { class: 'hint' }, '自己的数据包：把包的文件夹放进「文稿/Three Kingdoms HD-2D/mods」，再打开这里。') : null,
+    h('div', { class: 'slots packs' }, [{ id: null, name: '本体', author: '', version: '' }, ...(Array.isArray(list) ? list : [])].map((p) =>
+      h('button', { class: `btn slot ${(p.id ?? null) === now ? 'on' : ''}`, onclick: () => close(p.id ?? 'none') },
+        h('b', {}, String(p.name ?? p.id)), h('span', {}, p.id ? `${p.version ?? ''}${p.author ? ` · ${p.author}` : ''}${p.local ? ' · 文稿' : ''}` : '不装数据包')))),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'))]);
+  if (choice == null || choice === (now ?? 'none')) return;
+  try { localStorage.setItem(G.PACK_CHOICE, choice); } catch { return toast('<em>无法保存选择</em>'); }
+  const u = new URL(location.href); u.searchParams.delete('pack');
+  await fade(true); location.replace(u);
+}
+// A pack that would not load: the page plays the base game, and says why once on the title.
+let packNoticed = false;
+// It waits for the title's menu: a key or click that skips the opening would otherwise close it unread.
+function packNotice(wrap) {
+  if (packNoticed || !packLoad?.errors?.length) return;
+  if (!wrap.isConnected) return;
+  if (!wrap.matches('.menu-on, .done, .instant')) return requestAnimationFrame(() => packNotice(wrap));
+  packNoticed = true;
+  modal('数据包未能载入', (close) => [
+    h('p', {}, `数据包「${packLoad.pack}」有 ${packLoad.errors.length} 处问题，这次按本体开始。`),
+    h('ul', { class: 'pack-errors' }, packLoad.errors.slice(0, 12).map((e) => h('li', {}, e))),
+    packLoad.errors.length > 12 ? h('p', { class: 'hint' }, `另有 ${packLoad.errors.length - 12} 处，用 tools/check_pack.mjs 查看全部。`) : null,
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => { try { localStorage.setItem(G.PACK_CHOICE, 'none'); } catch {} close(); } }, '以后不再载入'),
+      h('button', { class: 'btn primary', onclick: () => close() }, '知道了'))]);
+}
+
 let titleSeen = (() => { try { const v = sessionStorage.getItem('hd2d-title-seen') === '1'; sessionStorage.removeItem('hd2d-title-seen'); return v; } catch { return false; } })(); // back from 记录编辑
 async function title() {
-  document.body.dataset.screen = 'title'; g = null; sel = null;
+  document.body.dataset.screen = 'title'; g = null; sel = null; desk?.setUnsaved(false);
   const demo = G.newGame(4, 1, 7); strategy.refresh(demo); strategy.select(null);
   setMode(strategy); audio.playBgm('bgm-title');
   clear();
@@ -1134,18 +1235,27 @@ async function title() {
         if (!current || JSON.stringify(current) !== JSON.stringify(pick.record)) return toast('<em>记录已改变，请重新选择</em>', 3500);
         begin(pick.record, true);
       } }, '读取记录') : null,
-      h('button', { class: 'btn', onclick: () => { audio.unlock(); setup(); } }, '新的征程')],
+      h('button', { class: 'btn', onclick: () => { audio.unlock(); setup(); } }, '新的征程'),
+      // 数据包 is still exploration (not in 0.3.7's notes): the button shows only with ?packs, or while a pack is on so it can be turned off.
+      packMenu() ? h('button', { class: 'btn', onclick: () => { audio.unlock(); pickPack(); } }, '数据包', h('small', {}, G.data().pack ? `${G.data().pack.name} · ${G.data().pack.version}` : '本体')) : null,
+      desk ? h('button', { class: 'btn', onclick: () => quitGame() }, '退出游戏') : null],
     footnote: [h('p', { class: 'free' }, ['本游戏免费发布，', '仅供爱好者交流，', '请勿付费购买'].map((t) => h('span', {}, t))),
       h('p', { class: 'maker' }, '制作　tianlin ', h('small', {}, '@GitHub')),
       h('p', {}, '原作《三国志II 霸王的大陆》© 1992 NAMCO · 以FC日版规则为准 · 立绘由AI生成 · ' +
         (audio.sets.length > 1 ? `曲目可在「☰ 系统 → 曲目」切换 ${audio.sets.map((t) => t.label).join('／')}` : `音乐：${audio.sets[0]?.label ?? '合成音'}`))] });
   titleSeen = true;
   root().append(screen.el);
+  packNotice(screen.el);
 }
 
 async function setup() {
   clear(); document.body.dataset.screen = 'setup'; audio.playBgm('bgm-select');
-  let level = 1, ruler = null, cheat = false, ageless = false, noWarDeath = false, sangu = false, freeSave = false, warlike = false, noStudy = false;
+  // The rule switches start as the player left them last time (src/prefs.js), each shown pressed or not; the 难度 and the 秘技 do not.
+  const opts = (() => { try { const o = JSON.parse(readPref(PREF.setup)); return o && typeof o === 'object' ? o : {}; } catch { return {}; } })();
+  let level = 1, ruler = null, cheat = false;
+  let { ageless = false, noWarDeath = false, sangu = false, freeSave = false, warlike = false, noStudy = false } = Object.fromEntries(Object.entries(opts).map(([k, v]) => [k, v === true]));
+  const keepOpts = () => writePref(PREF.setup, JSON.stringify({ ageless, noWarDeath, sangu, freeSave, warlike, noStudy }));
+  const pressed = (b, on) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); keepOpts(); };
   const levels = h('div', { class: 'levels' });
   const keep = (box, draw) => { const i = [...box.children].indexOf(document.activeElement); draw(); if (i >= 0) box.children[i]?.focus(); };
   // LEVEL 1 also offers the original's 秘技 (G.maxRulerCity); it only applies while LEVEL 1 is chosen.
@@ -1159,28 +1269,29 @@ async function setup() {
   drawLevels();
   const agelessBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
     title: '原版：武将到史实卒年后一年比一年易病逝，六年后必逝。开启后各势力武将都不会因年老病逝（战死、斩首照旧）。游戏中也可在「☰ 系统」切换。',
-    onclick: () => { ageless = !ageless; agelessBtn.classList.toggle('on', ageless); agelessBtn.setAttribute('aria-pressed', String(ageless)); } },
+    onclick: () => { ageless = !ageless; pressed(agelessBtn, ageless); } },
     h('i', {}), '武将不老 · 不会因年老病逝');
   const noDeathBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
     title: '原版：体力归零的武将阵亡　不战死：白兵、单挑、计略及电脑之间的战争中体力归零的武将改为被对方俘获，体力回复至30。君主不能被俘，照常阵亡；斩首照旧。便于收集武将；游戏中也可在「☰ 系统」切换。',
-    onclick: () => { noWarDeath = !noWarDeath; noDeathBtn.classList.toggle('on', noWarDeath); noDeathBtn.setAttribute('aria-pressed', String(noWarDeath)); } },
+    onclick: () => { noWarDeath = !noWarDeath; pressed(noDeathBtn, noWarDeath); } },
     h('i', {}), '武将不战死 · 体力归零改为被俘');
   const sanguBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
     title: '原版：人才是否出仕看搜索结果与他心向的君主　三顾：某城的下一位人才可寻访时，在该城第3次搜索他必定出仕，不论他心向哪位君主。只对玩家的搜索有效；游戏中也可在「☰ 系统」切换。',
-    onclick: () => { sangu = !sangu; sanguBtn.classList.toggle('on', sangu); sanguBtn.setAttribute('aria-pressed', String(sangu)); } },
+    onclick: () => { sangu = !sangu; pressed(sanguBtn, sangu); } },
     h('i', {}), '三顾模式 · 第3次搜索必定出仕');
   const warlikeBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
     title: '原版：电脑出兵前要在出发城集齐「守将数＋3」名武将（上限10），并留1–4人守城，多数回合打不成　好战：只需「守将数＋2」，各城多让出一人，留守少一人，电脑攻打玩家和彼此攻打都更频繁（五年里多出五到九成）。不改变战斗本身的强弱；游戏中也可在「☰ 系统」切换。',
-    onclick: () => { warlike = !warlike; warlikeBtn.classList.toggle('on', warlike); warlikeBtn.setAttribute('aria-pressed', String(warlike)); } },
+    onclick: () => { warlike = !warlike; pressed(warlikeBtn, warlike); } },
     h('i', {}), '电脑好战 · 更常出兵进攻');
   const noStudyBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
     title: '原版：智力80以下的武将可在学问所学习，电脑也会让武将学习　不能读书：敌我武将都不能读书提高智力，城市菜单的「学问所」变灰。游戏中也可在「☰ 系统」切换。',
-    onclick: () => { noStudy = !noStudy; noStudyBtn.classList.toggle('on', noStudy); noStudyBtn.setAttribute('aria-pressed', String(noStudy)); } },
+    onclick: () => { noStudy = !noStudy; pressed(noStudyBtn, noStudy); } },
     h('i', {}), '武将不能读书 · 敌我都不能学习');
   const freeSaveBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
     title: '原版：每次记录消耗一张命令书　免费：记录不消耗命令书。游戏中也可在「☰ 系统」切换。',
-    onclick: () => { freeSave = !freeSave; freeSaveBtn.classList.toggle('on', freeSave); freeSaveBtn.setAttribute('aria-pressed', String(freeSave)); } },
+    onclick: () => { freeSave = !freeSave; pressed(freeSaveBtn, freeSave); } },
     h('i', {}), '免费记录 · 存档不消耗命令书');
+  for (const [b, on] of [[agelessBtn, ageless], [noDeathBtn, noWarDeath], [sanguBtn, sangu], [warlikeBtn, warlike], [noStudyBtn, noStudy], [freeSaveBtn, freeSave]]) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
   // Phone: a switch's full explanation is its tooltip on a desktop; here a tap on it shows the same text for a while.
   // It drops down from under the row of switches (over the heading and the top of the rulers), so the switches stay in sight.
   const optNote = PHONE ? h('div', { class: 'setup-note', 'aria-live': 'polite' }) : null;
@@ -1199,7 +1310,10 @@ async function setup() {
   addEventListener('keydown', onCode);
   const rulers = h('div', { class: 'rulers' });
   const start = h('button', { class: 'btn primary', disabled: true, style: { fontSize: '20px', padding: '10px 40px', letterSpacing: '8px' }, onclick: () => { if (start.disabled) return; start.disabled = true; const ng = G.newGame(ruler, level); if (cheat && level === 0) G.maxRulerCity(ng); if (ageless) ng.ageless = true; if (noWarDeath) ng.noWarDeath = true; if (sangu) ng.sangu = true; if (freeSave) ng.freeSave = true; if (warlike) ng.warlike = true; if (noStudy) ng.noStudy = true; begin(ng, false); } }, '开始');
-  const drawRulers = () => rulers.replaceChildren(...[4, 2, 3, 1, 6, 5, 0].map((f) => {
+  // The original's order, then a pack's houses (7, the unowned, is never one).
+  const houses = [4, 2, 3, 1, 6, 5, 0, ...D.factions.slice(8).map((f) => f.id)];
+  if (houses.length > 7) rulers.style.setProperty('--n', houses.length <= 10 ? houses.length : Math.ceil(houses.length / 2));
+  const drawRulers = () => rulers.replaceChildren(...houses.map((f) => {
     const fac = D.factions[f], cs = D.cities.filter((c) => c.faction === f), offs = cs.reduce((a, c) => a + c.officers.length, 0);
     const o = D.officers[fac.ruler];
     return h('div', { class: `panel ruler ${ruler === f ? 'on' : ''}`, style: { '--c': colorOf(f) }, 'aria-pressed': ruler === f ? 'true' : 'false', title: ruler === f ? '再次点击开始' : `选择${name(fac.ruler)}`,
@@ -1222,9 +1336,13 @@ async function begin(state, loaded, resume = null, { keepSuspend = false, notice
   quickCostExplained = false;
   try {
     g = loaded && !resume && !new URLSearchParams(location.search).has('fixedseed') ? G.reseed(state) : state;  // ?fixedseed: replay a record exactly
+    desk?.setUnsaved(true); // closing the window now asks first
     await fade(true);
     document.body.dataset.screen = 'strategy';
     setMode(strategy); strategy.refresh(g); sel = null; playerPose = null;
+    // 道路总览 and 势力范围 as left last time (src/prefs.js), from the campaign's first screen: the title's map shows neither.
+    if (strategy.roadsOn !== readFlag(PREF.roads)) strategy.roads(readFlag(PREF.roads));
+    if (strategy.territoryOn !== readFlag(PREF.territory)) strategy.territory(readFlag(PREF.territory));
     hud.log = [];  // the log belongs to this game: not to one finished or left before it (title → 继续记录 after an ending)
     resetFormations(); // the formations deployed last belong to this game too (src/tacticalhud.js)
     strategy.resetView(); strategy.focusCity(g.factions[g.player].city);
@@ -1279,10 +1397,12 @@ function hud() {
     sysButtons(),
     h('div', { class: 'panel topbar' },
       h('span', { class: 'date' }, `${g.year}年 ${g.month + 1}月`, h('span', { class: `season s${Math.floor(g.month / 3)}`, title: `${MONTH_NAMES[g.month]}　${WEATHER_OF(g.month)}` }, SEASON_OF(g.month), h('small', {}, WEATHER_OF(g.month)))),
-      h('span', { class: 'who' }, h('i', { class: 'dot', style: { background: colorOf(turnF ?? pf) } }), turnF === pf ? `${name(g.factions[pf].ruler)}的回合` : turnF == null ? '准备中' : `${factionName(turnF)}军行动中`),
-      turnF === pf ? h('span', { class: 'who' }, '命令书', bookPips(), h('b', {}, g.books)) : null,
-      h('span', { class: 'res' }, h('span', {}, '城 ', h('b', {}, mine.length)), h('span', {}, '将 ', h('b', {}, mine.reduce((a, c) => a + c.officers.length, 0))),
-        h('span', { 'data-k': '兵' }, '兵 ', h('b', {}, troops)), h('span', { 'data-k': '金' }, '金 ', h('b', {}, sum('gold'))), h('span', { 'data-k': '米' }, '米 ', h('b', {}, sum('rice')))),
+      // the words sit in their own spans: a phone puts them away (src/phone.css), which it cannot do to bare text (D88)
+      h('span', { class: 'who turn' }, h('i', { class: 'dot', style: { background: colorOf(turnF ?? pf) } }), h('span', {}, turnF === pf ? `${name(g.factions[pf].ruler)}的回合` : turnF == null ? '准备中' : `${factionName(turnF)}军行动中`)),
+      turnF === pf ? h('span', { class: 'who' }, h('span', {}, '命令书'), bookPips(), h('b', {}, g.books)) : null,
+      // two groups, one line on a wide screen (.resg is display: contents); a narrow phone puts 金 米 under 城 将 兵 (D88)
+      h('span', { class: 'res' }, h('span', { class: 'resg' }, h('span', {}, '城 ', h('b', {}, mine.length)), h('span', {}, '将 ', h('b', {}, mine.reduce((a, c) => a + c.officers.length, 0))),
+        h('span', { 'data-k': '兵' }, '兵 ', h('b', {}, troops))), h('span', { class: 'resg' }, h('span', { 'data-k': '金' }, '金 ', h('b', {}, sum('gold'))), h('span', { 'data-k': '米' }, '米 ', h('b', {}, sum('rice'))))),
       h('span', { class: 'tbtns' }, h('button', { class: `btn roadsbtn ${strategy.roadsOn ? 'on' : ''}`, 'aria-pressed': String(strategy.roadsOn), title: '道路总览：加亮全部道路，城名全部常显（G）', 'data-pad': 'view', onclick: toggleRoads }, '道路', h('kbd', { class: 'pad-only' })),
       h('button', { class: `btn terrbtn ${strategy.territoryOn ? 'on' : ''}`, 'aria-pressed': String(strategy.territoryOn), title: '势力范围：按归属给地面着色', onclick: toggleTerritory }, '势力'),
       h('button', { class: 'btn wikibtn', title: '人物志：查询武将的所属、所在与出仕来历（R）', 'data-pad': 'x', onclick: () => roster() }, '人物志', h('kbd', { class: 'pad-only' })))),
@@ -1369,11 +1489,11 @@ const scenicStillFits = () => document.body.dataset.screen === 'strategy' && mod
 
 // 道路 overview (T15): every road lit and every city tag solid, until turned off again.
 function toggleRoads() {
-  strategy.roads(!strategy.roadsOn);
+  strategy.roads(!strategy.roadsOn); writeFlag(PREF.roads, strategy.roadsOn);
   const b = $('.roadsbtn'); b?.classList.toggle('on', strategy.roadsOn); b?.setAttribute('aria-pressed', String(strategy.roadsOn));
 }
 function toggleTerritory() {
-  strategy.territory(!strategy.territoryOn);
+  strategy.territory(!strategy.territoryOn); writeFlag(PREF.territory, strategy.territoryOn);
   const b = $('.terrbtn'); b?.classList.toggle('on', strategy.territoryOn); b?.setAttribute('aria-pressed', String(strategy.territoryOn));
 }
 
@@ -1754,6 +1874,16 @@ function cmdVignette(caption, cid, sub, onShow, part, books = 1) {
 }
 // voice { title, text = res.msg, who, mood }: the original tells this result in a window, with the speaker's
 // face set by the outcome ($00A4, research/assets-music.md). It stands in for the toast, once the picture is done.
+// A picture's caption: what a run of several officers did is one line each (src/core/batch.js joins them with 　), and a line
+// breaks only between them, never inside a name or a count (word joiners and no-break spaces hold each one together).
+// More than three would not fit the picture on a phone: the first two, and how many more, whom the toast after it names in full.
+const glue = (x) => [...x.replace(/ /g, '\u00a0')].join('\u2060');
+const caption = (res) => {
+  const n = res.lines?.length ?? 0;
+  if (n < 2) return res.msg;
+  const parts = res.msg.split('　');
+  return n > 3 ? [...parts.slice(0, 2), `另 ${n - 2} 人，共 ${res.books} 次`].map(glue).join('　') : parts.map(glue).join('　');
+};
 async function spend(res, cid, sub, voice) {
   if (!res) return;
   const book = res.ok && !res.noBook;
@@ -1763,7 +1893,8 @@ async function spend(res, cid, sub, voice) {
   // res.part: how far the picture goes when the mission has not (yet) succeeded (src/vignette.js story).
   // res.quiet: the next control appears immediately in the toast's place (侦察's city picker).
   if (book && !res.plain) commandDock.hide?.();
-  if (!(book && !res.plain && (await cmdVignette(res.msg, cid, sub, cue, res.part ?? (res.failed ? 'attempt' : undefined), res.books ?? 1)))) { cue(); if (!voice && !res.quiet) toast(res.ok ? `<strong>${res.msg}</strong>` : `<em>${res.msg}</em>`); }
+  if (!(book && !res.plain && (await cmdVignette(caption(res), cid, sub, cue, res.part ?? (res.failed ? 'attempt' : undefined), res.books ?? 1)))) { cue(); if (!voice && !res.quiet) toast(res.ok ? `<strong>${res.msg}</strong>` : `<em>${res.msg}</em>`); }
+  else if (res.lines?.length > 3 && !voice) toast(`<strong>${res.msg}</strong>`, 6000); // the picture named only two of them
   addLog(`${cityName(cid)}：${res.msg}`);
   if (book) g.books -= res.books ?? 1;
   strategy.refresh(g); hud();
@@ -1854,22 +1985,64 @@ async function executor(c, title, ids = c.officers) {
 // can cost. The most offered is what the books and the gold surely cover. Resolves the count, or null.
 function confirmRun(act, what, cost, [lo, hi], gold) {
   const max = Math.max(1, Math.min(g.books, 1 + Math.floor((gold - cost) / hi)));
+  return confirmCount(act, max, (n) => (n === 1 ? `${what}，需要金 ${cost}。` : `${what}，连续 ${n} 次：第一次需要金 ${cost}，之后每次 ${lo}–${hi}，共用 ${n} 张命令书。`));
+}
+// The 是/否 of a command that can be given 1 to max times in a row (开发, 防灾, 施舍, 离间, 诱纳, 搜索; 宙斯之刃@bilibili): ←／→ or
+// − ＋ set the count, 最多 jumps to the end, the last book is named. text(n) says what will be done. Resolves the count, or null.
+function confirmCount(act, max, text) {
+  max = Math.max(1, Math.min(g.books, max));
   let n = 1;
-  return modal(act, (close) => {
-    const text = h('p', {}), num = h('b', {}, '1');
-    const less = h('button', { class: 'btn', 'aria-label': '少一次', onclick: () => set(n - 1) }, '−'), more = h('button', { class: 'btn', 'aria-label': '多一次', onclick: () => set(n + 1) }, '＋');
-    const set = (v) => {
-      n = Math.max(1, Math.min(max, v)); num.textContent = n; less.disabled = n <= 1; more.disabled = n >= max;
-      text.replaceChildren(n === 1 ? `${what}，需要金 ${cost}。` : `${what}，连续 ${n} 次：第一次需要金 ${cost}，之后每次 ${lo}–${hi}，共用 ${n} 张命令书。`,
-        ...(n >= g.books ? [h('em', { class: 'runout' }, '命令书将用完，本月行动随之结束。')] : []));
-    };
-    set(1);
-    return [text,
-      max > 1 ? h('div', { class: 'runtimes', role: 'group', 'aria-label': '连续执行次数', onkeydown: (e) => { const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key]; if (d) { e.preventDefault(); set(n + d); } } },
-        h('span', {}, '连续执行'), less, num, more, h('span', {}, `次（最多 ${max}）`), h('button', { class: 'btn ghost', onclick: () => set(n === max ? 1 : max) }, '最多')) : null,
-      h('div', { class: 'foot', onkeydown: (e) => { const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key]; if (d && max > 1) { e.preventDefault(); set(n + d); } } },
-        h('button', { class: 'btn', onclick: () => close(null) }, '取消'), h('button', { class: 'btn primary runok', onclick: () => close(n) }, '确定'))];
-  }, { focus: (box) => box.querySelector('.runok') });
+  const step = (e) => { const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key]; if (d && max > 1) { e.preventDefault(); set(n + d); } };
+  const say = h('p', {}), num = h('b', {}, '1');
+  const less = h('button', { class: 'btn', 'aria-label': '少一次', onclick: () => set(n - 1) }, '−'), more = h('button', { class: 'btn', 'aria-label': '多一次', onclick: () => set(n + 1) }, '＋');
+  const set = (v) => {
+    n = Math.max(1, Math.min(max, v)); num.textContent = n; less.disabled = n <= 1; more.disabled = n >= max;
+    say.replaceChildren(text(n), ...(n >= g.books ? [h('em', { class: 'runout' }, '命令书将用完，本月行动随之结束。')] : []));
+  };
+  set(1);
+  return modal(act, (close) => [say,
+    max > 1 ? h('div', { class: 'runtimes', role: 'group', 'aria-label': '连续执行次数', onkeydown: step },
+      h('span', {}, '连续执行'), less, num, more, h('span', {}, `次（最多 ${max}）`), h('button', { class: 'btn ghost', onclick: () => set(n === max ? 1 : max) }, '最多')) : null,
+    h('div', { class: 'foot', onkeydown: step },
+      h('button', { class: 'btn', onclick: () => close(null) }, '取消'), h('button', { class: 'btn primary runok', onclick: () => close(n) }, '确定'))],
+  { focus: (box) => box.querySelector('.runok') });
+}
+// The 是/否 of 病院, 学问所 and 赏赐, which can take others along with the one picked (宙斯之刃@bilibili): the others who could go
+// stand as buttons to press in ("一并"), numbered in the order they will go, and the command can be given each once or until he is
+// full. Each time is still a command of its own (src/core/batch.js). Every time it opens on the one picked, once: what to add is
+// chosen afresh, so a press or two of Enter never spends a month's books.
+// pool: who else could go; tag(id): what to show by his name (体力 30/80); until: the label of 'until full', or null when there is
+// no such thing; plan(ids, until) → { books, gold, treasure }, the most it could take, the dice falling low; what(ids, until): the
+// sentence. Resolves { ids, until } or null.
+function confirmBatch(act, first, { pool, tag, until: untilLabel, plan, what }) {
+  let ids = [first], until = false;
+  const say = h('p', {}), note = h('p', { class: 'hint batchnote' });
+  const fold = h('div', { class: 'batchwho', role: 'group', 'aria-label': '一并执行的武将' });
+  const tog = untilLabel ? h('button', { class: 'btn untilfull', onclick: () => { until = !until; draw(); } }, untilLabel) : null;
+  const draw = () => {
+    const most = plan(ids, until), books = Math.min(most.books, g.books), cost = [most.gold ? `金 ${most.gold}` : null, most.treasure ? `宝物 ${most.treasure} 件` : null].filter(Boolean).join('、');
+    // Once each, the books are known; until full, only the most it could take.
+    say.replaceChildren(what(ids, until), ids.length === 1 && !until ? '（消耗一张命令书）' : '',
+      ...(books >= g.books ? [h('em', { class: 'runout' }, until && most.books >= g.books ? '命令书可能用完，用完即结束本月行动。' : '命令书将用完，本月行动随之结束。')] : []));
+    note.textContent = ids.length === 1 && !until ? '' : `最多用 ${books} 张命令书${cost ? `、${cost}` : ''}，按所列顺序执行；${most.books > g.books ? '命令书不够全部做完，用完即停；' : ''}金不够时停下。`;
+    if (tog) { tog.setAttribute('aria-pressed', String(until)); tog.classList.toggle('on', until); }
+    const focused = fold.contains(document.activeElement) ? document.activeElement.dataset.id : null;
+    fold.replaceChildren(h('span', {}, '一并：'), h('span', { class: 'chip first' }, `1. ${name(first)}`, tag ? h('small', {}, tag(first)) : null), ...pool.map((id) => {
+      const on = ids.includes(id);
+      return h('button', { class: `btn chip ${on ? 'on' : ''}`, 'data-id': id, 'aria-pressed': String(on), onclick: () => { ids = on ? ids.filter((x) => x !== id) : [...ids, id]; draw(); } },
+        on ? `${ids.indexOf(id) + 1}. ` : '＋ ', name(id), tag ? h('small', {}, tag(id)) : null);
+    }));
+    if (focused != null) fold.querySelector(`[data-id="${focused}"]`)?.focus();
+  };
+  draw();
+  return modal(act, (close) => [say,
+    g.books > 1 && pool.length ? fold : null,
+    tog && g.books > 1 ? h('div', { class: 'runtimes' }, tog) : null,
+    note,
+    h('div', { class: 'foot' },
+      h('button', { class: 'btn', onclick: () => close(null) }, '取消'),
+      h('button', { class: 'btn primary runok', onclick: () => close({ ids, until }) }, '确定'))],
+  { focus: (box) => box.querySelector('.runok') });
 }
 // Carries a command out n times in a row: run(cost) is one go ({ ok, gain, msg }), the first at the cost already shown, each later one at
 // a cost rolled then (roll()). It stops at the first that cannot be done (金不足, 已经达到上限). One go is told as it always was; several
@@ -1970,12 +2143,18 @@ async function command(cid, act) {
     }
     case '搜索': {
       const id = await executor(c, '派谁去搜索？'); if (id == null) return;
-      if (!(await sure('搜索', `${name(id)} 在${cityName(cid)}寻访人才与钱粮。`))) return;
-      const res = G.search(g, cid, id);
+      const n = await confirmCount('搜索', g.books, (k) => (k === 1 ? `${name(id)} 在${cityName(cid)}寻访人才与钱粮。（消耗一张命令书）`
+        : `${name(id)} 在${cityName(cid)}寻访人才与钱粮，最多 ${k} 次（每次一张命令书）；遇到人才即停，由您决定是否录用。`)); if (!n) return;
+      // Several times (宙斯之刃@bilibili): the coin, rice and 宝物 of the times before are added up and told first; the last time
+      // is told as a single 搜索 is, so one who names a price is still the player's to pay or not.
+      const run = B.searchRun(g, cid, id, n), res = run.last, many = run.books > 1;
+      const met = res.joined != null || res.offer != null || res.refused != null, got = B.foundText(run.found);
+      const before = !many ? '' : met ? `前 ${run.books - 1} 次${got ? `发现了${got}` : '一无所获'}；第 ${run.books} 次：` : '';
       if (res.offer != null) {
-        await cmdVignette(`${name(res.offer)} 求见`, cid, undefined, undefined, 7); // up to the talk: whether he joins is still to be asked
-        g.books--; strategy.refresh(g); hud();
-        await message('搜索', `发现了一位颇有可取之处的武将——${name(res.offer)}。`, id, 'joy');
+        await cmdVignette(`${before}${name(res.offer)} 求见`, cid, undefined, undefined, 7, run.books); // up to the talk: whether he joins is still to be asked
+        g.books -= run.books; strategy.refresh(g); hud();
+        if (before) addLog(`${cityName(cid)}：搜索 ${before}${name(res.offer)} 求见`);
+        await message('搜索', `${before}发现了一位颇有可取之处的武将——${name(res.offer)}。`, id, 'joy');
         const ok = await confirmBox('求仕', `${name(res.offer)}愿意出仕，但要求 ${res.price} 金。是否支付？`);
         const r2 = ok ? G.hire(g, cid, res.offer, res.price) : null;
         noteSearch(cid, r2?.ok ? `${name(res.offer)}出仕` : `${name(res.offer)}求见后离去`);
@@ -1983,14 +2162,23 @@ async function command(cid, act) {
         else await spend({ ok: true, msg: `${name(res.offer)}离去了`, noBook: true }, cid);
         return;
       }
+      if (many && !met) {
+        // Nothing but coin, rice and 宝物 (or nothing at all), however many times.
+        noteSearch(cid, got ? `发现了${got}` : '一无所获');
+        const msg = `搜索 ${run.books} 次：${got ? `发现了${got}` : '什么也没有找到'}`;
+        await spend({ ok: true, books: run.books, msg, part: 'attempt' }, cid, undefined, got
+          ? { title: '搜索', text: `${run.books} 次寻访，共发现了${got}。`, who: id, mood: 'joy' }
+          : { title: '搜索', text: `寻访了 ${run.books} 次，很遗憾，什么也没找到。`, who: id, mood: 'grief' });
+        return;
+      }
       noteSearch(cid, res.joined != null ? `${name(res.joined)}出仕` : res.msg === '什么也没有找到' ? '一无所获' : res.msg);
       // Whoever went out reports back: found something, 喜; nothing, 忧 (bank 27 $A906 / $A931). One who says no speaks for himself.
       // Only one who joins has the picture's whole story; one who says no opens his door, and coin or nothing is the road.
-      await spend({ ...res, part: res.joined != null ? undefined : res.refused != null ? 5 : 'attempt' }, cid, undefined, res.joined != null ? null
+      await spend({ ...res, books: run.books, msg: `${before}${res.msg}`, part: res.joined != null ? undefined : res.refused != null ? 5 : 'attempt' }, cid, undefined, res.joined != null ? null
         : res.refused != null ? { title: '搜索', text: '我还没有侍奉他人的打算，今天就请回吧。', who: res.refused, mood: 'calm' }
         : res.msg === '什么也没有找到' ? { title: '搜索', text: '很遗憾，什么也没找到。', who: id, mood: 'grief' }
         : { title: '搜索', text: `${res.msg}。`, who: id, mood: 'joy' });
-      if (res.joined != null) await message('出仕', res.msg, res.joined, 'joy');
+      if (res.joined != null) await message('出仕', `${before}${res.msg}`, res.joined, 'joy');
       return;
     }
     case '记录': {
@@ -2057,13 +2245,24 @@ async function command(cid, act) {
       const id = await executor(c, '赏赐哪位武将？（忠诚90以上无法赏赐）'); if (id == null) return;
       if (g.officers[id].loyalty >= 90) return toast('<em>忠诚已高，无需赏赐</em>');
       const kind = await modal('赏赐', (close) => [h('div', { class: 'cities' }, h('button', { class: 'btn', disabled: c.gold < 10, onclick: () => close('gold') }, '赏金'), h('button', { class: 'btn', disabled: c.treasure < 1, onclick: () => close('t') }, '赐宝'))]); if (!kind) return;
-      if (kind === 't') { if (!(await sure('赐宝', `赐宝物一件给${name(id)}。`))) return; return spend(G.reward(g, cid, id, 0, true), cid, undefined, { title: '赏赐', who: id, mood: 'joy' }); }
-      const v = await sliders('赏金', [{ key: 'gold', label: '金', min: 10, max: Math.min(100, Math.floor(c.gold / 10) * 10), step: 10, value: 50 }]); if (!v) return;
-      return spend(G.reward(g, cid, id, v.gold), cid, undefined, { title: '赏赐', who: id, mood: 'joy' }); // the one rewarded, 喜 (bank 27 $BD4C)
+      const treasure = kind === 't';
+      const v = treasure ? { gold: 0 } : await sliders('赏金', [{ key: 'gold', label: '金', min: 10, max: Math.min(100, Math.floor(c.gold / 10) * 10), step: 10, value: 50 }], c.gold < 20 ? { note: '赏金以10为单位，金不足20时只能赏10。' } : {}); if (!v) return;
+      const gift = treasure ? '宝物一件' : `金 ${v.gold}`;
+      // Who else is below 90 (a ruler is never rewarded): the same gift to each, once or until 90.
+      const pool = c.officers.filter((x) => x !== id && !G.isRuler(g, x) && g.officers[x].loyalty < 90);
+      const run = await confirmBatch(treasure ? '赐宝' : '赏金', id, { pool, tag: (x) => `忠诚 ${g.officers[x].loyalty}`, until: '赏到忠诚90为止',
+        plan: (ids, until) => { const n = ids.reduce((a, x) => a + Math.min(g.books, B.rewardNeed(g, cid, x, { gold: v.gold, treasure, until })), 0); return treasure ? { books: n, treasure: n } : { books: n, gold: n * v.gold }; },
+        what: (ids, until) => (ids.length === 1 && !until ? `赐${gift}给${name(id)}。` : `赐${ids.map(name).join('、')}${until ? '，每人赏到忠诚90为止' : '，每人一次'}，每次${gift}。`) });
+      if (!run) return;
+      const res = B.rewardRun(g, cid, run.ids, { gold: v.gold, treasure, until: run.until });
+      return spend(res, cid, undefined, { title: '赏赐', who: res?.lines?.[0]?.id ?? id, mood: 'joy' }); // the one rewarded, 喜 (bank 27 $BD4C)
     }
     case '施舍': {
       const v = await sliders('施舍', [{ key: 'gold', label: '金', min: 0, max: Math.min(100, Math.floor(c.gold / 10) * 10), step: 10 }, { key: 'rice', label: '米', min: 0, max: Math.min(100, Math.floor(c.rice / 10) * 10), step: 10 }], { note: '提高统治度，效果取决于太守的人德。', validate: (x) => x.gold + x.rice > 0 }); if (!v) return;
-      return spend(G.charity(g, cid, v.gold, v.rice), cid);
+      const each = [v.gold && `金 ${v.gold}`, v.rice && `米 ${v.rice}`].filter(Boolean).join('、');
+      const max = Math.min(v.gold ? Math.floor(c.gold / v.gold) : Infinity, v.rice ? Math.floor(c.rice / v.rice) : Infinity);
+      const n = await confirmCount('施舍', max, (k) => (k === 1 ? `施舍${each}给百姓。` : `施舍 ${k} 次，每次${each}，共用 ${k} 张命令书；统治度到100即停。`)); if (!n) return;
+      return spend(B.charityRun(g, cid, v.gold, v.rice, n), cid);
     }
     case '买米': case '卖米': {
       const [sell, buy] = D.cities[cid].rice_rate;
@@ -2080,17 +2279,25 @@ async function command(cid, act) {
     case '病院': {
       if (!f.hospital) return toast('<em>此城没有病院</em>');
       const hurt = c.officers.filter((id) => g.officers[id].hp < G.maxHp(g.officers[id])); if (!hurt.length) return toast('没有负伤的武将');
-      const ids = await pickOfficers(g, '治疗哪位武将？（50金）', hurt); if (!ids?.length) return;
-      if (!(await sure('病院', `为${name(ids[0])}治伤，需要金 50。`))) return;
-      return spend(G.heal(g, cid, ids[0]), cid);
+      const who = await executor(c, '治疗哪位武将？（50金）', hurt); if (who == null) return;
+      const hp = (id) => `体力 ${g.officers[id].hp}/${G.maxHp(g.officers[id])}`;
+      const run = await confirmBatch('病院', who, { pool: hurt.filter((id) => id !== who), tag: hp, until: '治到满为止',
+        plan: (ids, until) => { const n = ids.reduce((a, id) => a + B.healNeed(g, id, until), 0); return { books: n, gold: 50 * n }; },
+        what: (ids, until) => (ids.length === 1 && !until ? `为${name(who)}治伤，需要金 50。` : `为${ids.map(name).join('、')}治伤，${until ? '每人治到体力满为止' : '每人一次'}，每次金 50。`) });
+      if (!run) return;
+      return spend(B.healRun(g, cid, run.ids, { until: run.until }), cid);
     }
     case '学问所': {
       if (g.noStudy) return toast(`<em>${G.NO_STUDY}</em>`);
       if (!f.school) return toast('<em>此城没有学问所</em>');
       const ok = c.officers.filter((id) => g.officers[id].int < 80); if (!ok.length) return toast('没有可以学习的武将');
       const who = await executor(c, '谁去学习？（智力80以下）', ok); if (who == null) return;
-      if (!(await sure('学问所', `${name(who)} 入学问所学习。`))) return;
-      return spend(G.study(g, cid, who), cid);
+      const run = await confirmBatch('学问所', who, { pool: ok.filter((id) => id !== who), tag: (id) => `智力 ${g.officers[id].int}`, until: '学到智力80为止',
+        plan: (ids, until) => ids.map((id) => B.studyNeed(g, id, until)).reduce((a, x) => ({ books: a.books + x.n, gold: a.gold + x.gold }), { books: 0, gold: 0 }),
+        what: (ids, until) => (ids.length === 1 && !until ? `${name(who)} 入学问所学习，需要金 ${G.studyFee(g.officers[who].int)[0]}。`
+          : `${ids.map(name).join('、')} 入学问所学习，${until ? '每人学到智力80为止' : '每人一次'}；每次金 30／20／10（智力30以下／60以下／其余）。`) });
+      if (!run) return;
+      return spend(B.studyRun(g, cid, run.ids, { until: run.until }), cid);
     }
     case '同盟': {
       const facs = g.factions.filter((x) => x.ruler != null && x.id !== g.player).map((x) => x.id);
@@ -2117,11 +2324,13 @@ async function command(cid, act) {
     case '诱纳': case '离间': {
       const tid = await pickEnemyOfficer(act, cid); if (tid == null) return;
       const id = await executor(c, '派谁执行？'); if (id == null) return;
-      if (!(await sure(act, `派${name(id)}对${name(tid)}${act === '诱纳' ? '进行劝诱' : '散布流言'}。`))) return;
-      const res = act === '诱纳' ? G.lure(g, cid, id, tid) : G.sow(g, id, tid);
+      const deed = `派${name(id)}对${name(tid)}${act === '诱纳' ? '进行劝诱' : '散布流言'}`;
+      const n = await confirmCount(act, g.books, (k) => (k === 1 ? `${deed}。（消耗一张命令书）`
+        : act === '诱纳' ? `${deed}，直到成功为止，最多 ${k} 次（每次一张命令书）。` : `${deed}，连续 ${k} 次（每次一张命令书）；忠诚降到0即停。`)); if (!n) return;
+      const res = act === '诱纳' ? B.lureRun(g, cid, id, tid, n) : B.sowRun(g, id, tid, n);
       // The one sent reports: failed, 忧; 离间 took, 喜 (bank 28 $D0C5 / $D0BD).
       await spend(res, cid, undefined, !res.ok || res.joined != null ? null
-        : res.failed ? { title: act, text: '抱歉，策略失败了。', who: id, mood: 'grief' }
+        : res.failed ? { title: act, text: n > 1 ? `抱歉，${res.msg}。` : '抱歉，策略失败了。', who: id, mood: 'grief' }
         : { title: act, text: `呵呵呵，${name(tid)}与君主的关系肯定变坏了吧。（${res.msg}）`, who: id, mood: 'joy' });
       if (res.joined != null) await message('诱纳成功', res.msg, res.joined, 'joy');
       return;
@@ -2302,7 +2511,9 @@ async function fieldWar(w, humanSide, { after = { kind: humanSide === 'att' ? 'a
   warNav?.dispose(); warNav = war.flat ? null : createWarNav(war, document.body); // on <body>: a HUD redraw clears #ui
   await prewarm(war); // under the fade
   terrainPinned = false; terrainView(); // each battle opens with its generals shown
-  threatPinned = false; threatHeld = false; threatView();
+  // The 威胁 pin as the player left it (src/prefs.js), on the 3D map, where its button is: the flat map has only R held (and a
+  // pad's Y), so a pin brought over from 3D would stay up there with no button to put it away.
+  threatPinned = !war.flat && readFlag(PREF.threat); threatHeld = false; threatView();
   setMode(war); audio.playBgm('bgm-battle');
   await fade(false);
   await banner(snap ? `${cityName(w.city)}之战　第${field.day}日` : `${cityName(w.city)}之战`, colorOf(w.attacker));
@@ -2417,7 +2628,7 @@ function warUi(field) {
         // Turning the 3D board (Q / E, or a right drag): a pair riding over the dock's right end, so the dock keeps its width beside the foe's card.
         h('div', { class: 'panel turnpair' },
           // 威胁: with the turn pair, so the dock keeps its width beside the foe's card. The flat map has no pair: there it is R alone.
-          h('button', { class: 'btn icon threatbtn', 'aria-pressed': String(threatPinned), title: '敌军威胁范围（按住 R 临时查看）：敌军下次行动时，任何一名敌将单独最远能打到的格子。机动力全军共用，不是全体同时能到。指着一名敌将只看他一人的', 'aria-label': '敌军威胁范围', onclick: () => { threatPinned = !threatPinned; threatView(); } }, '威', h('kbd', { class: 'pad-only', 'data-glyph': 'y' })),
+          h('button', { class: 'btn icon threatbtn', 'aria-pressed': String(threatPinned), title: '敌军威胁范围（按住 R 临时查看）：敌军下次行动时，任何一名敌将单独最远能打到的格子。机动力全军共用，不是全体同时能到。指着一名敌将只看他一人的', 'aria-label': '敌军威胁范围', onclick: () => pinThreat(!threatPinned) }, '威', h('kbd', { class: 'pad-only', 'data-glyph': 'y' })),
           h('button', { class: 'btn icon turnbtn', title: '向左旋转视角（Q，或按住右键拖动）', 'aria-label': '向左旋转视角', html: TURN_ICON(-1), onclick: () => war?.rotate?.(-1) }),
           h('button', { class: 'btn icon turnbtn', title: '向右旋转视角（E，或按住右键拖动）', 'aria-label': '向右旋转视角', html: TURN_ICON(1), onclick: () => war?.rotate?.(1) })),
         h('button', { class: 'btn terrainbtn', 'aria-pressed': String(terrainPinned), title: '人物淡出，显示被遮住的地形（按住 T 临时查看）', onclick: () => { terrainPinned = !terrainPinned; terrainView(); } }, '地形', h('kbd', { 'data-glyph': 'l3' }, 'T')),
@@ -2598,8 +2809,9 @@ function actPanel(info, was) {
       PHONE ? null : h('p', { class: 'hint' }, entering ? '正在进入战斗…' : pad.active ? padText((k) => `再对${name(t.id)}按 ${k('a')}，或按「进入白兵战」`) : `再点${name(t.id)}或按 Enter 进入白兵战`),
     ] : [h('p', {}, `消耗 2，全军余 `, h('b', {}, pool - 2), `（还够攻击 ${Math.max(0, Math.floor((pool - 2) / 2))} 次）`),
       h('p', { class: 'hint' }, pad.active ? padText((k) => `选好敌将按 ${k('a')}；推右到地图上选`) : '点红格或名单里的敌将')];
-    const go = h('button', { class: `btn primary ap-go${strike && fresh ? ' arming' : ''}`, disabled: !!busy || !strike || entering, title: strike ? `攻击${name(t.id)}，进入白兵战（Enter）` : '先选一名敌将',
-      onclick: (e) => war.commitAttack(e) }, entering ? '正在进入战斗…' : '进入白兵战', entering ? null : h('kbd', { 'data-glyph': 'a' }, '⏎'));
+    const idle = PHONE && !strike && !busy && !!attacks?.length;
+    const go = h('button', { class: `btn primary ap-go${strike && fresh ? ' arming' : ''}${idle ? ' idle' : ''}`, disabled: !!busy || (!strike && !idle) || entering, 'aria-disabled': idle ? 'true' : null, title: strike ? `攻击${name(t.id)}，进入白兵战（Enter）` : '先选一名敌将',
+      onclick: (e) => (idle ? nudgeTargets(e.currentTarget) : war.commitAttack(e)) }, entering ? '正在进入战斗…' : idle ? '先点上面的敌将' : '进入白兵战', entering || idle ? null : h('kbd', { 'data-glyph': 'a' }, '⏎'));
     if (strike && fresh) setTimeout(() => go.classList.remove('arming'), GUARD);
     const aim = h('button', { class: 'btn ap-aim', disabled: !!busy, 'data-key': 'l', 'data-pad': 'r3', title: '镜头移到目标处（L）',
       onclick: () => { const id = Number(document.activeElement?.dataset?.target ?? NaN), r = attacks?.find((x) => x.u.id === id); war.locate(t ?? r?.u ?? attacks?.[0]?.u); } }, '定位目标', h('kbd', { 'data-label': 'L' }, 'L'));
@@ -2625,8 +2837,11 @@ function actPanel(info, was) {
       h('p', { class: 'hint' }, pad.active ? padText((k) => `选好目标按 ${k('a')}；推右到地图上选`) : '点紫色格或名单里的武将')];
     // 施展 stands in its place from the start, greyed until a target is picked, so the buttons never move between the steps.
     // Picked, it is held off for a moment (src/commitguard.js): the click or the key that picked the target does not cast.
-    const go = h('button', { class: `btn primary ap-go${confirm && fresh ? ' arming' : ''}`, disabled: !!busy || !confirm, title: confirm ? `施展${confirm.name}（Enter）` : '先选一个目标',
-      onclick: (e) => war.commitCast(e) }, confirm ? `施展${confirm.name}` : '施展', h('kbd', { 'data-glyph': 'a' }, '⏎'));
+    // Phone (2026-11-17): the hint above is the line a short screen drops first, and a lone target's row, focused as the list
+    // comes up, looks picked already; so before a pick the greyed button says what it waits for and, tapped, lights the list.
+    const idle = PHONE && !confirm && !busy && !!targets?.rows.length;
+    const go = h('button', { class: `btn primary ap-go${confirm && fresh ? ' arming' : ''}${idle ? ' idle' : ''}`, disabled: !!busy || (!confirm && !idle), 'aria-disabled': idle ? 'true' : null, title: confirm ? `施展${confirm.name}（Enter）` : '先选一个目标',
+      onclick: (e) => (idle ? nudgeTargets(e.currentTarget) : war.commitCast(e)) }, confirm ? `施展${confirm.name}` : idle ? '先点上面的目标' : '施展', idle ? null : h('kbd', { 'data-glyph': 'a' }, '⏎'));
     if (confirm && fresh) setTimeout(() => go.classList.remove('arming'), GUARD);
     const aim = targets || t ? h('button', { class: 'btn ap-aim', disabled: !!busy, 'data-key': 'l', 'data-pad': 'r3', title: war.flat ? '平面战场全图可见' : '镜头移到目标处（L）',
       onclick: () => { const id = Number(document.activeElement?.dataset?.target ?? NaN), r = targets?.rows.find((x) => x.u.id === id); war.locate(t ?? r?.u ?? targets?.rows[0]?.u); } }, '定位目标', h('kbd', { 'data-label': 'L' }, 'L')) : null;
@@ -2653,6 +2868,10 @@ function actPanel(info, was) {
 // A row picks on a new input only: not the second click of a double click, not a key held from the step before.
 const fresh2 = (e) => freshInput(e, { pick: true });
 // 3D: a column from under 系统 down to the cards; flat: rising from the strip of cards at the bottom, over the board's edge.
+// Phone: the greyed 施展 / 进入白兵战 tapped before a target is picked lights the target rows once, so the eye goes where the tap belongs.
+function nudgeTargets(btn) {
+  for (const b of btn.closest('.actpanel')?.querySelectorAll('.ap-body.targets [data-target]') ?? []) { b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge'); }
+}
 function placePanel(el = $('.actpanel')) {
   if (!el || !war) return;
   if (PHONE) { for (const k of ['width', 'top', 'height', 'bottom', 'maxHeight']) el.style[k] = ''; return; } // src/phone.css places it
@@ -2830,7 +3049,7 @@ async function cutIn(field, a, d, res, terrain) {
     await tview.ready(); // its painted ground (src/tacticalground.js)
     // Under the walls when either general is within two cells of the castle: the 单挑 is fought before the gate.
     const [cx, cy] = field.castle(), near = (u) => Math.max(Math.abs(u.x - cx), Math.abs(u.y - cy)) <= 2;
-    dview.setPlace({ ...where, siege: near(a) || near(d) ? { color: G.FACTION_COLORS[field.faction('def')] ?? '#5a5a66', look: look({ side: 'def' }) } : null });
+    dview.setPlace({ ...where, siege: near(a) || near(d) ? { color: G.factionColor(field.faction('def')) ?? '#5a5a66', look: look({ side: 'def' }) } : null });
     const back = mode; setMode(tview); audio.playBgm('bgm-skirmish');
     // The cut-in's bars stay up while the field just laid compiles its shaders (prewarm).
     const shown = async () => { await prewarm(tview); cine.hidden = true; };
@@ -2944,8 +3163,8 @@ async function showEvent(e) {
       }
       break;
     }
-    case 'aiIncite': addLog(`${factionName(e.faction)}离间我军${name(e.id)}`); await message('离间', `${factionName(e.faction)}的${name(e.actor)}散布流言，${name(e.id)}的忠诚下降了 ${e.loss}。`, e.id, 'grief'); break;
-    case 'aiLure': addLog(`${name(e.id)}被${factionName(e.faction)}诱纳`); if (e.from === P) await message('诱纳', `我军的${name(e.id)}被${factionName(e.faction)}诱纳，投奔${cityName(e.city)}而去。`, e.id, 'grief'); break;
+    case 'aiIncite': addLog(`${factionName(e.faction)}离间我军${name(e.id)}`); await message('离间', `${factionName(e.faction)}的${name(e.actor)}散布流言，${name(e.id)}的忠诚下降了 ${e.loss}。`, e.reporter, 'grief'); break;
+    case 'aiLure': addLog(`${name(e.id)}被${factionName(e.faction)}诱纳`); if (e.from === P) await message('诱纳', `我军的${name(e.id)}被${factionName(e.faction)}诱纳，投奔${cityName(e.city)}而去。`, e.reporter, 'grief'); break;
     case 'aiAlliance': addLog(`${factionName(e.faction)}与${factionName(e.target)}结盟`); break;
     case 'talent': case 'gameover': case 'unify': break;
   }
@@ -3016,7 +3235,7 @@ const commandOpen = () => busy || !!mapPick || blocking();
 // A slow 战略地图 or war map offers a lighter picture preset once (src/quality.js), only while nothing is open on it
 // (on the war map: the player's own turn, no dialog, nothing animating).
 // The war branch must not read `busy`: runCommand holds it through a war the player starts (attack), and only the war's own busy flag says it is animating.
-const qualityIdle = () => !!g && ((mode === strategy && document.body.dataset.screen === 'strategy' && !commandOpen()) || (mode === war && !!war.myTurn && !war.st.busy && !mapPick && !blocking()));
+const qualityIdle = () => !!g && ((mode === strategy && document.body.dataset.screen === 'strategy' && !commandOpen()) || (!!war && mode === war && !!war.myTurn && !war.st.busy && !mapPick && !blocking()));
 quality.watch(qualityIdle);
 async function endTurn() {
   if (commandOpen() || g.current !== g.player) return;

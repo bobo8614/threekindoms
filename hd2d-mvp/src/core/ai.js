@@ -7,6 +7,8 @@ import { phantomWar } from './ahuinan.js';
 
 const KEEP = [[30, 60, 90], [20, 50, 80], [10, 40, 70]]; // cumulative cut-offs for keeping 4/3/2 (else 1)
 const REAR = [2, 3, 3, 2, 3, 3, 2], FRONT = [4, 5, 4, 3, 4, 5, 4]; // A303 thresholds by faction
+// A pack's faction (8 on) takes the AI rows of the original house it names (core/pack.js `like`); the originals their own.
+const rowOf = (f) => data().factions[f]?.like ?? f;
 
 export async function aiTurn(g, f, io) {
   const r = rng(g);
@@ -46,7 +48,7 @@ export function aiDomestic(g, f, pts, r = rng(g)) {
     let cur = g.aiCursor[f];
     do {
       cur++;
-      if (cur >= 30) {
+      if (cur >= g.cities.length) { // 30, or a pack's count
         if (++wraps === 3) { g.aiCursor[f] = cur; return; }
         cur = 0;
       }
@@ -77,10 +79,12 @@ const capitalOf = (g, f) => officerCity(g, g.factions[f].ruler);
 // D4CB/D583 "connected" test: per-city rows of direct own neighbours (no self), ORed byte by byte in the
 // original order; two cities pass only when one row holds both. Not graph reachability (two adjacent own
 // cities with no third own city fail it).
+// The rows are ceil(n/8) bytes and the scan runs to n−1 / n: for the original 30 cities, 4 bytes and d < 29, v < 30 as the ROM.
 function linker(g, f) {
-  const rows = g.cities.map(() => [0, 0, 0, 0]);
-  for (const c of g.cities) if (c.faction === f) for (const n of roads(c.id)) if (g.cities[n].faction === f) rows[c.id][n >> 3] |= 1 << (n & 7);
-  for (let d = 0; d < 29; d += 2) for (let v = Math.max(1, d - 1); v < 30; v++) for (let k = 0; k < 4; k++) if (rows[d][k] & rows[v][k]) rows[v][k] |= rows[d][k];
+  const n = g.cities.length, w = Math.ceil(n / 8);
+  const rows = g.cities.map(() => new Array(w).fill(0));
+  for (const c of g.cities) if (c.faction === f) for (const x of roads(c.id)) if (g.cities[x].faction === f) rows[c.id][x >> 3] |= 1 << (x & 7);
+  for (let d = 0; d < n - 1; d += 2) for (let v = Math.max(1, d - 1); v < n; v++) for (let k = 0; k < w; k++) if (rows[d][k] & rows[v][k]) rows[v][k] |= rows[d][k];
   const has = (row, x) => row[x >> 3] & (1 << (x & 7));
   return (a, b) => rows.some((row) => has(row, a) && has(row, b));
 }
@@ -198,7 +202,7 @@ function outCount(g, n, r, eager = 0) {
 function gather(g, f, dst, need, mode, spend) {
   const ruler = g.factions[f].ruler, home = capitalOf(g, f), link = linker(g, f);
   for (const pass of [0, 1]) {
-    const th = Math.max(2, (pass ? FRONT : REAR)[f] - warlike(g));
+    const th = Math.max(2, (pass ? FRONT : REAR)[rowOf(f)] - warlike(g));
     for (const c of g.cities) {
       if (c === dst || c.faction !== f || (c === home || isFront(g, f, c)) !== (pass === 1) || !link(dst.id, c.id)) continue;
       while (c.officers.length >= th) {
@@ -255,7 +259,7 @@ async function attackBranch(g, f, r, io, spend) {
   }
   if (target == null) {
     // A208 never checks for FF; the remake gives up here unless the record keeps the 阿会喃 bug (core/ahuinan.js).
-    if (!g.bugs?.ahuinan) return false;
+    if (!g.bugs?.ahuinan || data().pack) return false; // a pack's map has no 王莆 byte past city 29 (core/ahuinan.js)
     const res = phantomWar(g, f, r, { cover, outCount, spend });
     if (!res) return res === null; // as the other cover() exits: out of budget → true, no supplies → domestic
     await io.event({ type: 'phantom', ...res });
@@ -453,6 +457,14 @@ export function equip(g, c, r, spend) {
 
 // ---------- AI diplomacy (6.5 第七批: 10:BBB2 / B98B / B619) ----------
 const maxBy = (arr, f) => arr.reduce((best, x) => (best == null || f(x) >= f(best) ? x : best), null);
+// Who brings the news to the faction an AI 离间 or 引拔 struck (the E6 window's portrait, $3D): that faction's sharpest mind,
+// its ruler left out, the later city and slot on a tie, as 10:$BD40 scans every city of the struck faction (10:BB12 after the
+// lured man has left, 10:BD07 for 离间) from $3E=0 with >=. null when the ruler stands alone ($3D stays FF): no portrait.
+export function informant(g, f) {
+  const ruler = g.factions[f]?.ruler; let best = null, top = 0;
+  for (const c of g.cities) if (c.faction === f) for (const id of c.officers) if (id !== ruler && g.officers[id].int >= top) { top = g.officers[id].int; best = id; }
+  return best;
+}
 async function incite(g, f, r, io) {
   const actor = maxBy(citiesOf(g, f).flatMap((c) => c.officers), (id) => g.officers[id].int);
   const city = maxBy(g.cities.filter((c) => c.faction !== f && c.faction !== NONE && !g.factions[c.faction].ai && c.officers.length >= 6), (c) => c.officers.length);
@@ -464,7 +476,7 @@ async function incite(g, f, r, io) {
   if (r(100) >= th) return;
   const loss = Math.floor(g.officers[actor].int / 20) + r(7) + 1;
   g.officers[id].loyalty = Math.max(0, g.officers[id].loyalty - loss);
-  await io.event({ type: 'aiIncite', faction: f, actor, id, loss });
+  await io.event({ type: 'aiIncite', faction: f, actor, id, loss, reporter: informant(g, city.faction) });
 }
 async function recruit(g, f, r, io) {
   const dest = citiesOf(g, f).filter((c) => c.officers.length < 10).sort((a, b) => a.officers.length - b.officers.length)[0];
@@ -479,7 +491,7 @@ async function recruit(g, f, r, io) {
   const from = officerCity(g, target), lostF = from.faction;
   from.officers = from.officers.filter((x) => x !== target); if (!from.officers.length) from.faction = NONE;
   dest.officers.push(target); t.loyalty = recruitLoyalty(g.officers[g.factions[f].ruler].virtue, t.loyalty);
-  await io.event({ type: 'aiLure', faction: f, id: target, from: lostF, city: dest.id });
+  await io.event({ type: 'aiLure', faction: f, id: target, from: lostF, city: dest.id, reporter: informant(g, lostF) });
 }
 async function ally(g, f, r, io) {
   const fac = g.factions[f], live = g.factions.filter((x) => x.ruler != null).length;

@@ -65,13 +65,13 @@ export class Tactical {
         const f = castle ? D.formations[kind === 'arc' ? 4 : 5] : D.formations[S.formation];
         const [ax, y, dx] = f[idx]; return [s === 'a' ? ax : castle ? 15 - ax : dx, y];
       };
-      const [gx, gy] = place(0, 'gen');
-      this.units.push({ side: s, kind: 'gen', idx: 0, x: gx, y: gy, hp: S.hp, id: S.id });
+      const [gx, gy] = place(0, 'gen'), face = s === 'a' ? [1, 0] : [-1, 0]; // B548: the attacker faces right, the defender left
+      this.units.push({ side: s, kind: 'gen', idx: 0, x: gx, y: gy, hp: S.hp, id: S.id, face });
       for (let i = 0; i < k && i < 10; i++) {
         let kind = i < comp.inf ? 'inf' : i < comp.inf + comp.arc ? 'arc' : 'cav';
         if (castle && kind === 'inf') kind = 'arc';
         const [x, y] = place(i + 1, kind);
-        this.units.push({ side: s, kind, idx: i + 1, x, y, hp: q + (i < rem ? 1 : 0) });
+        this.units.push({ side: s, kind, idx: i + 1, x, y, hp: q + (i < rem ? 1 : 0), face: [...face] });
       }
     }
     this.buildQueue();
@@ -84,6 +84,13 @@ export class Tactical {
   // The men on the board, all the AI's odds read (D32A skips a squad that has left; devblog #99, 2026-11-03).
   fielded(s) { return this.live.filter((u) => u.side === s && u.kind !== 'gen').reduce((a, u) => a + u.hp, 0); }
   inside(x, y) { return x >= 0 && y >= 0 && x < GW && y < GH; }
+  // Where a unit faces, [dx, dy] (the high nibble of the original's $05C2): set by each step it marches (A5BD → AA0F) and
+  // kept; a blow or a shot turns it for the stroke alone and the original writes the old byte back (A667 / A76C). 爆炎 flies
+  // this way, and the AI weighs it by this way (D87, Angurvadel@bilibili).
+  faceOf(u) { return u.face ?? (u.side === 'a' ? [1, 0] : [-1, 0]); }
+  // 爆炎's landing: two cells along the general's facing (B25B, 32 px). Off the board the flight ends early at B440 and
+  // nothing bursts, so null.
+  blastAt(s) { const gu = this.gen(s), [dx, dy] = this.faceOf(gu), x = gu.x + 2 * dx, y = gu.y + 2 * dy; return this.inside(x, y) ? [x, y] : null; }
   passable(u, x, y) { return this.inside(x, y) && PASS[this.side[u.side].o.army].includes(this.map[y][x]) && !this.at(x, y); }
 
   // Round cadence (S06): by type, attacker slots then defender, cavalry/generals act twice.
@@ -235,7 +242,7 @@ export class Tactical {
         if (u.kind === 'gen') { this.side[u.side].fate = 'retreat'; this.over = { why: 'retreat', side: u.side }; ev.pursuit = this.pursue(u.side); }
         return ev;
       }
-      if (this.passable(u, nx, ny)) { const from = [u.x, u.y]; u.x = nx; u.y = ny; return { type: 'move', u, from, to: [nx, ny] }; }
+      if (this.passable(u, nx, ny)) { const from = [u.x, u.y]; u.x = nx; u.y = ny; u.face = [sx, sy]; return { type: 'move', u, from, to: [nx, ny] }; }
     }
     return { type: 'idle', u };
   }
@@ -262,9 +269,12 @@ export class Tactical {
         break;
       }
       case 'blast': {
-        const gu = this.gen(s), dir = s === 'a' ? 1 : -1, cx = gu.x + 2 * dir, cy = gu.y;
-        ev.center = [cx, cy]; ev.hits = [];
-        for (const e of this.live.filter((e) => e.side !== s && Math.abs(e.x - cx) <= 1 && Math.abs(e.y - cy) <= 1)) {
+        // off the board (ev.center null) the points are spent and nothing bursts, as in the original; the player's console
+        // warns of it first (tacticalhud.js)
+        const at = this.blastAt(s), gu = this.gen(s), [fx, fy] = this.faceOf(gu);
+        ev.center = at; ev.toward = [fx, fy]; ev.hits = [];
+        const [cx, cy] = at ?? [NaN, NaN];
+        for (const e of at ? this.live.filter((e) => e.side !== s && Math.abs(e.x - cx) <= 1 && Math.abs(e.y - cy) <= 1) : []) {
           const d = Math.max(0, S.o.int - r(10) - 2) + 1, dmg = e.kind === 'gen' ? Math.floor(d / 2) : e.kind === 'cav' ? 2 * Math.floor(d / 3) : d;
           if (e.kind === 'gen') { F.hp = Math.max(0, F.hp - dmg); e.hp = F.hp; if (!F.hp) this.fell(e.side); }
           else { e.hp = Math.max(0, e.hp - dmg); if (!e.hp) e.dead = true; }
@@ -289,7 +299,7 @@ export class Tactical {
   aiTactic(s) {
     const S = this.side[s], F = S.foe, r = this.r, gu = this.gen(s);
     if (!this.canTactic(s) || gu.dead || gu.out) return;
-    const foeUnits = this.live.filter((e) => e.side !== s), dir = s === 'a' ? 1 : -1;
+    const foeUnits = this.live.filter((e) => e.side !== s);
     const tryT = (id, p) => {
       const T = TACTICS.find((t) => t.id === id); if (S.tp < T.cost) return false;
       if (r(100) >= p) return false;
@@ -303,7 +313,14 @@ export class Tactical {
       }
       (this.events ||= []).push(this.tactic(s, id)); return true;
     };
-    let n = 0; for (let d = 1; d <= 3; d++) n = Math.max(n, foeUnits.filter((e) => Math.abs(e.x - (gu.x + d * dir)) <= 1 && Math.abs(e.y - gu.y) <= 1).length);
+    // 爆炎: the foes in the nine cells one to three ahead of the general, three wide (the original's tables at D4AA, by his
+    // facing). The original's tables for up and down are swapped: facing up it counts the nine cells below him, and the
+    // bomb still flies up (B25B). Kept as found (tools/replay_skirmish_blast_facing_probes.py).
+    const [fx, fy] = this.faceOf(gu), [cx, cy] = fy ? [fx, -fy] : [fx, fy];
+    const n = foeUnits.filter((e) => {
+      const ahead = cx ? (e.x - gu.x) * cx : (e.y - gu.y) * cy, side = cx ? e.y - gu.y : e.x - gu.x;
+      return ahead >= 1 && ahead <= 3 && Math.abs(side) <= 1;
+    }).length;
     if (n >= 2 && tryT('blast', n === 2 ? 40 : n === 3 ? 70 : 100)) return;
     const archers = this.live.filter((u) => u.side === s && u.kind === 'arc');
     let shots = 0; for (const a of archers) for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0]]) for (let d = 2; d <= 4; d++) if (foeUnits.some((e) => e.x === a.x + dx * d && e.y === a.y + dy * d)) shots++;
@@ -330,6 +347,8 @@ export class Tactical {
       const id = res.dead, how = this.fell(this.side.a.id === id ? 'a' : 'd');
       if (how === 'captured') { res.dead = null; res.captured = id; }
       else { const eq = duelLoot(this.g, res.winner, id, this.r); if (eq != null) res.loot = { id: res.winner, eq }; }
+    } else if (res.defected != null) { // 说得 结果 4: he leaves the 白兵 to change side on the war map (Field.applySkirmish)
+      const s = this.side.a.id === res.defected ? 'a' : 'd'; this.gen(s).dead = true; this.side[s].fate = 'defected'; this.over = { why: 'defect', side: s };
     } else if (res.surrendered != null) { const s = this.side.a.id === res.surrendered ? 'a' : 'd'; this.gen(s).dead = true; this.side[s].fate = 'captured'; this.over = { why: 'capture', side: s }; }
     else if (res.endSkirmish) this.over = { why: 'parley' };
     // A retreat and 说得's 结果 2 both leave result code 1 on the general who goes: his order turns to 退却, and he gets his

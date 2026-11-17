@@ -7,7 +7,7 @@
 // cheaper than the procedural tile shader it replaces; the woods are one instanced quad mesh.
 import * as THREE from 'three';
 import { groundSeason, seasonKey } from './warseason.js';
-import { CITY_SITES } from './china.js';
+import { data, fieldArtOf } from './core/game.js';
 import { vnoise } from './diorama.js';
 
 export { groundSeason };
@@ -21,14 +21,14 @@ let loaded = null;
 // Before the battle scene is built (app.js): the materials for this battle's month and place.
 export async function loadWarGround(month, city) {
   const T0 = performance.now(); // tools/scene_switch_trace.mjs (PERF-05): measures only
-  const season = groundSeason(month, CITY_SITES[city]?.lat ?? 33);
+  const season = groundSeason(month, data()?.cities[city]?.lat ?? 33);
   const names = [...new Set([...MATERIALS, season.grass, season.mix?.[0]].filter(Boolean))];
   const [imgs, atlas, sheet] = await Promise.all([Promise.all(names.map(image)), image(season.trees), rectsOf(season.trees)]);
   // A painted battlefield (tools/gen_warmap_codex.sh), when one exists for this field: maps/<city>.json lists
   // the board's rectangle in the picture and a picture per season ('spring', 'summer', 'autumn', 'winter').
   let painted = null;
   try {
-    const m = await (await fetch(`${DIR}maps/${city}.json`, { cache: 'no-store' })).json(), file = m.images[seasonKey(month, season)] ?? Object.values(m.images)[0];
+    const m = await (await fetch(`${DIR}maps/${fieldArtOf(city)}.json`, { cache: 'no-store' })).json(), file = m.images[seasonKey(month, season)] ?? Object.values(m.images)[0];
     painted = { board: m.board, img: await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = `${DIR}maps/${file}`; }) };
   } catch { /* none for this field: the map is composed from the materials */ }
   loaded = { key: `${month}|${city}`, season, painted, img: Object.fromEntries(names.map((n, i) => [n, imgs[i]])), atlas, sheet };

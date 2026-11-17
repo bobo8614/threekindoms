@@ -76,7 +76,7 @@ export function skirmish(g, aId, dId, terrain, r, human = null) {
   res.finish = () => {
     const dd = res.duel && !(res.duel instanceof Duel) ? res.duel : res.duel ? { actions: res.duel.actions, ...res.duel.result } : null;
     res.duel = dd;
-    if (dd) for (const s of ['a', 'd']) { if (dd.dead === side[s].id) fate[s] = 'dead'; if (dd.surrendered === side[s].id) fate[s] = 'captured'; }
+    if (dd) for (const s of ['a', 'd']) { if (dd.dead === side[s].id) fate[s] = 'dead'; if (dd.surrendered === side[s].id) fate[s] = dd.defected === side[s].id ? 'defected' : 'captured'; }
     for (const s of ['a', 'd']) { res[s] = { soldiers: sum(s), hp: side[s].hp, fate: fate[s] }; }
     res.lossA = side.a.start - res.a.soldiers; res.lossD = side.d.start - res.d.soldiers;
     delete res.pending; return res;
@@ -197,7 +197,9 @@ export class Duel {
       // (`CDCF`) his general order turns to 退却 (Tactical.resolveDuel). He is not beaten, so no 败走 banner.
       if (out === 2) this.result = { dead: null, ended: true, withdrew: foe.id, winner: me.id };
       if (out === 3) this.result = { dead: null, ended: true, endSkirmish: true, winner: me.id };
-      if (out === 4) this.result = { dead: null, surrendered: foe.id, winner: me.id };
+      // 结果 4 (`$BF7E`) gives the persuaded general code 4: at the write-back (`$C766`) he changes side and stays on the
+      // war map (Field.applySkirmish), no prisoner. `surrendered` keeps the 投降 text and staging; `defected` is the outcome.
+      if (out === 4) this.result = { dead: null, surrendered: foe.id, defected: foe.id, winner: me.id };
       return a;
     }
     if (cmd === 'retreat') {

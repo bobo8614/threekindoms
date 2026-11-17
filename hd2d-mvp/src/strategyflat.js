@@ -5,7 +5,9 @@ import { PHONE } from './phone.js';
 import * as THREE from 'three';
 import { createSeasons, SEASON_TABLE, U } from './seasons.js';
 import { colorOf, paintBanner, surnameOf } from './strategy.js';
-import { TERRITORY_PALETTE, TERRITORY_FILL, TERRITORY_MID_BOOST, TERRITORY_BAND_WORLD, TERRITORY_BORDER_HALF_PX, TERRITORY_NEUTRAL_BORDER, TERRITORY_FOCUS_SCALE } from './sandtable.js';
+import { heightField, townSeat, courseOf, waterIndex, wetCostOf } from './packgeo.js';
+import { SEA_Y } from './worldmap.js';
+import { territoryHex, nearestSeat, TERRITORY_PALETTE, TERRITORY_FILL, TERRITORY_MID_BOOST, TERRITORY_BAND_WORLD, TERRITORY_BORDER_HALF_PX, TERRITORY_NEUTRAL_BORDER, TERRITORY_FOCUS_SCALE } from './sandtable.js';
 import { createSky2d } from './skyfx2d.js';
 import { layoutTags, measureTags } from './citytags.js';
 import { NONE, cityName, factionName } from './core/game.js';
@@ -37,14 +39,70 @@ const TITLE_Z = 1.4, TITLE_TURN = 0.005; // the title's pan: closer than the who
 const FLAT_TERRITORY_ZOOM = [1, 2], FLAT_RIM_ALPHA = [0.16, 0.14], FLAT_RIM_WIDTH = [1, 0.45];
 const FLAT_BORDER_ALPHA = 0.8, FLAT_BORDER_MINE = 1.15, FLAT_BORDER_GAIN = 1.5, FLAT_GLOW_PX = 16;
 const FLAT_GLOW_WIDTH = [1, 0.72, 0.44], FLAT_GLOW_ALPHA = [0.035, 0.06, 0.1];
-const FLAT_BORDER_COLORS = TERRITORY_PALETTE.map((c) => new THREE.Color(c).multiplyScalar(FLAT_BORDER_GAIN).getStyle());
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const PACK_ROAD = '#d6c8a0', PACK_ROAD_W = 0.064 * PAN_UNIT; // as the sand table's earth track for a pack's road (strategyroads.js), the baked roads' packed earth
+
+// A data pack's cities on the 2D map (docs/战略地图数据包扩展设计_2026-11-17.md §6): the pictures stay as baked; the new towns, their
+// roads and their land are laid over them. The bake's camera is fitted from its own 30 towns (where the sand table stands them, against
+// where the pictures show them: a projective map, within a tenth of a pixel), so a new seat lands where the 3D map stands it. Only a
+// pack's game fetches the sand table's board, heights and the town pictures' metadata.
+async function packBoard(board, data) {
+  const SAND = 'assets/ai/sandtable/board';
+  const [meta, hbuf, towns] = await Promise.all([fetch(`${SAND}/board.json`).then((r) => r.json()), fetch(`${SAND}/height.bin`).then((r) => r.arrayBuffer()), fetch(`${DIR}/towns.json`).then((r) => r.json())]);
+  const heightAt = heightField(meta, new Uint16Array(hbuf)), groundY = (x, z) => Math.max(SEA_Y, heightAt(x, z));
+  // u = (P0 x + P1 y + P2 z + P3) / w, v = (P4 x + … + P7) / w, w = P8 x + P9 y + P10 z + 1: least squares over the baked towns.
+  const A = Array.from({ length: 11 }, () => new Float64Array(12)), seen = new Map(board.cities.map((c) => [c.id, c]));
+  const row = (r, b) => { for (let i = 0; i < 11; i++) { for (let j = 0; j < 11; j++) A[i][j] += r[i] * r[j]; A[i][11] += r[i] * b; } };
+  for (const c of meta.cities) {
+    const f = seen.get(c.id); if (!f) continue;
+    const [x, y, z, u, v] = [c.mx, c.y, c.mz, f.cx, f.cy];
+    row([x, y, z, 1, 0, 0, 0, 0, -u * x, -u * y, -u * z], u); row([0, 0, 0, 0, x, y, z, 1, -v * x, -v * y, -v * z], v);
+  }
+  for (let i = 0; i < 11; i++) { // Gauss-Jordan with partial pivoting
+    let m = i; for (let r = i + 1; r < 11; r++) if (Math.abs(A[r][i]) > Math.abs(A[m][i])) m = r;
+    [A[i], A[m]] = [A[m], A[i]];
+    for (let r = 0; r < 11; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let j = i; j < 12; j++) A[r][j] -= f * A[i][j]; }
+  }
+  const P = A.map((r, i) => r[11] / r[i]);
+  const project = (x, y, z) => { const w = P[8] * x + P[9] * y + P[10] * z + 1; return [(P[0] * x + P[1] * y + P[2] * z + P[3]) / w, (P[4] * x + P[5] * y + P[6] * z + P[7]) / w]; };
+  // The ground under a picture point: the view ray walked down onto the relief, as bakeView's groundAt.
+  const groundAt = (u, v) => {
+    let y = SEA_Y, x = 0, z = 0;
+    for (let k = 0; k < 4; k++) {
+      const a = P[0] - u * P[8], b = P[2] - u * P[10], c = u - P[3] - (P[1] - u * P[9]) * y;
+      const d = P[4] - v * P[8], e = P[6] - v * P[10], f = v - P[7] - (P[5] - v * P[9]) * y, det = a * e - b * d;
+      x = (c * e - b * f) / det; z = (a * f - c * d) / det; y = groundY(x, z);
+    }
+    return { x, z };
+  };
+  const n = (v) => Math.round(v * 10) / 10;
+  const pos = meta.cities.map((c) => new THREE.Vector3(c.mx, c.y, c.mz)), seats = meta.cities.map((c) => ({ id: c.id, x: c.x, z: c.z }));
+  const added = [];
+  for (const c of data.cities.slice(meta.cities.length)) {
+    const seat = townSeat(c, meta.size, heightAt), [cx, cy] = project(seat.x, seat.y, seat.z);
+    const band = towns.bands.reduce((b, z, i) => (Math.abs(z - seat.z) < Math.abs(towns.bands[b] - seat.z) ? i : b), 0);
+    const t = towns.towns.find((q) => q.tier === c.tier && q.band === band);
+    const city = { id: c.id, cx: n(cx), cy: n(cy), flag: [n(cx + t.flag[0]), n(cy + t.flag[1])], tag: [n(cx + t.tag[0]), n(cy + t.tag[1])], rx: t.rx, ry: t.ry,
+      town: { col: towns.tiers.indexOf(c.tier), row: band } };
+    board.cities.push(city); added.push(city);
+    pos[c.id] = new THREE.Vector3(seat.x, seat.y, seat.z); seats.push({ id: c.id, x: seat.x, z: seat.z });
+  }
+  // A pack's roads by the sand table's own course (the fewest bridges), as strategyroads.js draws them.
+  const waterAt = waterIndex(meta.water, { cell: 0.5, margin: 0.09 }), wetCost = wetCostOf(waterAt);
+  const baked = new Set(board.roads.map((r) => `${Math.min(r.a, r.b)}-${Math.max(r.a, r.b)}`));
+  for (const c of data.cities) for (const m of c.roads) if (c.id < m && !baked.has(`${c.id}-${m}`)) {
+    const pts = courseOf(c.id, m, pos, groundY, wetCost), sea = pts.map((q) => heightAt(q.x, q.z) < SEA_Y + 0.01 && !waterAt(q.x, q.z));
+    board.roads.push({ a: c.id, b: m, sea, pack: true, p: pts.flatMap((q, i) => project(q.x, Math.max(q.y, sea[i] ? SEA_Y : heightAt(q.x, q.z)), q.z)).map(n) });
+  }
+  return { towns, added, groundAt, seats };
+}
 
 // The board's coordinates and the first picture are in before it returns, so the map never opens blank. ctx.month: the month to open on
 // (the title's 季春 unless a switch brings it in mid-game); ctx.onPicturesFailed: no picture could be had, and there is none to keep showing.
 export async function createStrategyFlat(ctx) {
   const { data, month: start = 2 } = ctx;
   const board = await (await fetch(`${DIR}/board.json`)).json();
+  const pack = data.pack ? await packBoard(board, data) : null; // a pack that changes no city or road leaves them as they are
   const [W, H] = board.size, B = board.bounds, cities = [];
   for (const c of board.cities) cities[c.id] = c;
 
@@ -64,11 +122,18 @@ export async function createStrategyFlat(ctx) {
     const s = Math.min(slack, over);
     return clamp(c, a + half - s, b - half + s);
   };
+  // Phone (2026-11-17): the top bar takes `bar` px off the top of the window (ctx.hudTop, eased in update()), and the north's towns
+  // went under it. The view's middle is the middle of what is left, and the board's north edge stops at the bar's foot.
+  // The northmost town's tag stands above the board's edge: under the bar the edge alone would leave it hidden, so the view may go
+  // that much further north there (northTag: its anchor's y on the picture and how far up it reaches in px, stepped up included, from placeTags()).
+  let bar = 0, northTag = null;
+  const midY = () => (vh + bar) / 2;
+  const northEdge = (k) => (bar > 0 && northTag ? Math.min(B.y0, northTag.y - northTag.h / k) : B.y0);
   const held = (v) => {
     const k = kMin * v.z;
-    return { cx: axis(v.cx, vw / 2 / k, B.x0, B.x1, SLACK_X / k), cy: axis(v.cy, vh / 2 / k, B.y0, B.y1, SLACK_Y / k) };
+    return { cx: axis(v.cx, vw / 2 / k, B.x0, B.x1, SLACK_X / k), cy: axis(v.cy, (vh - bar) / 2 / k, northEdge(k), B.y1, SLACK_Y / k) };
   };
-  const viewState = () => { const k = kMin * view.z; return { k, x: vw / 2 - view.cx * k, y: vh / 2 - view.cy * k }; };
+  const viewState = () => { const k = kMin * view.z; return { k, x: vw / 2 - view.cx * k, y: midY() - view.cy * k }; };
   const hold = () => Object.assign(view, held(view));
   // A phone opens on the board filling the screen's width rather than whole (the whole board leaves its tags too small to tap);
   // pinching out still reaches the whole board.
@@ -115,14 +180,16 @@ export async function createStrategyFlat(ctx) {
   const load = (s) => {
     if (pics.has(s)) return Promise.resolve(pics.get(s));
     if (!loading.has(s)) {
-      loading.set(s, fetch(`${DIR}/${SEASONS[s]}.webp`).then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); }).then((b) => createImageBitmap(b))
-        .then((p) => { if (asleep) { p.close(); throw new Error('released'); } pics.set(s, p); return p; }).finally(() => loading.delete(s)));
+      const bitmap = (f) => fetch(`${DIR}/${f}.webp`).then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); }).then((b) => createImageBitmap(b));
+      // With a pack, the season's town pictures come with its board picture (a town with no picture would be a gap); they go with it.
+      loading.set(s, Promise.all([bitmap(SEASONS[s]), pack?.added.length ? bitmap(`towns-${SEASONS[s]}`) : null])
+        .then(([p, t]) => { if (asleep) { p.close(); t?.close(); throw new Error('released'); } if (t) p.towns = t; pics.set(s, p); return p; }).finally(() => loading.delete(s)));
     }
     return loading.get(s);
   };
   const prune = () => {
     const keep = new Set([...layers.map((l) => l.s), want, (want + 1) % 4, trying]);
-    for (const [s, p] of pics) if (!keep.has(s)) { p.close(); pics.delete(s); }
+    for (const [s, p] of pics) if (!keep.has(s)) { p.close(); p.towns?.close(); pics.delete(s); }
   };
   // Shows a season's picture when it is ready, the old one staying up until then; one that will not load gives way to a neighbour's.
   async function show(s, instant) {
@@ -161,7 +228,7 @@ export async function createStrategyFlat(ctx) {
     if (under.width !== cv.width || under.height !== cv.height) { under.width = cv.width; under.height = cv.height; }
     ug.setTransform(dpr, 0, 0, dpr, 0, 0); ug.imageSmoothingEnabled = true; ug.imageSmoothingQuality = 'high';
     ug.globalAlpha = 1; ug.fillStyle = `#${hex}`; ug.fillRect(0, 0, vw, vh);
-    for (const { pic, t } of layers) { ug.globalAlpha = t * t * (3 - 2 * t); ug.drawImage(pic, x, y, W * k, H * k); }
+    for (const { pic, t } of layers) { ug.globalAlpha = t * t * (3 - 2 * t); ug.drawImage(pic, x, y, W * k, H * k); if (pack) drawPackTowns(ug, pic.towns, k, x, y); }
     ug.globalAlpha = 1;
     if (territoryOn && tintDraws) {
       // Canvas colour blending keeps the picture's luminance and paint instead of covering it with a flat fill.
@@ -176,12 +243,12 @@ export async function createStrategyFlat(ctx) {
       // inward; their world width grows at far zoom without repacking the colour grid every frame.
       ug.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y);
       ug.lineCap = ug.lineJoin = 'round';
-      for (let f = 0; f < TERRITORY_PALETTE.length; f++) if (clipUsed[f]) {
+      for (let f = 0; f < FC; f++) if (f !== NONE && clipUsed[f]) {
         ug.save(); ug.clip(landClip); ug.clip(ownerClips[f]);
         for (let neutral = 0; neutral < 2; neutral++) {
           const i = f * 2 + neutral; if (!borderUsed[i]) continue;
           const weight = (neutral ? TERRITORY_NEUTRAL_BORDER : 1) * attention;
-          ug.globalCompositeOperation = 'color'; ug.strokeStyle = TERRITORY_PALETTE[f];
+          ug.globalCompositeOperation = 'color'; ug.strokeStyle = HUES[f];
           for (let r = 0; r < FLAT_RIM_ALPHA.length; r++) {
             ug.lineWidth = 2 * PAN_UNIT * THREE.MathUtils.lerp(TERRITORY_BAND_WORLD[1], TERRITORY_BAND_WORLD[0], z) * FLAT_RIM_WIDTH[r];
             ug.globalAlpha = FLAT_RIM_ALPHA[r] * weight; ug.stroke(borderPaths[i]);
@@ -198,7 +265,7 @@ export async function createStrategyFlat(ctx) {
       }
       if (clipUsed[NONE]) {
         ug.save(); ug.clip(landClip); ug.clip(ownerClips[NONE]); ug.globalCompositeOperation = 'source-over';
-        for (let f = 0; f < TERRITORY_PALETTE.length; f++) if (borderUsed[f * 2 + 1]) {
+        for (let f = 0; f < FC; f++) if (f !== NONE && borderUsed[f * 2 + 1]) {
           const weight = TERRITORY_NEUTRAL_BORDER * attention; ug.strokeStyle = FLAT_BORDER_COLORS[f];
           for (let q = 0; q < FLAT_GLOW_WIDTH.length; q++) { ug.lineWidth = FLAT_GLOW_PX * 2 * FLAT_GLOW_WIDTH[q] / k; ug.globalAlpha = FLAT_GLOW_ALPHA[q] * weight; ug.stroke(borderPaths[f * 2 + 1]); }
           ug.lineWidth = TERRITORY_BORDER_HALF_PX * 2 / k; ug.globalAlpha = FLAT_BORDER_ALPHA * weight; ug.stroke(borderPaths[f * 2 + 1]);
@@ -210,6 +277,30 @@ export async function createStrategyFlat(ctx) {
     // The pictures are baked in clear months: rain's grey light goes over the ground, under what must stay legible, as the 3D map's 'rain' and 'storm' lights do.
     if (wet) { ug.globalCompositeOperation = 'multiply'; ug.fillStyle = `rgb(${255 - 76 * wet}, ${255 - 66 * wet}, ${255 - 56 * wet})`; ug.fillRect(0, 0, vw, vh); ug.globalCompositeOperation = 'source-over'; }
     if (roadsOn) { ug.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y); drawRoads(ug); }
+  }
+  // A pack's roads in packed earth and its towns' pictures, over each season's picture as it fades (so they turn with the season) and
+  // under the owners' tint. The roads end at the walls, as the bake's.
+  let packRoads = null;
+  function drawPackTowns(c2, atlas, k, x, y) {
+    if (!packRoads) {
+      packRoads = new Path2D();
+      for (const r of board.roads) if (r.pack) {
+        const A = cities[r.a], B = cities[r.b]; let on = false;
+        for (let i = 0; i < r.sea.length - 1; i++) {
+          const [x0, y0, x1, y1] = [r.p[i * 2], r.p[i * 2 + 1], r.p[i * 2 + 2], r.p[i * 2 + 3]];
+          if (r.sea[i] || r.sea[i + 1] || insideTown(A, x1, y1) || insideTown(B, x0, y0)) { on = false; continue; }
+          if (!on) packRoads.moveTo(x0, y0); packRoads.lineTo(x1, y1); on = true;
+        }
+      }
+    }
+    const a = c2.globalAlpha;
+    c2.save(); c2.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y); c2.lineJoin = c2.lineCap = 'round'; c2.strokeStyle = PACK_ROAD;
+    c2.globalAlpha = a * 0.35; c2.lineWidth = PACK_ROAD_W * 1.6; c2.stroke(packRoads);
+    c2.globalAlpha = a * 0.9; c2.lineWidth = PACK_ROAD_W; c2.stroke(packRoads);
+    c2.restore(); c2.globalAlpha = a;
+    if (!atlas) return;
+    const [cw, ch] = pack.towns.cell, [ax, ay] = pack.towns.anchor;
+    for (const c of pack.added) c2.drawImage(atlas, c.town.col * cw, c.town.row * ch, cw, ch, x + (c.cx - ax) * k, y + (c.cy - ay) * k, cw * k, ch * k);
   }
   function draw(dt = 0) {
     if (asleep || document.querySelector('.tt')) return; // the title screen is opaque over the whole window: its pan needs viewState, not a picture repainted every frame nobody can see. Gone, the next frame draws, before it is shown.
@@ -251,9 +342,18 @@ export async function createStrategyFlat(ctx) {
         for (let i = 0; i < cells.length; i++) cells[i] = packed.charCodeAt(i) - 1;
       } // zero is sea/outside; otherwise city id + 1
     } else for (let i = 0; i < cells.length; i++) cells[i] = (T.land ? T.land[i] : T.k[i] > 0) ? T.near[i] : -1; // older cached metadata stays safe at sea
+    // A pack's towns take the land nearer them than any other town, by the 3D board's own rule; the rest of the grid stays as baked.
+    if (pack?.added.length) for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
+      const q = j * TW + i; if (cells[q] < 0) continue;
+      const g = pack.groundAt((i + 0.5) / TW * W, (j + 0.5) / TH * H), near = pack.seats[nearestSeat(g.x, g.z, pack.seats)].id;
+      if (near >= board.cities.length - pack.added.length) cells[q] = near;
+    }
     tintCv = Object.assign(document.createElement('canvas'), { width: TW, height: TH }); tintG = tintCv.getContext('2d'); tintPx = tintG.createImageData(TW, TH); tintCells = cells;
   }
   const tintOwners = new Int16Array(data.cities.length).fill(-1);
+  // Every house's wash and line colour: the original seven's, then a pack's (its land colour). F: owner slots, the unowned 7 among them.
+  const HUES = data.factions.map((_, f) => territoryHex(f, data.factions)), FC = Math.max(HUES.length, TERRITORY_PALETTE.length), F = Math.max(FC, NONE + 1);
+  const FLAT_BORDER_COLORS = HUES.map((c) => new THREE.Color(c).multiplyScalar(FLAT_BORDER_GAIN).getStyle());
   let tintDraws = 0, tintPlayer = -1, borderPaths = null, borderUsed = [], ownerClips = null, landClip = null, ownedClip = null, clipUsed = [];
   function focusTerritory() {
     const on = !!candidates || !!warShow;
@@ -265,21 +365,21 @@ export async function createStrategyFlat(ctx) {
     for (const c of gs.cities) if (tintOwners[c.id] !== c.faction) changed = true;
     if (!changed) return;
     tintPlayer = gs.player; for (const c of gs.cities) tintOwners[c.id] = c.faction;
-    const hues = gs.cities.map((c) => (c.faction === NONE ? null : new THREE.Color(TERRITORY_PALETTE[c.faction]).convertLinearToSRGB())), d = tintPx.data;
+    const hues = gs.cities.map((c) => (c.faction === NONE ? null : new THREE.Color(HUES[c.faction]).convertLinearToSRGB())), d = tintPx.data;
     for (let i = 0; i < tintCells.length; i++) {
       const hue = tintCells[i] < 0 ? null : hues[tintCells[i]], p = i * 4;
       d[p] = hue ? hue.r * 255 + 0.5 : 0; d[p + 1] = hue ? hue.g * 255 + 0.5 : 0; d[p + 2] = hue ? hue.b * 255 + 0.5 : 0; d[p + 3] = hue ? 255 : 0;
     }
     // Marching squares connects cell-edge midpoints, softening the coarse picture grid's otherwise square corners.
-    borderPaths = TERRITORY_PALETTE.flatMap(() => [new Path2D(), new Path2D()]); borderUsed = borderPaths.map(() => false);
-    ownerClips = Array.from({ length: NONE + 1 }, () => new Path2D()); landClip = new Path2D(); ownedClip = new Path2D(); clipUsed = ownerClips.map(() => false);
-    const xs = new Float32Array(4), ys = new Float32Array(4), kinds = new Int8Array(4), gx = W / TW, gy = H / TH;
+    borderPaths = Array.from({ length: FC }, () => [new Path2D(), new Path2D()]).flat(); borderUsed = borderPaths.map(() => false);
+    ownerClips = Array.from({ length: F }, () => new Path2D()); landClip = new Path2D(); ownedClip = new Path2D(); clipUsed = ownerClips.map(() => false);
+    const xs = new Float32Array(4), ys = new Float32Array(4), kinds = new Int16Array(4), gx = W / TW, gy = H / TH;
     // Horizontal runs keep the clipping paths small and ensure colour and glow cannot spill onto the sea.
     for (let j = 0; j < TH; j++) for (let i = 0; i < TW;) {
       const city = tintCells[j * TW + i], f = city < 0 ? -1 : tintOwners[city]; let end = i + 1;
       while (end < TW) { const c = tintCells[j * TW + end], next = c < 0 ? -1 : tintOwners[c]; if (next !== f) break; end++; }
       if (f >= 0) landClip.rect(i * gx, j * gy, (end - i) * gx, gy);
-      if (f >= 0 && f < NONE) ownedClip.rect(i * gx, j * gy, (end - i) * gx, gy);
+      if (f >= 0 && f !== NONE) ownedClip.rect(i * gx, j * gy, (end - i) * gx, gy);
       i = end;
     }
     // Clip against the same midpoint contours as the strokes, not square cells: each side keeps its own colour at diagonal borders.
@@ -307,11 +407,11 @@ export async function createStrategyFlat(ctx) {
       if (tintCells[a] < 0 || tintCells[b] < 0) return n;
       const fa = tintOwners[tintCells[a]], fb = tintOwners[tintCells[b]];
       if (fa === fb || fa == null || fb == null || fa < 0 || fb < 0) return n;
-      xs[n] = x; ys[n] = y; kinds[n] = Math.min(fa, fb) * 8 + Math.max(fa, fb);
+      xs[n] = x; ys[n] = y; kinds[n] = Math.min(fa, fb) * F + Math.max(fa, fb);
       return n + 1;
     };
     const segment = (kind, x0, y0, x1, y1) => {
-      const a = Math.floor(kind / 8), b = kind % 8, neutral = b === NONE ? 1 : 0;
+      const a = Math.floor(kind / F), b = kind % F, neutral = a === NONE || b === NONE ? 1 : 0;
       for (const f of [a, b]) if (f !== NONE) { const i = f * 2 + neutral, p = borderPaths[i]; borderUsed[i] = true; p.moveTo(x0, y0); p.lineTo(x1, y1); }
     };
     for (let j = 0; j < TH - 1; j++) for (let i = 0; i < TW - 1; i++) {
@@ -736,6 +836,7 @@ export async function createStrategyFlat(ctx) {
   function placeTags(dt) {
     if (!measured) measured = measureTags(marks);
     const { k, x, y } = viewState(), s = tagScale(), entries = [];
+    let north = null;
     for (const [i, m] of marks.entries()) {
       const c = cities[i], keep = roadsOn || i === selected || m.el.classList.contains('mine') || m.el.classList.contains('hl') || !!candidates?.has(i);
       const px = Math.round(c.tag[0] * k + x), py = Math.round(c.tag[1] * k + y);
@@ -747,6 +848,9 @@ export async function createStrategyFlat(ctx) {
       entries.push({ m, s, d: -c.cy, keep, x: px, y0: py - up, foot: up }); // no depth here: the south first, its northern neighbours step up, as the 3D map's nearest first does
     }
     layoutTags(entries, { dt });
+    // the highest tag once they have stepped up out of one another's way (m.dy, px, up is negative)
+    for (const [i, m] of marks.entries()) { const c = cities[i], up = m.h * tagScale() - (m.dy || 0); if (m.h && (!north || c.tag[1] - up / k < north.y - north.h / k)) north = { y: c.tag[1], h: up }; }
+    northTag = north;
   }
 
   // The city at a screen point: on its model or its ring, the nearest of those, and during a map pick a candidate first.
@@ -771,7 +875,7 @@ export async function createStrategyFlat(ctx) {
     asleep = true;
     cv.width = cv.height = under.width = under.height = 0;
     if (skyCv) skyCv.width = skyCv.height = 0;
-    for (const p of pics.values()) p.close();
+    for (const p of pics.values()) { p.close(); p.towns?.close(); }
     pics.clear(); layers = []; trying = flying = null; snap = false; underKey = '';
   }
   // The month's picture is in and painted when this lands; the other map stays up until then. Pictures on their way when it was released are dropped as they land.
@@ -824,6 +928,7 @@ export async function createStrategyFlat(ctx) {
       const ez = 1 - Math.exp(-dt * 8), ep = 1 - Math.exp(-dt * 5), to = held(goal);
       // Ease, then land: a picture creeping by a fraction of a pixel shimmers.
       const near = (v, t, e, tiny) => (Math.abs(t - v) < tiny ? t : v + (t - v) * e);
+      bar = near(bar, ctx.hudTop?.() ?? 0, ep, 0.3);
       view.z = near(view.z, goal.z, ez, 2e-4); view.cx = near(view.cx, to.cx, ep, 0.2); view.cy = near(view.cy, to.cy, ep, 0.2); hold();
       table.lerp(tableTo[seasonOf(season.month)], 1 - Math.exp(-dt * 1.6));
       for (const l of layers) l.t = Math.min(1, l.t + dt / FADE);
@@ -847,7 +952,7 @@ export async function createStrategyFlat(ctx) {
     zoom(d, at) {
       const z = clamp(goal.z * Math.exp(-d * 0.001), 1, Z_MAX);
       if (at) {
-        const c = held(goal), ox = (at.x + 1) / 2 * vw - vw / 2, oy = (1 - at.y) / 2 * vh - vh / 2, k0 = kMin * goal.z, k1 = kMin * z;
+        const c = held(goal), ox = (at.x + 1) / 2 * vw - vw / 2, oy = (1 - at.y) / 2 * vh - midY(), k0 = kMin * goal.z, k1 = kMin * z;
         goal.cx = c.cx + ox / k0 - ox / k1; goal.cy = c.cy + oy / k0 - oy / k1;
       }
       goal.z = z;
@@ -859,7 +964,7 @@ export async function createStrategyFlat(ctx) {
     screenOfCity(id) { const { k, x, y } = viewState(); return { x: cities[id].cx * k + x, y: cities[id].cy * k + y }; },
     // As the 3D map's: where a city will be once the view settles, and the least slide that moves it (sx, sy) px from there (D53).
     tagOf: (id) => marks[id]?.el,
-    screenAtRest(id) { const k = kMin * goal.z, c = held(goal); return { x: (cities[id].cx - c.cx) * k + vw / 2, y: (cities[id].cy - c.cy) * k + vh / 2 }; },
+    screenAtRest(id) { const k = kMin * goal.z, c = held(goal); return { x: (cities[id].cx - c.cx) * k + vw / 2, y: (cities[id].cy - c.cy) * k + midY() }; },
     nudge(id, sx, sy) { const k = kMin * goal.z; shift(-sx / k, -sy / k); },
     viewState,
     debugSky(on) { skyOn = on; },

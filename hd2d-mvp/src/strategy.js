@@ -7,11 +7,12 @@ import './fx.js';
 import { U } from './seasons.js';
 import './weather.js';
 import { buildWorld, SEA_Y } from './worldmap.js';
-import { buildSandtable, TERRITORY_PALETTE } from './sandtable.js';
+import { buildSandtable, territoryHex } from './sandtable.js';
 import { placeCities } from './china.js';
-import { NONE, FACTION_COLORS, cityName, factionName } from './core/game.js';
+import { NONE, factionColor, cityName, factionName } from './core/game.js';
 import { createStrategyRoads } from './strategyroads.js';
-import { createStrategyCities } from './strategycities.js';
+import { createStrategyCities, townShadow } from './strategycities.js';
+import { TIER_KIND } from './packgeo.js';
 import { createStrategySky } from './strategysky.js';
 import { createStrategyMarks } from './strategymarks.js';
 import { createStrategyWar } from './strategywar.js';
@@ -19,11 +20,11 @@ export { COMPOUND, surnameOf, paintBanner } from './strategywar.js';
 
 // A world-depth band keeps the playable neighbourhood sharp at any zoom; low tilt retains a soft far rim.
 const DOF_BAND = [6.5, 0.16], DOF_RAMP = [9, 0.08], DOF_STRENGTH = [0.95, 0.9], DOF_FAR = [1, 0.4], DOF_NEAR = [0.7, -0.2];
-export const colorOf = (f) => (f === NONE ? '#c8c0b0' : FACTION_COLORS[f]);
-const SITES = placeCities();
+export const colorOf = (f) => (f === NONE ? '#c8c0b0' : factionColor(f));
 
 export function createStrategy(ctx) {
   const { data, sand } = ctx; // sand: the baked sand-table board (sandtable.js loadSandtable), else the procedural one
+  const SITES = placeCities(data.cities); // the seats as drawn on the procedural board (the sand table has its own)
   const scene = new THREE.Scene();
   // Sky, camera, lights, world, roads, cities and clouds must enter the scene in the same order as before the split.
   const atmosphere = createStrategySky({ scene, sand, onSeason: (m, instant) => ctx.onSeason?.(m, instant) });
@@ -33,7 +34,7 @@ export function createStrategy(ctx) {
   scene.add(camera);
   atmosphere.addLights();
 
-  const world = sand ? buildSandtable(scene, sand) : buildWorld(scene, SITES);
+  const world = sand ? buildSandtable(scene, sand, { cities: data.cities, factions: data.factions }) : buildWorld(scene, SITES);
   const citySetup = createStrategyCities({ scene, data, sand, world, sites: SITES, onCity: (id) => ctx.onCity(id), onHover: hoverCity, colorOf });
   const { cityPos } = citySetup;
   const groundY = (x, z) => Math.max(SEA_Y, world.heightAt(x, z));
@@ -47,7 +48,7 @@ export function createStrategy(ctx) {
 
   // Rebuild territory only when an owner or the player changes, not on routine HUD/season refreshes.
   const ownerColors = new Map();
-  const ownerColor = (f) => { if (!ownerColors.has(f)) ownerColors.set(f, new THREE.Color(sand ? TERRITORY_PALETTE[f] : colorOf(f))); return ownerColors.get(f); };
+  const ownerColor = (f) => { if (!ownerColors.has(f)) ownerColors.set(f, new THREE.Color(sand ? territoryHex(f, data.factions) : colorOf(f))); return ownerColors.get(f); };
   const tintOwners = new Int16Array(data.cities.length).fill(-1);
   let tintPlayer = -1;
   function tint(g) {
@@ -82,6 +83,7 @@ export function createStrategy(ctx) {
   const ZOOM = [10, 80], DEFAULT_DIST = 24; // 24: the nearest view that keeps every road neighbour of the selected city on screen
   const OPENING_TARGET = new THREE.Vector3(1.2, 0, 1);
   // bakeView's lens: long, so the board's tall west and north lean less over the frame and the map's scale changes less across it. Far past where the tilt stops at ≈60°.
+  let bakedTowns = null;
   const BAKE_FOV = 10, BAKE_DIST = 144, BAKE_WOODS_FLOOR = [[0.36, 0.62, 0.2], [0.32, 0.62, 0.19], [0.62, 0.44, 0.14], [0.44, 0.4, 0.2]], BAKE_CROWNS = 1.3;
   let baked = false;
   const dofLens = { strength: 0, bandWorld: 0, rampWorld: 0, far: 0, near: 0 }; // reused by the frame loop
@@ -132,11 +134,20 @@ export function createStrategy(ctx) {
   const onBoard = (t) => { t.x = Math.min(reach[1], Math.max(reach[0], t.x)); t.z = Math.min(reach[3], Math.max(reach[2], t.z)); };
   // The camera as it will be once the view has eased to `goal`, for placing things where they will be rather than where they are mid-glide.
   const restCam = new THREE.PerspectiveCamera(), restV = new THREE.Vector3(), restRay = new THREE.Raycaster();
+  // Phone (2026-11-17): the top bar takes a strip off the top of the picture and the north's cities went under it. The camera
+  // is raised along its own up by half that strip, so the view's middle is the middle of what is left; ctx.hudTop() gives the
+  // strip in CSS px (0 off the phone). The camera only: the point looked at, its bounds and every focus stay as they were.
+  const liftV = new THREE.Vector3();
+  let liftNow = 0; // eased in update(), so the bar coming and going (欣赏模式, a war) glides rather than jumps
+  const lift = (cam, dist, top = ctx.hudTop?.() ?? 0) => {
+    const h = ctx.renderer?.domElement.clientHeight || innerHeight;
+    if (top > 0 && h > 0) cam.position.addScaledVector(liftV.set(0, 1, 0).applyQuaternion(cam.quaternion), (top / 2) * (2 * dist * Math.tan((cam.fov * Math.PI) / 360)) / h);
+  };
   const atRest = () => {
     const { yaw, dist, target } = goal, pitch = pitchOf(goal);
     Object.assign(restCam, { fov: camera.fov, aspect: camera.aspect, near: camera.near, far: camera.far }); restCam.updateProjectionMatrix();
     restCam.position.set(target.x + Math.sin(yaw) * Math.cos(pitch) * dist, Math.sin(pitch) * dist, target.z + Math.cos(yaw) * Math.cos(pitch) * dist);
-    restCam.lookAt(target); restCam.updateMatrixWorld();
+    restCam.lookAt(target); lift(restCam, dist); restCam.updateMatrixWorld();
     return restCam;
   };
   return {
@@ -206,7 +217,8 @@ export function createStrategy(ctx) {
       visualMarks.updateFlow(time);
       const { yaw, dist, target } = view, pitch = pitchOf();
       camera.position.set(target.x + Math.sin(yaw) * Math.cos(pitch) * dist, Math.sin(pitch) * dist, target.z + Math.cos(yaw) * Math.cos(pitch) * dist);
-      camera.lookAt(target); visualMarks.updateHover(time);
+      liftNow += ((ctx.hudTop?.() ?? 0) - liftNow) * ep; if (Math.abs(liftNow) < 0.01) liftNow = 0;
+      camera.lookAt(target); lift(camera, dist, liftNow); visualMarks.updateHover(time);
       atmosphere.updateView(time, dist, lowness(), camera);
       cities.updateTags(dt, camera, dist, selected, hovered, candidates, roadLayer.roadsOn, DEFAULT_DIST, tmpV);
     },
@@ -319,6 +331,21 @@ export function createStrategy(ctx) {
         return { near: world.cities[near].id, k: land ? k : 0, land: land ? 1 : 0 };
       };
       return { project, cities, roads, tintAt };
+    },
+    // For tools/bake_strategy_flat.mjs --towns only, after bakeView: the board and everything on it hidden, a pack town of each
+    // spot's tier standing there alone (as strategycities builds one: the model, its ground shadow), for the 2D map's town pictures.
+    // Returns each spot with `top`, how far over its seat the town's tag stands (strategycities: the town's top, or its pole's).
+    // Call it after every bakeView (which shows the board's pieces again); the towns are made on the first call.
+    bakeTowns(spots, y = 0.35) {
+      for (const o of [...scene.children]) if (!o.isLight && o !== camera && !o.userData.bakeTown) o.visible = false;
+      if (bakedTowns) return bakedTowns;
+      return bakedTowns = spots.map((s) => {
+        const g = new THREE.Group(), half = world.size[TIER_KIND[s.tier]] / 2;
+        for (const { geo, mat } of world.cityModel(s.tier)) { const m = new THREE.Mesh(geo, mat); m.position.y = -0.03; g.add(m); }
+        const modelTop = new THREE.Box3().setFromObject(g).max.y;
+        g.add(townShadow(half)); g.position.set(s.x, y, s.z); g.userData.bakeTown = true; scene.add(g);
+        return { ...s, y, half, top: Math.max(modelTop, s.tier === 'capital' ? 0.56 : 0.44) + 0.15 };
+      });
     },
   };
 }

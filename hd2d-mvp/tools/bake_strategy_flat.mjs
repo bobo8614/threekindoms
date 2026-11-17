@@ -1,6 +1,8 @@
 // The low-quality 战略地图's four board pictures, photographed from the 3D sand table (the season colours live in its
 // shaders), and the coordinates the 2D map draws by, projected through the same camera.
 //   node hd2d-mvp/tools/bake_strategy_flat.mjs <scratch_dir> [--dest assets/ai/sandtable/flat] [--ss 1.5] [--only spring] [--metadata-only]
+//   node hd2d-mvp/tools/bake_strategy_flat.mjs <scratch_dir> --towns    the town pictures a data pack's new cities stand in on the 2D map:
+//     each tier's model alone, photographed by the same camera in each season at three latitudes (snow), into towns-<season>.webp and towns.json
 // Full-size PNGs stay in scratch_dir (AGENTS.md, "Large source art"); <dest> gets {spring,summer,autumn,winter}.webp and board.json.
 // One large frame rather than setViewOffset tiles: occlusion and bloom would seam at tile edges. Rendered at --ss times the picture and
 // scaled down, which antialiases the outline and settles the woods' sub-pixel speckle (Chrome caps a canvas at about 33 Mpx, so 1.5).
@@ -39,7 +41,7 @@ async function main() {
   if (!scratch || scratch.startsWith('--')) { console.error('usage: bake_strategy_flat.mjs <scratch_dir> [--dest assets/ai/sandtable/flat] [--ss 1.5] [--only spring]'); process.exit(2); }
   const HD2D = join(dirname(fileURLToPath(import.meta.url)), '..'), ROOT = join(HD2D, '..');
   const dest = resolve(HD2D, arg('--dest', 'assets/ai/sandtable/flat')), SS = Number(arg('--ss', 1.5)), only = arg('--only');
-  const metadataOnly = process.argv.includes('--metadata-only'); // refresh ownership after a border warp change, without photographing the seasons again
+  const metadataOnly = process.argv.includes('--metadata-only'), towns = process.argv.includes('--towns'); // refresh ownership after a border warp change, without photographing the seasons again
   // Season files and the month each is shot in: 二月, 四月, 九月, 十一月 (floor(month / 3) picks the picture in play).
   const SEASONS = [['spring', 1], ['summer', 3], ['autumn', 8], ['winter', 10]].filter(([s]) => !only || s === only);
   const FRAME = [3900, 3200], CELL = 32, PAD = 8, TERRITORY_GRID_SCALE = 4, TERRITORY_RUN_MAX = 255; // finer ownership cells keep the live tint off the sea without changing the pictures
@@ -56,7 +58,63 @@ async function main() {
     page.on('pageerror', (e) => console.error('page error:', e.message));
     await page.goto(url); await page.waitForFunction(() => window.__game?.debug, null, { timeout: 120000 });
     await page.addScriptTag({ content: `window.__flatTintGrid = ${buildTintGrid.toString()};` });
-    if (metadataOnly) {
+    if (towns) {
+      // A cell per tier (columns) and latitude band (rows); the seat projects to ANCHOR in its cell. The towns stand in one frame,
+      // spread over the board's middle: at this lens (10°) the view of a town hardly changes across the board.
+      const TIERS = ['capital', 'major', 'county', 'pass'], BANDS = [-7, 0, 6], XS = [-6, -2, 2, 6], CELL = [260, 230], ANCHOR = [130, 135];
+      const spots = BANDS.flatMap((z, b) => TIERS.map((tier, t) => ({ tier, band: b, x: XS[t], z })));
+      let meta = null;
+      for (const [season, month] of SEASONS) {
+        const res = await page.evaluate(async ({ W, H, SS, month, spots, CELL, ANCHOR, first }) => {
+          const { strategy, debug: { renderer, post, show } } = window.__game, SW = Math.round(W * SS), SH = Math.round(H * SS);
+          if (first) {
+            show('strategy'); renderer.setAnimationLoop(null);
+            post.setQuality({ ao: 'auto', msaa: false }); renderer.setPixelRatio(1); renderer.setSize(SW, SH, false); post.setSize(SW, SH);
+            post.setProfile('strategy'); post.setDof({ strength: 0, band: 1 }); post.setFocus(60);
+            const grade = post.composer.passes.find((p) => p.uniforms?.vignette).uniforms; grade.vignette.value = 0; grade.grain.value = 0;
+            renderer.localClippingEnabled = true;
+          }
+          const view = strategy.bakeView({ month, size: [W, H] });
+          window.__townSpots = strategy.bakeTowns(spots);
+          const placed = window.__townSpots;
+          const grab = () => { const c = new OffscreenCanvas(SW, SH); c.getContext('2d').drawImage(renderer.domElement, 0, 0); return c.getContext('2d').getImageData(0, 0, SW, SH).data; };
+          const plain = (clear) => { renderer.setRenderTarget(null); renderer.setClearColor(clear, 1); renderer.render(strategy.scene, strategy.camera); return grab(); };
+          const black = plain(0), white = plain(0xffffff);
+          renderer.setClearColor(0, 1); post.render(); const lit = grab();
+          // The background alone through the grade, to take out of the edge pixels.
+          const bg = (() => { const hidden = strategy.scene.children.filter((o) => o.visible && !o.isLight && o !== strategy.camera); hidden.forEach((o) => { o.visible = false; }); post.render(); const d = grab(); hidden.forEach((o) => { o.visible = true; }); return d; })();
+          const atlas = new OffscreenCanvas(CELL[0] * 4, CELL[1] * 3), ag = atlas.getContext('2d'); ag.imageSmoothingQuality = 'high';
+          const cw = Math.round(CELL[0] * SS), ch = Math.round(CELL[1] * SS);
+          const out = placed.map((s, i) => {
+            const [px, py] = view.project(s.x, s.y, s.z), x0 = Math.round(px * SS - ANCHOR[0] * SS), y0 = Math.round(py * SS - ANCHOR[1] * SS);
+            const cell = new ImageData(cw, ch), d = cell.data;
+            for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+              const X = x0 + x, Y = y0 + y, o = (y * cw + x) * 4; if (X < 0 || Y < 0 || X >= SW || Y >= SH) continue;
+              const q = (Y * SW + X) * 4, a = 1 - Math.max(white[q] - black[q], white[q + 1] - black[q + 1], white[q + 2] - black[q + 2]) / 255;
+              if (a <= 0.004) continue;
+              for (let k = 0; k < 3; k++) d[o + k] = Math.max(0, Math.min(255, (lit[q + k] - (1 - a) * bg[q + k]) / a));
+              d[o + 3] = Math.round(a * 255);
+            }
+            const c = new OffscreenCanvas(cw, ch); c.getContext('2d').putImageData(cell, 0, 0);
+            const t = ['capital', 'major', 'county', 'pass'].indexOf(s.tier);
+            ag.drawImage(c, 0, 0, cw, ch, t * CELL[0], s.band * CELL[1], CELL[0], CELL[1]);
+            // The tag and the flag as offsets from the seat in picture px, by the same camera.
+            const [tx, ty] = view.project(s.x, s.y + s.top, s.z), ph = s.tier === 'capital' ? 0.56 : 0.44, [fx, fy] = view.project(s.x + s.half * 0.92, s.y + ph, s.z - s.half * 0.4);
+            const r = s.half * 1.28 + 0.1, rx = (view.project(s.x + r, s.y, s.z)[0] - view.project(s.x - r, s.y, s.z)[0]) / 2, ry = (view.project(s.x, s.y, s.z + r)[1] - view.project(s.x, s.y, s.z - r)[1]) / 2;
+            const n = (v) => Math.round(v * 10) / 10;
+            return { tier: s.tier, band: s.band, z: s.z, tag: [n(tx - px), n(ty - py)], flag: [n(fx - px), n(fy - py)], rx: n(rx), ry: n(ry) };
+          });
+          const png = await new Promise(async (res) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.readAsDataURL(await atlas.convertToBlob({ type: 'image/png' })); });
+          return { png, out };
+        }, { W: FRAME[0], H: FRAME[1], SS, month, spots, CELL, ANCHOR, first: !meta });
+        meta = { cell: CELL, anchor: ANCHOR, tiers: TIERS, bands: BANDS, towns: res.out };
+        const png = join(scratch, `towns-${season}.png`), webp = join(dest, `towns-${season}.webp`);
+        writeFileSync(png, Buffer.from(res.png, 'base64'));
+        execFileSync('cwebp', ['-quiet', '-q', '88', '-m', '6', '-alpha_q', '100', png, '-o', webp]);
+        console.log(`towns ${season}: month ${month}`);
+      }
+      writeFileSync(join(dest, 'towns.json'), JSON.stringify(meta));
+    } else if (metadataOnly) {
       const board = JSON.parse(readFileSync(join(dest, 'board.json'), 'utf8'));
       board.tint = await page.evaluate(({ board, frame, scale, runMax }) => {
         const { strategy, debug: { renderer, show } } = window.__game;

@@ -40,17 +40,30 @@ const MOUSE = {
   '白兵·单挑': { left: '点阵形选中、点部署出阵；点指令；点头像看双方资料', right: '', wheel: '' },
 };
 const KEYS = {
-  通用: [[['W', 'A', 'S', 'D'], '平移镜头'], [['Q', 'E'], '旋转镜头'], [['C'], '镜头复位'], [['Esc'], '取消、返回'], [['Enter', '空格'], '跳过当前演出'], [['H'], 'HD-2D 效果开关']],
+  通用: [[['W', 'A', 'S', 'D'], '平移镜头'], [['Q', 'E'], '旋转镜头'], [['C'], '镜头复位'], [['Esc'], '取消、返回'], [['Enter', '空格'], '跳过当前演出'], [['H'], 'HD-2D 效果开关'],
+    // The desktop game's window (desktop/main.js); in a browser these are the browser's own keys.
+    ...(window.desktop ? [[window.desktop.mac ? ['⌥Enter'] : ['F11', 'Alt+Enter'], '全屏开关'], [[window.desktop.mac ? '⌘Q' : 'Alt+F4'], '退出游戏']] : [])],
   战略: [[['1–5'], '展开、收起命令分组'], [['R'], '人物志'], [['G'], '道路总览'], [['V'], '欣赏模式（V 或 Esc 恢复）'], [[quickSaveKey], '快捷存档'], [['F8'], '快捷读档']],
   战场: [[['Q', 'E'], '每次转四分之一圈'], [['Tab'], '俯瞰全局，再按回原视角'], [['T'], '按住：看地形'], [['R'], '按住：敌军威胁范围'], [['[', ']'], '上一位、下一位己方武将'], [['M'], '收放小地图'], [['Alt'], '按住：精确兵数与体力'], [['Z'], '撤销移动'], [['F'], '计略'], [['X'], '再施上次的计略'], [['L'], '攻击、计略时：镜头移到目标'], [['Enter'], '结束本日；确认攻击时：进入白兵战'], [['F8'], '快捷读档（回到战略记录）']],
   '白兵·单挑': [[['Enter'], '布阵：选阵形，在选中的阵形上再按即部署'], [['空格'], '白兵：开始交战／暂停／继续'], [['1–7'], '单挑：选指令'], [['8'], '单挑：查看资料'], [['T'], '单挑：自动／亲自指挥']],
 };
 
+// 触屏 (phone, 2026-11-17, Wrz0903@bilibili: the help showed the mouse to a phone): [what the finger does, what it does], by scene.
+// No picture: the phone's own buttons are named as they read on screen.
+const TOUCH = {
+  通用: [['点一下', '选择、确定；演出中跳过当前一段'], ['单指拖动', '平移镜头'], ['双指捏合', '缩放'], ['双指一起移动', '平移'], ['「返回」「取消」', '退回上一步'], ['「☰ 系统」', '画面、声音、速度、记录与说明']],
+  战略: [['点城市或城名', '选城；命令在右侧「城」「军」「仓」「町」「外交」'], ['点城的面板标题', '展开、收起城的详情'], ['「道路」「势力」', '道路总览、势力范围'], ['「人物志」', '查看武将'], ['「结束本月行动」', '结束本月']],
+  战场: [['点己方武将', '选将，再点金色范围里的一格'], ['再点同一格或「确认移动」', '移动（花费机动力）'], ['点四角红框的敌将', '在左侧确认攻击'], ['计略、攻击', '先点名单里的目标或地图上的格，再点「施展」「进入白兵战」'],
+    ['「撤销」', '撤销上一次移动'], ['「威」「地形」', '敌军威胁范围、被遮住的地形'], ['「‹」「›」', '上一位、下一位己方武将'], ['「待机·结束本日」', '结束本日']],
+  '白兵·单挑': [['点阵形', '选中，再点「部署」出阵'], ['点指令', '下令'], ['点头像', '单挑：查看双方资料']],
+};
+
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const glyph = (k, label) => h('kbd', { class: 'pg', 'data-glyph': k, 'data-label': label(k) ?? '' });
 
-// input: 'pad' | 'keys' (the one shown first); family, east: the pad's family and 确定键; label(k): a button's text label.
-export function controls({ input, family, east, label }) {
+// input: 'touch' | 'pad' | 'keys' (the one shown first); touch: offer the 触屏 page (a phone); family, east: the pad's family and
+// 确定键; label(k): a button's text label.
+export function controls({ input, touch = false, family, east, label }) {
   let kind = input, scene = store.get('hd2d-help-scene') ?? '通用';
   if (!SCENES.includes(scene)) scene = '通用';
   const el = h('div', { class: 'ctl' });
@@ -59,14 +72,19 @@ export function controls({ input, family, east, label }) {
     const seg = (v, t) => h('button', { class: `btn ${kind === v ? 'on' : ''}`, 'aria-pressed': kind === v, onclick: () => { kind = v; draw(); el.querySelector('.ctl-kind .on')?.focus(); } }, t);
     const tab = (s) => h('button', { class: `btn ${scene === s ? 'on' : ''}`, 'aria-pressed': scene === s, onclick: () => { scene = s; store.set('hd2d-help-scene', s); draw(); el.querySelector('.ctl-tabs .on')?.focus(); } }, s);
     el.replaceChildren(
-      h('div', { class: 'ctl-head' }, h('div', { class: 'ctl-kind' }, seg('keys', '键鼠'), seg('pad', '手柄')), h('div', { class: 'ctl-tabs' }, ...SCENES.map(tab))),
-      kind === 'pad' ? padView(family, east, scene, label) : keysView(scene));
+      h('div', { class: 'ctl-head' }, h('div', { class: 'ctl-kind' }, touch ? seg('touch', '触屏') : null, seg('keys', '键鼠'), seg('pad', '手柄')), h('div', { class: 'ctl-tabs' }, ...SCENES.map(tab))),
+      kind === 'pad' ? padView(family, east, scene, label) : kind === 'touch' ? touchView(scene) : keysView(scene));
     requestAnimationFrame(() => leaders(el));
   };
   draw();
   if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(() => leaders(el)); ro.observe(el); }
   el.addEventListener('load', () => leaders(el), true); // the picture's size is known once it loads
   return el;
+}
+
+function touchView(scene) {
+  return h('div', { class: 'ctl-keys ctl-touch' },
+    h('div', { class: 'ctl-keylist' }, ...TOUCH[scene].map(([g, t]) => h('div', { class: 'ctl-key' }, h('b', { class: 'gesture' }, g), h('span', {}, t)))));
 }
 
 function padView(family, east, scene, label) {

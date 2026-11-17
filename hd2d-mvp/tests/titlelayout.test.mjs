@@ -34,6 +34,7 @@ for (const count of [0, 1, 2]) for (const held of [false, true]) test(`${count} 
     await skipIntro(page);
     await page.waitForFunction(() => !!document.querySelector('.tt-menu')?.style.top);
     await page.evaluate(() => document.fonts.ready);
+    // 新的征程 always (数据包 only with ?packs); 继续, 读取 and 继续战斗 as the records allow.
     assert.equal(await page.locator('.tt-menu > button').count(), 1 + (count > 0 ? 1 : 0) + (count > 1 ? 1 : 0) + (held ? 1 : 0));
     const issues = [], check = (ok, message) => { if (!ok) issues.push(message); };
     for (const [width, height] of sizes) {
@@ -67,4 +68,16 @@ for (const count of [0, 1, 2]) for (const held of [false, true]) test(`${count} 
     assert.deepEqual(issues, []);
     assert.deepEqual(page.errors, []);
   } finally { await page.close(); }
+});
+// 数据包 is exploration: hidden on the title unless the address asks for it with ?packs.
+test('the 数据包 button shows only with ?packs', async () => {
+  for (const [query, shown] of [['', false], ['&packs', true]]) {
+    const page = await game.open(query, { setup: ctx => ctx.addInitScript(() => sessionStorage.setItem('hd2d-title-seen', '1')) });
+    try {
+      await skipIntro(page);
+      await page.waitForSelector('.tt-menu > button');
+      assert.equal(await page.locator('.tt-menu > button', { hasText: '数据包' }).count(), shown ? 1 : 0, `query '${query}'`);
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  }
 });
