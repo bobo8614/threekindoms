@@ -73,15 +73,15 @@ test('on the title every row is in the window', async () => {
   await everySize(await (async () => { await openMenu(); return page.locator(ROWS).count(); })());
 });
 
-test('on the strategy map all 26 rows can be clicked at every window size', async () => {
+test('on the strategy map all 27 rows can be clicked at every window size', async () => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await newCampaign(page, '曹操');
-  await everySize(26);
+  await everySize(27);
   await tabThroughSmallWindow();
   await page.setViewportSize({ width: 1600, height: 900 });
 });
 
-test('in a war all 27 rows (中断战斗 too) can be clicked at every window size', async () => {
+test('in a war all 28 rows (中断战斗 too) can be clicked at every window size', async () => {
   await page.evaluate(() => {
     const { g, debug } = window.__game, c = g.cities[14], to = g.cities[12];
     for (const id of [...c.officers, ...to.officers]) g.officers[id].soldiers ||= 500;
@@ -95,7 +95,31 @@ test('in a war all 27 rows (中断战斗 too) can be clicked at every window siz
     await page.evaluate(() => window.__game.war.finishDeploy());
     await page.waitForFunction(() => { const f = window.__game.war.field; return f.turn === f.human && !document.querySelector('.banner, .panel.msg'); }, null, { timeout: 30000 });
   } finally { stop(); }
-  await everySize(27);
+  await everySize(28);
   await tabThroughSmallWindow();
   assert.deepEqual(page.errors, []);
+});
+
+// A phone shows one group at a time as a two-column grid (src/phone.css): the desktop's shared rows (声音｜曲目, 地名｜欣赏模式)
+// once sat in one cell there, both buttons in half of it and 曲目 Remix on two lines (2026-11-18). Each button is a whole cell.
+test('phone: every row of every tab of the menu is at least one cell of its grid wide', async () => {
+  const p = await game.open('&phone', { setup: (c) => c.addInitScript(() => { localStorage.setItem('hd2d-quality', 'low'); localStorage.setItem('hd2d-quality-asked', '1'); }) });
+  await p.setViewportSize({ width: 727, height: 335 });
+  await p.evaluate(() => { const a = window.__game.audio; if (a.sets.length < 2) { a.sets = [{ id: 'remix', label: 'Remix' }, { id: 'original', label: '原版' }]; a.set = 'remix'; } });
+  await newCampaign(p, '曹操');
+  await p.click('.sysmenu-btn');
+  const tabs = await p.locator('.sysmenu-tabs .btn').allTextContents();
+  assert.ok(tabs.includes('声音') && tabs.includes('其他'), tabs.join());
+  for (const t of tabs) {
+    await p.locator('.sysmenu-tabs .btn', { hasText: t }).click();
+    const narrow = await p.evaluate(() => {
+      const g = document.querySelector('.sysmenu-group.on'), cell = (g.getBoundingClientRect().width - 6) / 2;
+      return [...g.querySelectorAll('.btn')].filter((b) => !b.closest('.sysrange') || b.matches('.sysrange'))
+        .filter((b) => b.getBoundingClientRect().width < cell - 1).map((b) => `${b.textContent.trim()} ${Math.round(b.getBoundingClientRect().width)}px < ${Math.round(cell)}px`);
+    });
+    assert.deepEqual(narrow, [], t);
+  }
+  assert.ok(await p.locator('.sysmenu-group.on .btn', { hasText: '欣赏模式' }).count(), 'the last tab is 其他');
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
 });

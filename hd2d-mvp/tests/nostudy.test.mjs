@@ -1,5 +1,5 @@
 // 武将不能读书 (g.noStudy): an option, off by default, chosen on the setup screen or in ☰ 系统 and kept with the record.
-// With it on no officer raises 智力 by study: the player's 学问所 is greyed out and the computer's study draw finds no one.
+// With it on no officer raises 智力 by study: the player's 书馆 is greyed out and the computer's study draw finds no one.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -40,7 +40,7 @@ test('the computer studies under the original rules and not with it on', () => {
 let game, page;
 const errors = [];
 const item = () => page.locator('.sysmenu-list button', { hasText: '武将读书' });
-const row = () => cmdRow(page, '学问所');
+const row = () => cmdRow(page, '书馆');
 test('browser', async (t) => {
   game = await startGame(); page = await game.open(); page.on('pageerror', (e) => errors.push(e.message));
   try {
@@ -59,7 +59,7 @@ test('browser', async (t) => {
       try { await page.waitForFunction(() => { const g = window.__game.g; return g.current === g.player && !document.querySelector('.aiturn, .panel.msg'); }, null, { timeout: 90000 }); } finally { stop(); }
       assert.equal(await page.evaluate(() => window.__game.g.noStudy), true);
     });
-    await t.test('学问所 is greyed out with the reason', async () => {
+    await t.test('书馆 is greyed out with the reason', async () => {
       await openCmds(page, '町');
       assert.equal(await row().isDisabled(), true);
       assert.match(await row().textContent(), /武将不能读书/);

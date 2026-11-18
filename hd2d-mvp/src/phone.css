@@ -66,6 +66,9 @@ body.phone .rightcol { display: none; }
 body.phone .citypanel { top: auto; bottom: var(--gb); left: var(--g); width: 250px; max-height: 118px; overflow: hidden; }
 body.phone .citypanel header { padding: 4px 10px 2px; gap: 8px; }
 body.phone .citypanel header h2 { font-size: 21px; letter-spacing: 1px; }
+/* 地名 考据: the original name beside the city's has no room in this header (陈留 原版 兖州 曹操 君主所在 详情 wrapped every word);
+   the 说明 lists the pairs. */
+body.phone .citypanel header .origname { display: none; }
 body.phone .citypanel header::after { content: '详情 ▴'; margin-left: auto; font-size: 12px; color: var(--dim); }
 body.phone.city-open .citypanel { max-height: calc(var(--vh) - var(--gt) - 40px - var(--gb)); overflow-y: auto; overscroll-behavior: contain; width: min(340px, 46vw); z-index: 5; }
 body.phone.city-open .citypanel header::after { content: '收起 ▾'; }
@@ -268,6 +271,11 @@ body.phone .vig-more { right: 10px; bottom: 6px; font-size: 12px; }
    - on a narrow phone the folded city panel gives way to the open command list. */
 body.phone .toast { left: var(--g); transform: none; max-width: min(46vw, 360px); }
 body.phone .toast.out { transform: translateY(-8px); }
+/* 战场, the 攻击 / 计略 panel open (left column, its head under the status bar when it is at its full height): the toast, which the
+   phone shows for every line of the war's record, stood on that head — the caster's name and 全军机动力 — for its 2.4 s at each
+   step (2026-11-18). It stands right of the panel, and under the target's card once one is picked (tests/phonetarget.test.mjs). */
+body.phone:has(.actpanel) .toast { left: calc(var(--g) + 264px + 8px); max-width: calc(100vw - var(--g) - 264px - 16px - var(--gr)); }
+body.phone:has(.actpanel):has(.unitpanel.compare) .toast { top: calc(var(--gt) + 40px + 46px); }
 body.phone .aiturn { bottom: auto; top: calc(var(--gt) + 40px); }
 body.phone .qnotice { bottom: calc(var(--gb) + var(--hit) + 12px); }
 body.phone.picking #ui > :is(.endturn, .dock, .citypanel) { display: none; }
@@ -359,6 +367,9 @@ body.phone .sysmenu-group, body.phone .sysmenu-group + .sysmenu-group { display:
 body.phone .sysmenu-group.on { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 body.phone .sysmenu-list .sysmenu-group .btn { min-height: 42px; font-size: 14px; padding: 2px 10px; white-space: normal; line-height: 1.25; }
 body.phone .sysmenu-list .sysrange, body.phone .sysmenu-list .sysmenu-quick { grid-column: 1 / -1; }
+/* The desktop's shared rows (声音｜曲目, 地名｜欣赏模式, 回到标题｜退出游戏) save a 1024x600 window's height; in a phone's two-column grid a
+   pair in one cell squeezed both buttons into half of it, 曲目 Remix on two lines (2026-11-18), so here each button takes a cell. */
+body.phone .sysmenu-list .sysmenu-pair { display: contents; }
 body.phone .sysmenu-list .sysmenu-quick { gap: 6px; } body.phone .sysmenu-list .sysmenu-quick .btn { font-size: 14px; flex: 1 1 0; }
 body.phone .sysrange > span { order: 0; } body.phone .sysrange .less { order: 1; } body.phone .sysrange input { order: 2; flex: 1 1 auto; width: auto; height: 32px; } body.phone .sysrange .more { order: 3; } body.phone .sysrange small { order: 4; min-width: 40px; font-size: 13px; }
 body.phone .sysmenu-list .sysrange .nudge { min-height: 36px; min-width: 44px; padding: 0; font-size: 20px; text-align: center; }
@@ -402,6 +413,9 @@ body.phone .tk .sb::before { width: 13px; height: 13px; font-size: 10px; line-he
 body.phone .actpanel .ap-foot { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
 body.phone .actpanel .ap-sum { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 body.phone .actpanel .ap-btns { flex: none; }
+body.phone .actpanel .ap-run { flex: none; grid-template-columns: auto var(--hit, 40px) minmax(2em, auto) var(--hit, 40px) 1fr; }
+body.phone .actpanel .ap-run .btn { min-height: var(--hit, 40px); }
+body.phone .actpanel .ap-runsum { flex: none; font-size: 12.5px; }
 body.phone .actpanel:is(.strike, .confirm) .ap-body { flex: 0 0 auto; max-height: 92px; }
 /* the foe's card: name and bars only, cards folded open or not (his gear stood in a column one character wide; his figures are in the panel) */
 html body.phone .unitpanel.compare .gear { display: none; }

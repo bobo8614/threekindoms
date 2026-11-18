@@ -7,6 +7,7 @@ import { name, cityName, factionName, maxHp } from '../core/game.js';
 import { STRATEGY_FX } from '../fx.js';
 import { stage, fresh } from '../commitguard.js';
 import { PHONE } from '../phone.js';
+import { UNTIL_HIT } from '../core/batch.js';
 
 export function makeInteract(wv) {
   const { field, audio, ui, human, scene, terr, inside, views, removeGone, mark, clearMarks, clearPreview, cursor, frameCast, keepInView, unframeCast } = wv;
@@ -96,10 +97,21 @@ export function makeInteract(wv) {
     return { t: s.t, cost: ATTACK_COST, pool: field.pool[human], left, attacks: Math.max(0, Math.floor(left / ATTACK_COST)), ground: TERRAIN_NAME[T], castle: T === CASTLE, commander: !!s.t.commander, entering: !!s.entering, from: s.from };
   }
   // What the panel's confirmation states: the caster, the 计略, its target, the odds, the cost and what the army has left after it.
+  // n: how many times in a row (羽之@devblog, 2026-11-18; src/core/batch.js castRun), 1 to max = the pool ÷ the cost; the left and the
+  // attacks are for all n. until: 虚兵, 笼络, 连环, 奇门遁甲, whose n is "at most, the first that takes ends it". No count for 十面埋伏.
   function confirmInfo() {
     const c = st.confirm; if (!c) return null;
-    const S = STRATS[c.id], chance = c.t ? field.odds(c.u, c.id, c.t) : null, left = field.pool[human] - S.cost;
-    return { id: c.id, name: S.name, t: c.t, cost: S.cost, pool: field.pool[human], left, attacks: Math.max(0, Math.floor(left / ATTACK_COST)), chance, loyalty: c.t && c.id === 8 ? field.O(c.t.id).loyalty : null };
+    const S = STRATS[c.id], chance = c.t ? field.odds(c.u, c.id, c.t) : null, max = runMax(c.id), n = Math.min(c.n ?? 1, max), left = field.pool[human] - S.cost * n;
+    return { id: c.id, name: S.name, t: c.t, cost: S.cost, pool: field.pool[human], left, attacks: Math.max(0, Math.floor(left / ATTACK_COST)), chance, loyalty: c.t && c.id === 8 ? field.O(c.t.id).loyalty : null,
+      n, max, until: UNTIL_HIT.includes(c.id) };
+  }
+  const runMax = (id) => (id === 11 ? 1 : Math.max(1, Math.floor(field.pool[human] / STRATS[id].cost)));
+  // The count in the confirmation: by d (← →, − ＋, the pad's left and right) or to v (最多); nothing else changes, nothing is spent.
+  function runCount(d, v = null) {
+    const c = st.confirm; if (!c || st.busy) return false;
+    const max = runMax(c.id); if (max <= 1) return false;
+    const n = Math.max(1, Math.min(max, v ?? (c.n ?? 1) + d)); if (n === c.n) return true;
+    c.n = n; showOptions(); return true;
   }
   // The generals the 计略 in hand may be cast on, likeliest first then nearest, for the list beside the caster (feedback of
   // 2026-11-09, 张沐镕@bilibili: a target at 全景 was a 28×20 px cell): { name, target, rows: [{ u, o, chance, commander }] }, or null.
@@ -271,7 +283,7 @@ export function makeInteract(wv) {
   function askCast(u, id, t) {
     if (st.busy) return;
     if (!field.canCast(u, id, t)) return refuse(u, id);
-    clearPreview(); st.confirm = { u, id, t }; st.ask = t; st.peek = null; stage(); showOptions();
+    clearPreview(); st.confirm = { u, id, t, n: 1 }; st.ask = t; st.peek = null; stage(); showOptions();
     if (t) keepInView(t);
   }
   // The cast, on the panel's 确认, Enter, the pad's confirm or a second click on the same target. It goes ahead only on a new
@@ -281,7 +293,7 @@ export function makeInteract(wv) {
     if (!fresh(e)) return false;
     st.confirm = null; st.ask = null; st.cast = null;
     if (c.u.gone || !field.canCast(c.u, c.id, c.t)) { refuse(c.u, c.id); return false; }
-    wv.castOn(c.u, c.id, c.t);
+    wv.castOn(c.u, c.id, c.t, Math.min(c.n ?? 1, runMax(c.id)));
     return true;
   }
   // Undo rides back along the same route, a little quicker than the way out.
@@ -322,5 +334,5 @@ export function makeInteract(wv) {
 
   wv.done = undefined;
   const finished = new Promise((res) => (wv.done = res));
-  return { st, hud, sideLabel, syncCompare, compareTarget, showOptions, select, attackTargets, attackRows, strikeInfo, confirmInfo, castTargets, hot, attackable, castable, recastOf, lastCast, inRect, showDeploy, deployClick, finishDeploy, clickCell, openAttacks, askAttack, commitAttack, cancel, openStrategies, chooseStrategy, recast, refuse, askCast, commitCast, undo, retreat, hold, shop, service, finished };
+  return { st, hud, sideLabel, syncCompare, compareTarget, showOptions, select, attackTargets, attackRows, strikeInfo, confirmInfo, castTargets, hot, attackable, castable, recastOf, lastCast, inRect, showDeploy, deployClick, finishDeploy, clickCell, openAttacks, askAttack, commitAttack, cancel, openStrategies, chooseStrategy, recast, refuse, askCast, commitCast, runCount, undo, retreat, hold, shop, service, finished };
 }

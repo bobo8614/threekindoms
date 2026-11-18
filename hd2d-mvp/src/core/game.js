@@ -15,9 +15,29 @@ let D = null, BASE = null; // static data (data/game-data.json with data/base-ma
 export const data = () => D;
 export async function loadData(url = 'data/game-data.json') {
   const [d, map] = await Promise.all([url, url.replace(/game-data\.json$/, 'base-map.json')].map(async (u) => (await fetch(u)).json()));
-  BASE = structuredClone(withBaseMap(d, map)); D = d; return D;
+  BASE = structuredClone(withBaseMap(d, map)); D = d; nameCities(); return D;
 }
-export const setData = (d) => (D = d);
+export const setData = (d) => { D = d; nameCities(); return D; };
+// 地名 原版／考据 (佛砸米兰@qq, 2026-11-18): thirteen of the original thirty are named after a 州 or a 关 (幽州, 荆州, 西平关…); with
+// the switch on each shows a more particular name (data/base-map.json `hist`): for most the 郡 or 县 its seat stands in (南郡, 金城, 寿春…), for three the better known name of a place one or two hundred km off (北平 for 蓟, 陈留 for 昌邑, 许昌 for 谯). The name shown
+// is all that changes: seats, roads, tables and records go by id, and a pack is still read against the original names (BASE is
+// never renamed), so a pack written with either setting loads with both. A pack's own city of the same name keeps it: the
+// original city then stays under its original name.
+export const PLACE_NAMES = 'hd2d-place-names';
+let histNames = false;
+export const placeNames = () => histNames;
+export function setPlaceNames(on) { histNames = !!on; nameCities(); }
+function nameCities() {
+  if (!D) return;
+  const own = new Set(D.cities.filter((c) => c.mod).map((c) => c.name));
+  for (const c of D.cities) if (c.hist != null && !c.mod) {
+    if (histNames && !own.has(c.hist)) { c.orig ??= c.name; c.name = c.hist; } else if (c.orig != null) c.name = c.orig; // untouched while off: the data as loaded
+  }
+}
+// The original name of a city shown under another, null when it shows its own.
+export const cityOrigName = (cid) => { const c = D.cities[cid]; return !c.mod && c.orig != null && c.orig !== c.name ? c.orig : null; };
+// [original, 考据] of every city the switch renames, in city order (the 说明 lists them whichever way the switch stands).
+export const placeNamePairs = () => D.cities.filter((c) => c.hist != null && !c.mod).map((c) => [c.orig ?? c.name, c.hist]);
 // Play on a data pack (mods/<id>/, core/pack.js): merged over the unchanged base data, so nothing of an earlier pack or of a
 // session's 阿会喃 copies stays behind. Returns the problems found; on any, the data is left as it was.
 export async function usePack(id, { regions, fetchJson = fetchOptional } = {}) {
@@ -26,12 +46,13 @@ export async function usePack(id, { regions, fetchJson = fetchOptional } = {}) {
   if (errors.length) return errors;
   const { data: merged, errors: bad } = mergePack(BASE, pack, { regions });
   if (bad.length) return bad;
-  D = merged; return [];
+  D = merged; nameCities(); return [];
 }
 // The pack the page plays on: ?pack=<id> (?pack=none for none), else the one chosen on the title screen (kept in the browser).
 // { pack, errors }: errors when it would not load, the data then being the base game's.
 export const PACK_CHOICE = 'haou-hd2d-pack';
 export async function loadWithPack(search = globalThis.location?.search ?? '') {
+  try { histNames = localStorage.getItem(PLACE_NAMES) === '1'; } catch {}
   await loadData();
   let id = new URLSearchParams(search).get('pack');
   if (id == null) { try { id = localStorage.getItem(PACK_CHOICE); } catch {} }
@@ -501,15 +522,15 @@ export function charity(g, cid, gold, rice) {
   return { ok: true, gain: c.gov - before, msg: `统治度 +${c.gov - before}` };
 }
 // 武将不能读书 (g.noStudy, an option off by default and absent from older records; not in the ROM): no officer, the
-// player's or the computer's, raises 智力 by study. 学问所 is greyed out in the city menu, and the AI's study draw
+// player's or the computer's, raises 智力 by study. 书馆 is greyed out in the city menu, and the AI's study draw
 // (ai.js domestic) finds no one, as when every officer is outside 50–79.
 export const NO_STUDY = '已开启「武将不能读书」';
-// 学问所's fee and the least it raises 智力 (+0–4 on top), by the 智力 before (`0x386AD`: 80, then 30 / 60).
+// 书馆's fee and the least it raises 智力 (+0–4 on top), by the 智力 before (`0x386AD`: 80, then 30 / 60).
 export const studyFee = (int) => (int <= 30 ? [30, 5] : int <= 60 ? [20, 8] : [10, 6]);
 export function study(g, cid, id) {
   const c = g.cities[cid], o = g.officers[id], r = rng(g);
   if (g.noStudy) return { ok: false, msg: NO_STUDY };
-  if (!D.cities[cid].facilities.school) return { ok: false, msg: '此城没有学问所' };
+  if (!D.cities[cid].facilities.school) return { ok: false, msg: '此城没有书馆' };
   if (o.int >= 80) return { ok: false, msg: '智力80以上无法再学' };
   const [cost, base] = studyFee(o.int);
   if (c.gold < cost) return { ok: false, msg: '金不足' };
@@ -525,6 +546,15 @@ export function heal(g, cid, id) {
   return { ok: true, gain: o.hp - before, cost: 50, msg: `${name(id)} 体力 +${o.hp - before}` };
 }
 export const conscriptMax = (c) => Math.floor(Math.min(Math.max(0, 10000 - c.reserve), Math.floor(c.gold / 20) * 100) / 100);
+// What the city's officers can still lead (1000 each, as 分兵 fills them) beyond the soldiers they have and the
+// reserve: the shortfall 征兵 tells the player of (阿拉神丁@qq, 2026-11-18). cap: what they can lead in all;
+// have: their soldiers (each counted to 1000) and the reserve; need: cap − have, never below 0.
+export const PER_OFFICER = 1000;
+export function conscriptNeed(g, c) {
+  const led = c.officers.reduce((a, id) => a + Math.min(PER_OFFICER, g.officers[id].soldiers), 0);
+  const cap = c.officers.length * PER_OFFICER, have = led + c.reserve;
+  return { cap, have, need: Math.max(0, cap - have) };
+}
 export function conscript(g, cid, hundreds) {
   const c = g.cities[cid];
   if (hundreds < 1 || hundreds > conscriptMax(c)) return { ok: false, msg: '无法征兵' };

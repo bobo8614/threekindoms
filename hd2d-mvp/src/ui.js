@@ -180,7 +180,7 @@ export function officerRow(g, id, { on, onclick, extra } = {}) {
 // opts: selected (Set, marks rows), onPick(id), extra(id) → tag after the name, disabled(id) → reason or null.
 const COLS = [['体', (o, d) => o.hp, (o) => `${o.hp}/${maxHp(o)}`, (o) => o.hp < maxHp(o) / 2], ['武', (o) => o.war], ['智', (o) => o.int], ['德', (o) => o.virtue],
   ['忠', (o) => o.loyalty, null, (o) => o.loyalty < 60], ['兵', (o) => o.soldiers], ['军', (o) => o.army, (o) => o.army]];
-// cols: more columns after the standard ones, in COLS's form (the 武器屋 adds the gear each one has, feedback R08).
+// cols: more columns after the standard ones, in COLS's form (the 铁铺 adds the gear each one has, feedback R08).
 export function officerTable(g, ids, { selected = null, onPick, extra, disabled, cols = [] } = {}) {
   let sortBy = -1;
   const COLS_ = [...COLS, ...cols];

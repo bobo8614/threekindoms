@@ -257,6 +257,7 @@ for (const v of VIEWS) test(`a 计略 that hits raises each target's loss over h
     const w = window.__game.war, f = w.field, { e } = window.__t01, t = window.__t05;
     await new Promise((r) => setTimeout(r, 50)); while (w.st.busy) await new Promise((r) => setTimeout(r, 20));
     t.mo.disconnect(); f.legal = t.legal; f.canCast = t.canCast; f.hitChance = t.hit; (await import('./src/pace.js')).setPace(1);
+    for (let i = 0; i < 3 && (w.st.cast != null || w.st.menu); i++) w.cancel(); // with mobility left he is back on the targets (2026-11-18): out to his commands for the next case
     return { seen: t.seen, lost: t.before - f.O(e.id).soldiers };
   });
   assert.ok(r.lost > 0, 'the 火计 took soldiers');

@@ -150,9 +150,10 @@ async function knot() {
   return page;
 }
 const acts = (page) => page.evaluate(() => [...document.querySelectorAll('.unitpanel:not(.compare) .acts button')].map((b) => ({ text: b.textContent, key: b.dataset.key ?? null, off: b.disabled, title: b.title })));
-const castDone = (page) => page.waitForFunction(() => { const w = window.__game.war; return !w.st.busy && w.st.cast == null && !w.st.confirm && !document.querySelector('.shade, .vig, .panel.msg'); }, null, { timeout: 40000 });
+// The cast has played out (after it he is back in the target choice while he can cast it again, or on his commands).
+const castDone = (page) => page.waitForFunction(() => { const w = window.__game.war; return !w.st.busy && !w.st.confirm && !document.querySelector('.shade, .vig, .panel.msg'); }, null, { timeout: 40000 });
 
-test('再施: he stays selected after a cast and 再施 is offered at once, straight to the target of last time; F and X press the commands', async () => {
+test('再施: after a cast he is back on the targets of the same 计略, the one cast on under the keys; Esc to his commands, 再施 brings it back; F and X press the commands', async () => {
   const page = await knot();
   assert.ok(!(await acts(page)).some((b) => b.key === 'x'), 'no 再施 before he has cast anything');
 
@@ -169,15 +170,23 @@ test('再施: he stays selected after a cast and 再施 is offered at once, stra
   try {
     await castGo(page);
     await castDone(page);
-    // He stays selected after the cast (2026-11-14), his commands back in his card: 再施 names the 计略 without picking him again.
-    assert.ok(await page.evaluate(() => { const w = window.__game.war; return w.st.sel === window.__k.me && w.st.stage === 'cmds'; }), 'still selected, on his commands');
+    // With the mobility for another, he is back in 火计's target choice (羽之@devblog, 2026-11-18), the keys on the one cast on.
+    assert.deepEqual(await page.evaluate(() => { const w = window.__game.war; return [w.st.sel === window.__k.me, w.st.stage, w.st.cast]; }), [true, 'targets', 0], 'still selected, on the targets of 火计');
+    await page.waitForFunction(() => document.activeElement?.dataset?.target != null);
+    let f = await focused(page);
+    assert.equal(f.target, second, `the target of last time has the keys: ${JSON.stringify(f)}`);
+    assert.ok(f.last && f.tag, 'marked 上次');
+    // Esc: back to the list, then to his commands, where 再施 names the 计略 without picking him again.
+    await page.keyboard.press('Escape'); await page.waitForSelector('.actpanel.strats');
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.actpanel'));
+    assert.equal(await page.evaluate(() => window.__game.war.st.stage), 'cmds');
     const again = (await acts(page)).find((b) => b.key === 'x');
     assert.ok(again && !again.off, `再施 is offered: ${JSON.stringify(await acts(page))}`);
     assert.equal(again.text, '再施火计');
     assert.ok((await acts(page)).some((b) => b.text === '计略'), 'beside 计略, whose text is unchanged');
     await page.keyboard.press('f');
     await page.waitForSelector('.actpanel.strats');
-    let f = await focused(page);
+    f = await focused(page);
     assert.equal(f.sid, '0', `the 计略 list starts on the one cast last: ${JSON.stringify(f)}`);
     assert.ok(f.tag, 'marked 上次');
     await page.keyboard.press('Escape');
@@ -201,9 +210,8 @@ test('再施: he stays selected after a cast and 再施 is offered at once, stra
     await castDone(page);
     assert.ok(await page.evaluate((p) => window.__game.war.field.pool[window.__game.war.field.human] < p, pool), 'the second 火计 was cast');
 
-    // X again, straight after that cast, and Esc out of it: nothing was spent, he is still the one selected.
-    await page.keyboard.press('x');
-    await page.waitForSelector('.actpanel [data-target]');
+    // Back on the targets straight after that cast; Esc out of them: nothing was spent, he is still the one selected.
+    await page.waitForSelector('.actpanel.targets [data-target]');
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.actpanel'));
     assert.ok(await page.evaluate(() => window.__game.war.st.sel === window.__k.me));
@@ -213,6 +221,93 @@ test('再施: he stays selected after a cast and 再施 is offered at once, stra
     await page.waitForTimeout(300);
     const poor = (await acts(page)).find((b) => b.key === 'x');
     assert.ok(poor?.off && /现在不能再施火计/.test(poor.title), `greyed with its reason: ${JSON.stringify(poor)}`);
+  } finally { stop(); }
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+// 连续 N 次 (羽之@devblog, 2026-11-18; docs/战场计略连续施放方案_2026-11-18.md): the confirmation counts how many times in a row,
+// from 1 every time it comes up, at most the pool ÷ the cost; a run is one show and one window; between casts the camera holds
+// the framing of the choice, and Esc out of the choice gives the view back as it was before it.
+const view = (page) => page.evaluate(() => { const v = window.__game.war.viewState(); return { yaw: v.yaw, dist: v.dist, zoom: v.zoom }; });
+const run = (page) => page.evaluate(() => { const r = document.querySelector('.actpanel .ap-run'); return r ? { label: r.querySelector('.ap-runlabel').textContent, n: Number(r.querySelector('.ap-runn').textContent), sum: document.querySelector('.actpanel .ap-foot').textContent } : null; });
+const still = (page) => page.waitForFunction(() => window.__game.war.viewState().still, null, { timeout: 20000 });
+
+test('连续 N 次: 1 to pool ÷ cost, a run of 3 is three casts in one window, the camera holds between casts and comes back on Esc', async () => {
+  const page = await knot();
+  const pool = () => page.evaluate(() => window.__game.war.field.pool[window.__game.war.field.human]);
+  await still(page);
+  const before = await view(page);
+  await page.keyboard.press('f'); await page.waitForSelector('.actpanel.strats');
+  await page.locator('.actpanel.strats [data-sid="0"]').click();
+  await page.waitForSelector('.actpanel [data-target]');
+  const first = await page.locator('.actpanel [data-target]').first().getAttribute('data-target');
+  await page.locator('.actpanel [data-target]').first().click();
+  await page.waitForSelector('.actpanel.confirm');
+  let r = await run(page);
+  assert.deepEqual([r?.label, r?.n], ['连续', 1], `the count starts at 1: ${JSON.stringify(r)}`);
+  assert.match(r.sum, /消耗 6，全军余 24（还够攻击 12 次）/, 'at 1 the summary is as it always was');
+  // A quick double click on ＋ is two times more (the buttons' own clicks); 最多 goes to the end.
+  await page.waitForTimeout(400);
+  await page.locator('.actpanel .ap-run [data-run="more"]').dblclick();
+  assert.equal((await run(page)).n, 3, '＋ clicked twice in a row');
+  await page.locator('.actpanel .ap-run [data-run="max"]').click();
+  assert.equal((await run(page)).n, 5, '最多: 30 ÷ 6');
+  await page.locator('.actpanel [data-target]').first().focus();
+  await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft');
+  r = await run(page);
+  assert.equal(r.n, 3, '← twice from 5');
+  assert.match(r.sum, /共耗 18，全军余 12（还够攻击 6 次）/);
+  assert.match(r.sum, /第一次命中率约/);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset?.target), first, 'the keys stay on the target');
+  await still(page);
+  const framed = await view(page);
+  // The window of the run, read as it comes up.
+  await page.evaluate(() => { window.__msgs = []; new MutationObserver(() => { for (const m of document.querySelectorAll('.panel.msg')) { const t = m.querySelector('h4')?.textContent; if (t && !window.__msgs.some((x) => x.t === t)) window.__msgs.push({ t, text: m.querySelector('p')?.innerText ?? '' }); } }).observe(document.body, { childList: true, subtree: true }); });
+  const stop = closeMessages(page);
+  try {
+    await castGo(page);
+    await castDone(page);
+    const msgs = await page.evaluate(() => window.__msgs);
+    const told = msgs.find((m) => /火计/.test(m.t));
+    assert.ok(told, `a window told the run: ${JSON.stringify(msgs)}`);
+    assert.equal(msgs.filter((m) => /火计/.test(m.t)).length, 1, 'one window for the three');
+    const casts = (told.text.match(/第 \d 次/g) ?? []).length;
+    assert.match(told.t, new RegExp(`^火计 ×${casts}$`));
+    assert.equal(await pool(), 30 - 6 * casts, `each time paid its own 6: ${told.text}`);
+    assert.ok(casts === 3 || /其余 \d 次未施（机动力未扣）/.test(told.text), `three casts, or the reason it stopped: ${told.text}`);
+    // Back on the targets with the camera as it framed the choice.
+    assert.equal(await page.evaluate(() => window.__game.war.st.stage), 'targets');
+    await still(page);
+    const after = await view(page);
+    assert.equal(after.yaw, framed.yaw, 'the turn held'); assert.ok(Math.abs(after.dist - framed.dist) < 0.01, `the distance held: ${framed.dist} → ${after.dist}`); assert.equal(after.zoom, framed.zoom);
+    // Asked again: the count is back at 1, its most what the pool now holds.
+    await page.locator(`.actpanel [data-target="${first}"]`).click();
+    await page.waitForSelector('.actpanel.confirm');
+    const left = await pool();
+    r = await run(page);
+    if (Math.floor(left / 6) > 1) assert.equal(r?.n, 1, 'from 1 again'); else assert.equal(r, null, 'one cast left: no count');
+    // Esc out of the confirmation and the choice: the view as it was before the 计略 was chosen.
+    // (全景 is fitted again to the field as it stands, as unframeCast always did, so it is held to 全景's own fit, as tests/casttarget.test.mjs does.)
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    await page.waitForSelector('.actpanel.strats');
+    assert.equal((await view(page)).zoom, before.zoom, 'out of the choice, the step it had');
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.actpanel'));
+    await still(page);
+    const back = await page.evaluate(() => { const p = window.__game.war.probe(), v = p.view; return { yaw: v.yaw, zoom: v.zoom, atFit: v.atFit, dist: v.dist, fit: p.fitDist() }; });
+    assert.ok(back.zoom === before.zoom && back.yaw === before.yaw && back.atFit && Math.abs(back.dist - back.fit) < 0.5, `the view given back, at 全景's own distance: ${JSON.stringify([before, back])}`);
+    // With the mobility for one cast only: no count; cast, he is back on his commands.
+    await page.evaluate(() => { const w = window.__game.war; w.field.pool[w.field.human] = 6; w.clickCell(window.__k.me.x, window.__k.me.y); });
+    await page.keyboard.press('x'); await page.waitForSelector('.actpanel [data-target]');
+    await page.locator('.actpanel [data-target]').first().click(); await page.waitForSelector('.actpanel.confirm');
+    assert.equal(await run(page), null, 'N = 1: no count row');
+    await castGo(page); await castDone(page);
+    assert.deepEqual(await page.evaluate(() => [window.__game.war.st.stage, window.__game.war.field.pool[window.__game.war.field.human]]), ['cmds', 0], 'no mobility for another: back on his commands');
+    // 十面埋伏 has no count (one ambush to an army).
+    await page.evaluate(() => { const w = window.__game.war, f = w.field; window.__cc = f.canCast; f.canCast = () => true; f.pool[f.human] = 30; w.chooseStrategy(11); });
+    await page.waitForSelector('.actpanel.confirm');
+    assert.equal(await run(page), null, '十面埋伏: no count row');
+    await page.evaluate(() => { const w = window.__game.war; w.cancel(); w.field.canCast = window.__cc; });
   } finally { stop(); }
   assert.deepEqual(page.errors, []);
   await page.context().close();

@@ -137,11 +137,16 @@ export async function castGo(page) {
   await go.click();
 }
 
-// The strategy command menu (src/app.js commandDock): a group (城 / 军 / 仓 / 町 / 外交) opens its list above the dock.
-// openCmds opens `tab` unless it is open already; cmdRow is a row of the open list; cmd opens the group and clicks the row.
+// The strategy command menu (src/app.js commandDock): a group (城 / 军 / 仓 / 町) opens its list above the dock; 录 runs 记录 itself.
+// openCmds opens `tab` unless it is open already; cmdRow is a row of the open list; cmd opens the group and clicks the row,
+// then `sub` in the picker that row opens (城 → 外交 → 同盟 / 诱纳 / 离间); cmd(page, '录') presses 录.
 export async function openCmds(page, tab) {
   if (await page.evaluate(() => document.querySelector('.dock .tabs .btn.on')?.textContent ?? null) !== tab) await page.locator('.dock .tabs .btn', { hasText: tab }).click();
   await page.waitForSelector('.dock .acts:not([hidden])');
 }
 export const cmdRow = (page, act) => page.locator('.dock .acts .cmd', { has: page.locator('b', { hasText: new RegExp(`^${act}$`) }) });
-export async function cmd(page, tab, act) { await openCmds(page, tab); await cmdRow(page, act).click(); }
+export async function cmd(page, tab, act, sub) {
+  if (tab === '录') return page.locator('.dock .tabs .btn[data-tab="录"]').click();
+  await openCmds(page, tab); await cmdRow(page, act).click();
+  if (sub) await page.locator(`.shade .cities .btn[data-k="${sub}"]`).click();
+}

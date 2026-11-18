@@ -237,6 +237,7 @@ body.season-turning { transition: --panel 2.5s, --lacquer 2.5s, --lacquer-95 2.5
 .cmd + .cmd { border-top: 1px solid #ffffff0d; }
 .cmd b { font-weight: 500; white-space: nowrap; }
 .cmd small { font-size: 14px; letter-spacing: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock .tabs .btn.free::after { content: '免'; margin-left: 4px; font-size: 13px; letter-spacing: 0; color: var(--good); } /* 录 with 免费记录 on (app.js markFreeSave) */
 .cmd em.free { font-style: normal; font-size: 14px; letter-spacing: 0; color: var(--good); }
 .cmd:disabled { cursor: default; } .cmd:disabled b { opacity: .45; } .cmd:disabled small { color: var(--bad); opacity: .85; }
 .cmd:hover:not(:disabled), .cmd:focus-visible { background: #ffd8901c; box-shadow: inset 3px 0 0 #ffd890; color: #fff4d8; outline: none; }
@@ -360,6 +361,9 @@ body.picking #ui > :is(.endturn, .dock, .sysbtns, .citypanel) { opacity: .45; fi
 .cities { display: flex; gap: 6px; flex-wrap: wrap; }
 .cities .btn.on { border-color: #ffd890; color: #fff4d8; }
 .msg { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); width: min(820px, 94vw); display: grid; grid-template-columns: 120px 1fr; gap: 16px; padding: 14px 18px; z-index: 30; cursor: pointer; animation: rise .25s ease; }
+/* A 计略 cast several times in a row (src/war/play.js playRun): a line a time, two columns past six */
+.msg .runrows { display: block; } .msg .runrows > span { display: block; break-inside: avoid; } .msg .runrows.many { columns: 2; column-gap: 28px; }
+.msg .runstop { display: block; }
 .msg.noimg { grid-template-columns: 1fr; }
 .msg img { width: 120px; height: 160px; object-fit: cover; object-position: 50% 12%; border: 1px solid var(--gold2); border-radius: 2px; }
 .msg h4 { margin: 0 0 6px; font: 24px var(--brush); letter-spacing: 2px; color: var(--gold); }
@@ -546,6 +550,7 @@ body.cine .citypanel, body.cine .logbox, body.cine .warcards, body.cine .wardock
 .sysmenu-group + .sysmenu-group { padding-top: 6px; border-top: 1px solid rgba(220,180,110,.14); }
 .sysmenu-quick { display: flex; gap: 4px; }
 .sysmenu-pair { display: flex; gap: 4px; }
+.citypanel header .origname { white-space: nowrap; }
 .sysmenu-list .sysmenu-pair .btn { flex: 1 1 0; white-space: nowrap; }
 .sysmenu-list .sysmenu-quick .btn { flex: 1 0 auto; padding: 4px 5px; font-size: 12px; white-space: nowrap; }
 .sysmenu-list .sysrange { display: flex; align-items: center; gap: 8px; cursor: default; }
@@ -978,7 +983,7 @@ body:has(.tq) #ui-top:has(> .shade) { z-index: 15; }
 @keyframes pipBlink { 50% { background: #fff4c0; box-shadow: 0 0 8px #ffd070; } }
 @media (prefers-reduced-motion: reduce) { .vig.in, .vig.out { animation-duration: .01ms; } }
 
-/* 武器屋: weapons and armour in aligned tables */
+/* 铁铺: weapons and armour in aligned tables */
 .shop { margin: 8px 0 4px; }
 .shop h4 { margin: 4px 0; font: 600 15px var(--serif); color: var(--gold, #e8c878); }
 .shop-row { display: grid; grid-template-columns: minmax(7em, 1.6fr) 3em 3.5em 3em 5em minmax(5em, 1fr); gap: 8px; align-items: center; width: 100%; padding: 5px 8px; font: inherit; font-size: 15px; text-align: left; color: inherit; background: #0004; border: 1px solid var(--rule)50; border-radius: 3px; margin: 2px 0; cursor: pointer; font-variant-numeric: tabular-nums; }
@@ -1072,6 +1077,16 @@ body.cine .unitacts, body.cine .actpanel { display: none; }
 .actpanel .ap-sum .ap-who { font-size: 15px; color: #fff3d6; } .actpanel .ap-sum .ap-who i { font-style: normal; color: var(--dim); margin: 0 5px; }
 .actpanel .ap-sum .ap-does { color: var(--dim); font-size: 12.5px; } .actpanel .ap-sum .ap-key { color: #ffd27a; font-size: 12.5px; } .actpanel .ap-sum .ap-warn { color: #ff9a8a; font-size: 12.5px; } .actpanel .ap-sum .hint { font-size: 12.5px; color: #d9b3ff; }
 /* 返回 and 定位目标 share a row; 施展, the one that commits, has the full width under them (three in one row ran past 252px). */
+/* 连续 N 次 (羽之@devblog, 2026-11-18): label, − n ＋, 最多 on one line above the buttons */
+.actpanel .ap-run { display: grid; grid-template-columns: auto 36px minmax(2em, auto) 36px 1fr; align-items: center; gap: 6px; font-size: 13.5px; }
+.actpanel .ap-run .ap-runlabel { color: var(--dim); white-space: nowrap; }
+.actpanel .ap-run .btn { min-height: 30px; padding: 2px 0; font-size: 16px; justify-content: center; text-align: center; }
+.actpanel .ap-run .btn.ghost { font-size: 13.5px; padding: 2px 8px; justify-self: end; white-space: nowrap; }
+.actpanel .ap-run .ap-runn { color: var(--gold); font-size: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.actpanel .ap-sum .ap-runnote { color: var(--dim); font-size: 12px; }
+.actpanel .ap-runsum { margin: -2px 0 0; font-size: 13px; line-height: 1.4; } .actpanel .ap-runsum b { color: var(--gold); }
+/* a short window: the count row takes the room of the line that names caster → 计略 → target (the step line and the lit row say it) */
+@media (max-height: 760px) { .actpanel.confirm:has(.ap-run) .ap-sum .ap-who, .actpanel .ap-sum .ap-runnote { display: none; } .actpanel .ap-run .btn { min-height: 26px; padding: 0; } .actpanel .ap-run { gap: 4px; } }
 .actpanel .ap-btns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; } .actpanel .ap-btns .btn { font-size: 14px; padding: 5px 8px; white-space: nowrap; justify-content: center; }
 .actpanel .ap-btns .ap-go { grid-column: 1 / -1; font-size: 15px; letter-spacing: 4px; }
 /* No 定位目标 (the flat map is all in view): 返回 and 施展 fit one row. */
@@ -1285,7 +1300,7 @@ body[data-glyph-art][data-input=pad] .ctl-tabs::before { --gi: var(--gi-lb); --g
 .unitpanel .acts .btn.recast small { margin-left: 5px; color: var(--gold); font-size: 13px; }
 .runtimes { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; color: var(--dim); font-size: 14px; }
 .runtimes b { min-width: 1.6em; text-align: center; font-size: 20px; color: var(--gold); } .runtimes .btn { min-width: 2.2em; padding: 2px 8px; } .runtimes .btn.ghost { margin-left: 6px; font-size: 13px; }
-/* 病院, 学问所, 赏赐 for several at once (宙斯之刃@bilibili): the others to press in, numbered in the order they will go; 'until full'. */
+/* 病院, 书馆, 赏赐 for several at once (宙斯之刃@bilibili): the others to press in, numbered in the order they will go; 'until full'. */
 .batchwho { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 2px; color: var(--dim); font-size: 14px; max-height: 40vh; overflow-y: auto; }
 .batchwho .chip.first { padding: 3px 9px; border: 1px solid #ffd89060; border-radius: 3px; color: #fff4d8; } .batchwho .chip.first small { margin-left: 6px; color: var(--dim); font-size: 12px; }
 .batchwho .btn.chip { padding: 3px 9px; font-size: 14px; } .batchwho .btn.chip small { margin-left: 6px; color: var(--dim); font-size: 12px; }

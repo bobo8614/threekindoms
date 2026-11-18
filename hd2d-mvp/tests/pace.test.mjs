@@ -101,8 +101,8 @@ for (const [part, want, wrong] of [['attempt', 3, 8], [undefined, 8, 3], ['after
 test('every command and 计略 scene has a published storyboard', async () => {
   const missing = await page.evaluate(async () => {
     const V = await import('./src/vignette.js'), idx = await fetch('assets/ai/vignettes/index.json').then((x) => x.json());
-    const acts = ['防灾', '记录', '征兵', '移动', '运输', '搜索', '侦察', '赏赐', '施舍', '买米', '卖米', '卖宝', '病院', '学问所', '武器屋', '同盟', '诱纳', '离间'];
-    const names = [...acts.map((a) => V.sceneFor(a)), ...['land', 'industry', 'pop'].map((f) => V.sceneFor('开发', f))];
+    const acts = ['防灾', '记录', '征兵', '移动', '运输', '搜索', '侦察', '赏赐', '施舍', '买米', '卖米', '卖宝', '病院', '书馆', '铁铺', '同盟', '诱纳', '离间'];
+    const names = [...acts.map((a) => V.sceneFor(a)), ...['同盟', '诱纳', '离间', null].map((a) => V.sceneFor('外交', a)), ...['land', 'industry', 'pop'].map((f) => V.sceneFor('开发', f))];
     return names.filter((n) => !idx[n]?.story);
   });
   assert.deepEqual(missing, []);

@@ -23,7 +23,12 @@ const shell = (ctx) => ctx.addInitScript(() => {
 });
 const calls = (p = page) => p.evaluate(() => window.__desk.calls.splice(0));
 
-before(async () => { game = await startGame({ width: 1600, height: 900 }); page = await game.open('', { setup: shell }); });
+before(async () => {
+  game = await startGame({ width: 1600, height: 900 }); page = await game.open('', { setup: shell });
+  // Both music sets, as the shipped build has them (their folders are git-ignored): 曲目 is then in the menu, and with the pad
+  // in a war it once ran 9px past the 1024x600 window only where the music was on the disk (2026-11-18).
+  await page.evaluate(() => { const a = window.__game.audio; if (a.sets.length < 2) { a.sets = [{ id: 'remix', label: 'Remix' }, { id: 'original', label: '原版' }]; a.set = 'remix'; } });
+});
 after(() => game?.close());
 
 const openMenu = async () => { if (await page.locator('.sysmenu-list').isHidden()) await page.click('.sysmenu-btn'); };

@@ -40,7 +40,7 @@ test('each 军 command opens its dialog or picker (刘备 in 并州, first month
 });
 
 test('记录 opens the slot picker', async () => {
-  await cmd(page, '城', '记录');
+  await cmd(page, '录');
   await answered().catch(() => assert.fail('记录: nothing opened'));
   await settle();
 });

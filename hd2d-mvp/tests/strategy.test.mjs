@@ -172,8 +172,8 @@ test('the 游戏速度 item cycles 原版 → 快速 → 最快 and is stored', 
   await page.click('.sysmenu-btn');
 });
 
-// The 武器屋 asks for whom with each one's weapon and armour in the list (feedback R08, 2026-11-02).
-test('the 武器屋 list shows each officer\'s weapon and armour', async () => {
+// The 铁铺 asks for whom with each one's weapon and armour in the list (feedback R08, 2026-11-02).
+test('the 铁铺 list shows each officer\'s weapon and armour', async () => {
   const want = await page.evaluate(() => {
     const { g, G } = window.__game, home = g.factions[g.player].city;
     G.data().cities[home].facilities.weapons = true; window.__game.strategy.refresh(g);
@@ -181,7 +181,7 @@ test('the 武器屋 list shows each officer\'s weapon and armour', async () => {
     return { city: G.cityName(home), name: G.name(id), weapon: eq[o.weapon]?.name ?? '—', armor: eq[24 + o.armor]?.name ?? '—' };
   });
   await page.evaluate((n) => [...document.querySelectorAll('.ctag')].find((e) => e.textContent.includes(n)).click(), want.city);
-  await cmd(page, '町', '武器屋');
+  await cmd(page, '町', '铁铺');
   await page.waitForSelector('.modal .otable');
   const t = await page.evaluate((nm) => {
     const heads = [...document.querySelectorAll('.modal .otable th')].map((e) => e.textContent);

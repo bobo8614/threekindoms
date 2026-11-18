@@ -14,7 +14,7 @@ export const TIERS = ['capital', 'major', 'county', 'pass'];
 export const MIN_CITY_GAP = 0.9; // board units between two seats (the closest original pair, 兖州–豫州, is 1.13 apart as drawn)
 
 // The map fields of the original 30 (data/base-map.json) go onto game-data.json's cities by id.
-const MAP_FIELDS = ['lon', 'lat', 'seat', 'tier', 'bank', 'fort'];
+const MAP_FIELDS = ['lon', 'lat', 'seat', 'tier', 'bank', 'fort', 'hist'];
 export function withBaseMap(d, base) {
   for (const s of base.cities) for (const k of MAP_FIELDS) if (s[k] !== undefined) d.cities[s.id][k] = s[k];
   return d;

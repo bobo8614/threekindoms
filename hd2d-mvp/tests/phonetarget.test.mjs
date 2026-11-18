@@ -88,3 +88,35 @@ test('phone: before a pick the panel says to tap the target, and the greyed 施�
     assert.deepEqual(page.errors, []);
   } finally { await page.context().close(); }
 });
+
+// The phone tells every line of the war's record as a toast, top left under the status bar: with the 计略 panel open it stood on
+// the panel's head (the caster's name, 全军机动力) for its 2.4 s, at every step (2026-11-18). It stands right of the panel, and
+// under the target's card once one is picked.
+test('phone: a toast stands clear of the 计略 panel and of the target\'s card', async () => {
+  const { page, tap, centre } = await choosing();
+  try {
+    // The panel at its full height, as with several targets on a 360-high phone: its head then reaches up under the status bar.
+    await page.setViewportSize({ width: 667, height: 360 }); await page.waitForTimeout(400);
+    await page.addStyleTag({ content: 'body.phone .actpanel { min-height: calc(var(--vh) - var(--gt) - 40px - var(--gb)); }' });
+    const told = async () => {
+      await page.evaluate(async () => { (await import('./src/ui.js')).toast('选择火计的目标（紫色格或名单）', 6000); });
+      await page.waitForTimeout(350);
+      return page.evaluate(() => {
+        const r = (q) => { const e = document.querySelector(q); if (!e || getComputedStyle(e).display === 'none') return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+        return { toast: r('body > .toast'), panel: r('.actpanel'), card: r('.unitpanel.compare'), bar: r('.warbar, .hudbar, .topbar'), w: innerWidth, h: innerHeight };
+      });
+    };
+    const apart = (a, b) => !a || !b || a.r <= b.l || b.r <= a.l || a.b <= b.t || b.b <= a.t;
+    let s = await told();
+    assert.ok(s.toast && s.panel, JSON.stringify(s));
+    assert.ok(apart(s.toast, s.panel), `the toast off the panel while a target is chosen: ${JSON.stringify(s)}`);
+    assert.ok(s.toast.l >= 0 && s.toast.r <= s.w && s.toast.t >= 0, `and on the screen: ${JSON.stringify(s)}`);
+    await tap(await centre(page.locator('.actpanel [data-target]').first()), 700);
+    s = await told();
+    assert.ok(s.card, `the target's card is up: ${JSON.stringify(s)}`);
+    assert.ok(apart(s.toast, s.panel), `the toast off the panel at the confirmation: ${JSON.stringify(s)}`);
+    assert.ok(apart(s.toast, s.card), `and off the target's card: ${JSON.stringify(s)}`);
+    assert.ok(s.toast.l >= 0 && s.toast.r <= s.w, `and on the screen: ${JSON.stringify(s)}`);
+    assert.deepEqual(page.errors, []);
+  } finally { await page.context().close(); }
+});

@@ -76,8 +76,14 @@ async function picks(page, kind) {
   if (kind === '3d') assert.deepEqual([b.yaw, b.dist, b.bias].map((v) => v.toFixed(3)), [a.yaw, a.dist, a.bias].map((v) => v.toFixed(3)), '3d: same turn, tilt and distance');
   else assert.equal(b.k, a.k, 'flat: same zoom');
 
-  // A city in the clear: the view stays.
-  const mid = await tagAt(page);
+  // A city in the clear: the view stays. One is put in the middle first: the slide above goes right or down, whichever is less,
+  // and that turns on the panel's height (two rows of facility tags before 铁铺 and 书馆, one since, 2026-11-18): down, it left
+  // open sea in the middle of the window.
+  const other = await page.evaluate(({ home, foe }) => [home, ...window.__game.G.roads(home)].find((id) => id !== foe), { home, foe });
+  await placeCity(page, other, 720, 450);
+  for (let was = null, i = 0; i < 40; i++) { const v = JSON.stringify(await view(page)); if (v === was) break; was = v; await page.waitForTimeout(150); } // at rest
+  const mid =await tagAt(page, await page.evaluate((id) => window.__game.G.cityName(id), other));
+  assert.ok(mid, `${kind}: a city put in the middle of the window, its tag in the clear`);
   const c = await view(page);
   await page.mouse.click(mid.x, mid.y); await page.waitForTimeout(1600);
   assert.equal(await panelName(page), mid.name);

@@ -10,10 +10,11 @@ import { playVignette } from '../vignette.js';
 import { ORIGINAL, paced, hold as holdBeat } from '../pace.js';
 import { stage } from '../commitguard.js';
 import { tween, STRAT_SCENE, STRAT_CUE, STRAT_FX } from './shared.js';
+import { castRun } from '../core/batch.js';
 
 export function makePlay(wv) {
   const { ctx, field, audio, ui, human, scene, wx, wz, topY, terr, views, place, removeGone, drop, addUnit, FIGURE, clearMarks, view, focusOn, followPoint,
-    st, hud, sideLabel, showOptions, select, lastCast, showDeploy, refuse } = wv;
+    st, hud, sideLabel, showOptions, select, lastCast, showDeploy, refuse, castable } = wv;
   // While the field plays something out, the unit panel's commands are greyed: a menu opened then would act on
   // a pool and a board that are about to change.
   const lock = () => { st.busy = true; showOptions(); };
@@ -195,19 +196,67 @@ export function makePlay(wv) {
 
   // 布阵 (6.7 §6.5): the human side may move each unit to any free cell inside its rectangle, any terrain.
   const rect = human ? (human === 'att' ? field.dep.attacker_rect : field.dep.defender_rect) : null;
-  async function castOn(u, id, t) {
+  // n: times in a row from the one confirmation (羽之@devblog, 2026-11-18): src/core/batch.js castRun casts them, each the rules'
+  // own cast, and they are shown as one (playRun). One time is the cast as it has always been, shown as ever.
+  async function castOn(u, id, t, n = 1) {
     if (st.busy) return;
     if (!field.canCast(u, id, t)) return refuse(u, id);
     lock(); st.last = null;
-    const res = field.cast(u, id, t);
+    const run = castRun(field, u, id, t, n);
     lastCast.set(u, { id, t });
-    await playStrategy(u, t, id, res);
-    // The 计略 is done and he stays selected, his commands back in his card, as after an attack: 再施 (X), a move or another 计略
-    // follow without picking him again (2026-11-14; they used to be put away with the cast).
+    await playStrategy(u, t, id, n > 1 ? run : run.steps[0]);
+    // The 计略 is done and he stays selected, as after an attack (2026-11-14). While he can still cast the same 计略 on someone, he is
+    // back in its target choice, the one cast on (or the likeliest) under the keys and the camera as it framed the choice: it is not
+    // pulled back and pushed in again for the next (羽之@devblog, 2026-11-18). Otherwise his commands are back in his card, the view
+    // as it was before the choice (showOptions → unframeCast). Esc steps back as ever; 再施 (X) still brings the choice back.
     // The input that closed the result acts on nothing here (stage()); he is let go only if he left the field or the war is over.
-    st.busy = false; if (u.gone || field.over || field.turn !== human) st.sel = null; stage(); showOptions(); hud(); check();
+    st.busy = false;
+    if (u.gone || field.over || field.turn !== human) st.sel = null;
+    else if (id !== 11 && castable(u, id)) { st.cast = id; st.peek = null; }
+    stage(); showOptions(); hud(); check();
+  }
+  // Several casts from one confirmation (castRun's { steps, n, stop }): the picture once (whole when any hit, else up to its attempt),
+  // one window listing each time, each one struck shaken once with his losses summed over his head, every cast in the log on its
+  // own lines as if cast one by one, the levels told after it all. The window stays ROW ms longer for each line past the first
+  // (Enter or a click still closes it); the board keeps the original's beat after it.
+  const ROW = 450;
+  async function playRun(u, t, id, run) {
+    const name0 = STRATS[id].name, steps = run.steps, hit = steps.some((s) => s.hit), cast = `${name(u.id)} 施展<strong>${name0}</strong>${t ? `→${name(t.id)}` : ''}`;
+    ui.log(cast);
+    const cue = () => { if (!audio.cue(STRAT_CUE[id])) audio.sfx('sfx-horn'); };
+    const shown = await playVignette({ scene: STRAT_SCENE[id], caption: `${name(u.id)}的${name0}……`, audio, duration: paced(ORIGINAL.strategyShow), onShow: cue, part: hit ? undefined : 'attempt' });
+    if (!shown) { cue(); await ui.stratBanner?.(name0); }
+    const t0 = performance.now();
+    // A line a time; failures in a row share one (第 2–4 次：失败). Past six lines they stand in two columns, so the longest run the
+    // pool allows (15 虚兵 at 60) still fits a phone's window.
+    const rows = [];
+    steps.forEach((s, i) => {
+      const prev = rows.at(-1);
+      if (!s.hit && prev?.fail && prev.to === i) prev.to = i + 1; else rows.push(s.hit ? { text: s.lines.join('，'), from: i + 1, to: i + 1 } : { fail: true, from: i + 1, to: i + 1 });
+    });
+    const lines = rows.map((r) => `<span>第 ${r.from === r.to ? r.from : `${r.from}–${r.to}`} 次：${r.fail ? '失败' : r.text}</span>`);
+    const tail = run.stop && steps.length < run.n ? `<em class="runstop">${run.stop.msg}，其余 ${run.n - steps.length} 次未施（机动力未扣）</em>` : '';
+    const extra = ROW * (lines.length + (tail ? 1 : 0) - 1);
+    const told = ui.stratResult?.(`${name0} ×${steps.length}`, `<span class="runrows${lines.length > 6 ? ' many' : ''}">${lines.join('')}</span>${tail}`, u.id, hit ? 'joy' : 'grief', { extra });
+    const v = t && views.get(t);
+    if (v && hit) { const at = v.g.position.clone(); at.y += 0.8; STRATEGY_FX[STRAT_FX[id]](scene, at); audio.sfx('sfx-clash'); }
+    const struck = [...new Set(steps.flatMap((s) => (s.hit ? s.hits.map((h) => h.u) : [])))];
+    for (const x of struck) recoil(x, u);
+    // Each one's losses over the whole run, one number a kind: 兵 bare, 体 and 米 named.
+    const sum = new Map();
+    for (const s of steps) for (const h of s.hits) { const m = sum.get(h.u) ?? { hp: 0, rice: 0, soldiers: 0 }; m.hp -= h.hp ?? 0; m.rice -= h.rice ?? 0; m.soldiers -= h.soldiers ?? 0; sum.set(h.u, m); }
+    for (const [x, m] of sum) { const l = [m.hp && `体−${m.hp}`, m.rice && `米−${m.rice}`, m.soldiers && `−${m.soldiers}`].filter(Boolean); if (l.length) lossNum(x, 0, { text: l.join('　'), hold: 1600 }); }
+    steps.forEach((s, i) => { if (i) ui.log(cast); for (const l of s.lines) ui.log(`　${l}`); });
+    for (const x of struck) if (views.get(x)) wv.tag(x);
+    if (hit) for (const [x, vw] of views) if (!x.gone && vw.g.parent && x.stop > 0) wv.tag(x);
+    if (id === 8 && t && steps.some((s) => s.hit) && views.get(t)) { drop(views.get(t).g); views.delete(t); addUnit(t); }
+    await told;
+    await new Promise((r) => setTimeout(r, Math.max(0, paced(ORIGINAL.strategy - ORIGINAL.strategyCast + extra) - (performance.now() - t0))));
+    removeGone();
+    await tellLevelUps();
   }
   async function playStrategy(u, t, id, res) {
+    if (res.steps) return playRun(u, t, id, res);
     const name0 = STRATS[id].name;
     ui.log(`${name(u.id)} 施展<strong>${name0}</strong>${t ? `→${name(t.id)}` : ''}`);
     const cue = () => { if (!audio.cue(STRAT_CUE[id])) audio.sfx('sfx-horn'); }; // its phrase, then the war theme from the top (T13)
@@ -317,5 +366,5 @@ export function makePlay(wv) {
     check();
   }
   function endTurn() { if (st.busy || st.confirm || st.strike || field.turn !== human || !wv.endHuman) return; st.peek = null; const f = wv.endHuman; wv.endHuman = null; f(); }
-  return { lock, faceToward, pose, moveAlong, burst, lossNum, tellLevelUps, qimenBeat, lunge, recoil, playAttack, rect, castOn, playStrategy, check, aiSide, loop, endTurn };
+  return { lock, faceToward, pose, moveAlong, burst, lossNum, tellLevelUps, qimenBeat, lunge, recoil, playAttack, rect, castOn, playStrategy, playRun, check, aiSide, loop, endTurn };
 }

@@ -28,7 +28,7 @@ const closeWindow = async (p = page) => {
   await p.evaluate(() => document.querySelector('.panel.msg')?.click());
   await p.waitForFunction(() => !document.querySelector('.panel.msg'));
 };
-const dock = (tab, act) => cmd(page, tab, act);
+const dock = (tab, act) => (tab === '外交' ? cmd(page, '城', '外交', act) : cmd(page, tab, act));
 const pick = (id) => page.locator(`.shade tr[data-id="${id}"]`).first().click();
 const yes = () => page.locator('.shade .btn.primary').last().click();
 // The player's home city with gold, rice and books to spare; returns ids to work with.

@@ -1,5 +1,5 @@
 // Several at once from one confirmation, through the real dock (宙斯之刃@bilibili, 2026-11-16; rules in tests/batch.test.mjs):
-// 病院, 学问所 and 赏赐 take others along ("一并") and can go until full; 施舍, 离间 and 搜索 take a count. One officer once is
+// 病院, 书馆 and 赏赐 take others along ("一并") and can go until full; 施舍, 离间 and 搜索 take a count. One officer once is
 // the command as it always was.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +20,7 @@ after(() => game?.close());
 const shot = (n) => (SHOTS ? page.locator('.modal').last().screenshot({ path: `${SHOTS}/${n}.png` }) : null);
 const idle = () => page.waitForFunction(() => !document.querySelector('.shade, .vig, .banner'), null, { timeout: 20000 });
 const closeAll = async () => { for (let i = 0; i < 30; i++) { if (await page.evaluate(() => !document.querySelector('.shade, .vig, .banner, .panel.msg'))) return; await page.evaluate(() => document.querySelector('.panel.msg')?.click()); await page.waitForTimeout(150); } };
-// The home city with a 病院 and a 学问所, gold, books and four officers; returns their ids.
+// The home city with a 病院 and a 书馆, gold, books and four officers; returns their ids.
 const stock = () => page.evaluate(async () => {
   const { g } = window.__game, D = (await import('./src/core/game.js')).data(), cid = g.factions[g.player].city, c = g.cities[cid];
   Object.assign(D.cities[cid].facilities, { hospital: true, school: true });
@@ -65,13 +65,13 @@ test('病院: the one picked, two pressed in, until full — books for every hea
   assert.deepEqual(page.errors, []);
 });
 
-test('学问所: one officer once spends one book, as before', async () => {
+test('书馆: one officer once spends one book, as before', async () => {
   const { ids } = await stock();
   await page.evaluate((id) => { window.__game.g.officers[id].int = 40; }, ids[1]);
   const was = await books();
-  await cmd(page, '町', '学问所');
+  await cmd(page, '町', '书馆');
   await page.locator(`.modal tr[data-id="${ids[1]}"]`).click();
-  assert.match(await page.locator('.modal p').first().textContent(), /入学问所学习，需要金 20。（消耗一张命令书）/);
+  assert.match(await page.locator('.modal p').first().textContent(), /入书馆学习，需要金 20。（消耗一张命令书）/);
   await page.locator('.modal .runok').click();
   await idle(); await closeAll();
   assert.equal(await books(), was - 1);
@@ -131,7 +131,7 @@ test('施舍 three times, 离间 three times, 搜索 three times: three books ea
 
   const mark = await page.evaluate(() => { const { g, G } = window.__game; return g.cities.filter((x) => x.faction !== g.player && x.faction !== G.NONE).flatMap((x) => x.officers).find((id) => !G.isRuler(g, id)); });
   was = await books();
-  await cmd(page, '外交', '离间');
+  await cmd(page, '城', '外交', '离间');
   await page.locator(`.shade tr[data-id="${mark}"]`).first().click({ force: true });
   await page.locator('.modal tr[data-id]').first().click();
   await page.locator('.modal .runtimes .btn[aria-label="多一次"]').click(); await page.locator('.modal .runtimes .btn[aria-label="多一次"]').click();
@@ -197,7 +197,7 @@ test('诱纳 until he comes over: the books stop at the one that took', async ()
     return { mark, me: c.officers[0] };
   });
   const was = await books();
-  await cmd(page, '外交', '诱纳');
+  await cmd(page, '城', '外交', '诱纳');
   await page.locator(`.shade tr[data-id="${mark}"]`).first().click({ force: true });
   await page.locator(`.modal tr[data-id="${me}"]`).click();
   await page.locator('.modal .runtimes .btn.ghost').click(); // 最多
