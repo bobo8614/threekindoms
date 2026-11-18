@@ -8,6 +8,7 @@ import { U } from './seasons.js';
 import './weather.js';
 import { buildWorld, SEA_Y } from './worldmap.js';
 import { buildSandtable, territoryHex } from './sandtable.js';
+import { buildBoards } from './sandregions.js';
 import { placeCities } from './china.js';
 import { NONE, factionColor, cityName, factionName } from './core/game.js';
 import { createStrategyRoads } from './strategyroads.js';
@@ -34,7 +35,12 @@ export function createStrategy(ctx) {
   scene.add(camera);
   atmosphere.addLights();
 
-  const world = sand ? buildSandtable(scene, sand, { cities: data.cities, factions: data.factions }) : buildWorld(scene, SITES);
+  // A pack's extension regions join the original board on one table (sandregions.js); without them the original board alone.
+  const sandOpts = { cities: data.cities, factions: data.factions };
+  const world = sand ? (sand.regions?.length ? buildBoards(scene, sand, sandOpts) : buildSandtable(scene, sand, sandOpts)) : buildWorld(scene, SITES);
+  if (world.boards) atmosphere.fitBoards(world.box);
+  // The summer snow line stood just past the original's north edge (seasons.js uSnowFar): with boards beyond 43°N it moves past theirs.
+  U.uSnowFar.value = world.boards?.some((b) => b.box[2] < world.boards[0].box[2] - 1e-6) ? 5 : 0;
   const citySetup = createStrategyCities({ scene, data, sand, world, sites: SITES, onCity: (id) => ctx.onCity(id), onHover: hoverCity, colorOf });
   const { cityPos } = citySetup;
   const groundY = (x, z) => Math.max(SEA_Y, world.heightAt(x, z));
@@ -153,6 +159,7 @@ export function createStrategy(ctx) {
   return {
     aiWar: war.aiWar,
     scene, camera,
+    world, // the board (sandtable.js, sandregions.js or worldmap.js), for the bake tools
     refresh, setSeason,
     get month() { return atmosphere.month; },
     select(cid) {
@@ -296,8 +303,14 @@ export function createStrategy(ctx) {
       }
       world.nearLods();
       // Everything on the board stays over the board: the massifs and a river end the 3D view lets run over the frame stop at its inner edge.
-      const inside = [new THREE.Plane(new THREE.Vector3(1, 0, 0), -X0), new THREE.Plane(new THREE.Vector3(-1, 0, 0), X1), new THREE.Plane(new THREE.Vector3(0, 0, 1), -Z0), new THREE.Plane(new THREE.Vector3(0, 0, -1), Z1)];
-      scene.traverseVisible((o) => { if (o.isMesh && o.geometry.type !== 'BoxGeometry') for (const m of [o.material].flat()) if (!m.clippingPlanes) { m.clippingPlanes = inside; m.needsUpdate = true; } });
+      // With extension regions each board's pieces stop at its own edge (userData.clip, sandregions.js), the open sea at the boards' outer box.
+      const planes = new Map(), clipTo = (box) => {
+        const key = box.join(), [x0, x1, z0, z1] = box;
+        if (!planes.has(key)) planes.set(key, [new THREE.Plane(new THREE.Vector3(1, 0, 0), -x0), new THREE.Plane(new THREE.Vector3(-1, 0, 0), x1), new THREE.Plane(new THREE.Vector3(0, 0, 1), -z0), new THREE.Plane(new THREE.Vector3(0, 0, -1), z1)]);
+        return planes.get(key);
+      };
+      const outer = world.box ?? sand.meta.box, [BX0, BX1, BZ0, BZ1] = outer;
+      scene.traverseVisible((o) => { if (o.isMesh && o.geometry.type !== 'BoxGeometry') for (const m of [o.material].flat()) if (!m.clippingPlanes) { m.clippingPlanes = clipTo(o.userData.clip ?? outer); m.needsUpdate = true; } });
       scene.updateMatrixWorld(); camera.updateMatrixWorld();
       const project = (x, y, z) => { const v = tmpV.set(x, y, z).project(camera); return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H]; };
       const top = new THREE.Vector3();
@@ -318,7 +331,7 @@ export function createStrategy(ctx) {
         const { origin: o, direction: d } = ray.ray; let x = 0, z = 0, y = world.sea;
         for (let k = 0; k < 4; k++) {
           const t = (y - o.y) / d.y; x = o.x + d.x * t; z = o.z + d.z * t;
-          if (x < X0 || x > X1 || z < Z0 || z > Z1) return null;
+          if (x < BX0 || x > BX1 || z < BZ0 || z > BZ1) return null;
           y = Math.max(world.sea, world.heightAt(x, z));
         }
         return { x, z };

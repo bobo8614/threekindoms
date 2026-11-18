@@ -74,7 +74,9 @@ const inPoly = (x, y, poly) => {
   }
   return inside;
 };
-export const isLand = (lon, lat) => LAND.some((p) => inPoly(lon, lat, p));
+// A land test over any set of outlines (an overseas region's, src/regions/), the same rule as the mainland's.
+export const landOf = (polys) => (lon, lat) => polys.some((p) => inPoly(lon, lat, p));
+export const isLand = landOf(LAND);
 
 // Closest point on a polyline: { d, t (0…1 along the whole line), side (+1 left of the flow, −1 right), px, py }.
 const lengths = new WeakMap();
@@ -134,11 +136,13 @@ export function placeCities(sites, clear = 0.34) {
 }
 
 // Mountain ranges' height above the plain (world units), smooth across each ridge's width.
-export function ranges(lon, lat) {
+export const ranges = (lon, lat) => rangesOf(RANGES)(lon, lat);
+// The same for any list of ridge lines (an overseas region's).
+export const rangesOf = (list) => (lon, lat) => {
   let h = 0;
-  for (const R of RANGES) { const d = ridge(R.pts, lon, lat); if (d < R.r) { const k = 1 - d / R.r; h = Math.max(h, R.h * k * k * (3 - 2 * k)); } }
+  for (const R of list) { const d = ridge(R.pts, lon, lat); if (d < R.r) { const k = 1 - d / R.r; h = Math.max(h, R.h * k * k * (3 - 2 * k)); } }
   return h;
-}
+};
 // Broad uplands: 青藏高原 west of the 龙门山/横断山 line and south of the 祁连山, the lower 黄土高原 and
 // 云贵高原 tablelands, and the 四川盆地 dipping below its rim. Returns { tibet (0…1), h }.
 export function plateaus(lon, lat) {

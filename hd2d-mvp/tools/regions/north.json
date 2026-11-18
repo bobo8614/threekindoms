@@ -1,0 +1,85 @@
+{
+  "name": "north",
+  "title": "北方（蒙古高原南缘、大兴安岭）",
+  "note": "The strip north of the original board (docs/战略地图日本地块_方案_2026-11-17.md): lon 97.5–125, lat 43–46, loaded with japan so the table stays one rectangle. Dry country and uplands follow the original's own (src/china.js aridity, plateaus). Coast and rivers from Natural Earth 10m (public domain); the rivers that run on south into the original are left out (it has none there).",
+  "box": [
+    97.5,
+    125.0,
+    43.0,
+    46.0
+  ],
+  "review": [
+    112.0,
+    44.5
+  ],
+  "rangeScale": [
+    0.85,
+    1.1
+  ],
+  "minArea": 0.012,
+  "tolerance": 0.03,
+  "china": true,
+  "rivers": [
+    {
+      "source": "Di’er Songhua",
+      "name": "第二松花江",
+      "w": 0.05
+    },
+    {
+      "source": "Songhua",
+      "name": "松花江",
+      "w": 0.06
+    }
+  ],
+  "lakes": [],
+  "ranges": [
+    {
+      "name": "大兴安岭",
+      "h": 0.7,
+      "r": 0.45,
+      "pts": [
+        [
+          117.8,
+          43.3
+        ],
+        [
+          118.8,
+          44.2
+        ],
+        [
+          119.8,
+          45.2
+        ],
+        [
+          120.6,
+          45.95
+        ]
+      ]
+    },
+    {
+      "name": "戈壁阿尔泰",
+      "h": 0.55,
+      "r": 0.4,
+      "pts": [
+        [
+          99.0,
+          44.8
+        ],
+        [
+          100.5,
+          44.5
+        ],
+        [
+          102.0,
+          43.9
+        ],
+        [
+          103.5,
+          43.4
+        ]
+      ]
+    }
+  ],
+  "clipMargin": 0.5,
+  "joinRivers": 0.08
+}

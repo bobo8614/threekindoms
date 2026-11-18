@@ -98,9 +98,9 @@ export function createTacticalView(T, sprites) {
   const blast = blastRig(scene); // 爆炎 (src/blastfx.js), made once and compiled with each field
   let where = { month: 2, city: 12 }, place = env.set(where), loading = loadTacticalGround(2, 12).catch(() => null);
 
-  let set = null, units = new Map(), battle = null, time = 0, shake = 0, speed = 1, shift = 0, fit = 1, billboards = [], corpses = [], water = null, cellH = () => H0;
+  let set = null, units = new Map(), battle = null, time = 0, shake = 0, speed = 1, shift = 0, shiftX = 0, fit = 1, billboards = [], corpses = [], water = null, cellH = () => H0;
   const edge = new THREE.Vector3(), camGoal = new THREE.Vector3(), shakeV = new THREE.Vector3(); // scratch for update(), which runs every frame
-  const inset = { top: 0, bottom: 0 }; // screen pixels the HUD covers at the top and bottom
+  const inset = { top: 0, bottom: 0, left: 0, right: 0 }; // screen pixels the HUD covers at the top and bottom (and, on a phone, by the sides)
   const cam = { pos: new THREE.Vector3(0, 16, 16), look: new THREE.Vector3(0, 0, 1.1), yaw: 0, dist: 21, baseDist: 21 };
   // Depth of field focuses on the latest clash, then drifts back to the view's centre.
   const focus = { at: new THREE.Vector3(0, 0, 1.1), goal: null, until: 0 };
@@ -588,7 +588,7 @@ export function createTacticalView(T, sprites) {
     // The painted field's materials for the place set last (build() falls back to tiles without them).
     ready() { return loading; },
     setSpeed(s) { speed = s; },
-    setInsets(top = 0, bottom = 0) { inset.top = top; inset.bottom = bottom; },
+    setInsets(top = 0, bottom = 0, left = 0, right = 0) { Object.assign(inset, { top, bottom, left, right }); },
     update(dt) {
       time += dt; shake *= Math.pow(0.003, dt);
       // The framing was tuned at ~16:10; pull back on narrower windows so all 16 columns stay in view.
@@ -619,8 +619,11 @@ export function createTacticalView(T, sprites) {
           cam.look.x += (cx - cam.look.x) * k * 0.6; cam.look.z += (cz + 1.1 - cam.look.z) * k * 0.6;
           a = py(cx, 1.2, cz - hd); b = py(cx, H0, cz + hd);
           half = Math.max(...[-1, 1].map((sx) => Math.abs(edge.set(cx + sx * hw, H0, cz + hd).project(camera).x)));
-          half /= 0.84; // the orders and the tactics stand over the left and right edges: the lines keep to the middle
-          low = 0.2;
+          // the orders and the tactics stand by the left and right edges: the lines keep to the width between them, centred there
+          const side = inset.left + inset.right, room = side > 0 ? Math.max(0.5, (iw - side) / iw) : 0.84;
+          half /= room; low = 0.2;
+          if (side > 0) { const mid = ((edge.set(cx, H0, cz).project(camera).x + 1) / 2) * iw; shiftX += (mid - (inset.left + (iw - side) / 2) - shiftX) * k; }
+          else shiftX += (0 - shiftX) * k;
         } else {
           a = py(0, 1.2, wz(0) - 0.5); b = py(0, H0, wz(GH - 1) + 0.5);
           half = Math.max(...[-1, 1].map((sx) => Math.abs(edge.set(sx * (GW / 2), H0, wz(GH - 1) + 0.5).project(camera).x)));
@@ -628,8 +631,8 @@ export function createTacticalView(T, sprites) {
         const over = Math.max((b - a) / band / 0.96, half / 0.97);
         fit = Math.min(2.5, Math.max(low, fit * (1 + (over - 1) * k)));
         shift += ((a + b) / 2 - (inset.top + band / 2) - shift) * k;
-      } else { fit += (1 - fit) * k; shift += (0 - shift) * k; if (PHONE) { cam.look.x += (0 - cam.look.x) * k; cam.look.z += (1.1 - cam.look.z) * k; } }
-      if (Math.abs(shift) > 0.5) camera.setViewOffset(iw, ih, 0, shift, iw, ih);
+      } else { fit += (1 - fit) * k; shift += (0 - shift) * k; shiftX += (0 - shiftX) * k; if (PHONE) { cam.look.x += (0 - cam.look.x) * k; cam.look.z += (1.1 - cam.look.z) * k; } }
+      if (Math.abs(shift) > 0.5 || Math.abs(shiftX) > 0.5) camera.setViewOffset(iw, ih, shiftX, shift, iw, ih);
       camera.position.add(shakeOffset(time, shake, shakeV));
       sky.update(time); shafts.update(time); env.update(dt, time, cam.look, cam.dist);
       if (water) water.material.map.offset.x = time * 0.04;

@@ -19,9 +19,9 @@ ${weaponRule(look)}
 
 Framing (critical — every officer in the cast is drawn to this exact template so they line up side by side):
 - Vertical 2:3 canvas (1024x1536). WAIST-UP: the picture is cut at the hips/belt; no legs, no feet, no horse.
-- Three-quarter view, body turned toward the viewer's RIGHT, head turned slightly back toward the viewer, calm composed expression with a steady gaze.
+- Three-quarter view, body and head both turned toward the viewer's RIGHT-FRONT with eyes glancing calmly at the viewer (head, shoulders and chest aligned the same way, never twisted into opposite left/right directions).
 - Head centred horizontally. The top of the headwear sits at about 6% of the height from the top edge; the EYES are on a horizontal line at 22% of the height; the head from chin to crown is about 26% of the height.
-- Shoulders span roughly 75% of the width. Arms in a quiet stance: hands resting on the weapon, at the belt, or holding a fan/scroll in front of the chest. If he carries a long weapon it stands upright at one side or rests on the shoulder and NEVER crosses the face.
+- Shoulders span roughly 75% of the width. Arms in a quiet stance: hands resting on the weapon, at the belt, or holding a fan/scroll in front of the chest. If he carries a long weapon it stands upright at one side (held ONE-HANDED by the near hand while the far hand rests naturally at his hip or waist sword — NEVER bend the far-side arm across the torso to grab the opposite edge) or crosses diagonally, and NEVER crosses the face.
 - Lighting: soft key light from the upper left, the same for everyone.
 
 Style: 二次元 2D anime illustration like official gacha-game character art — crisp black lineart, flat 2–3 step cel shading with hard-edged shadows, matching reference image 1. Background: a simple flat vertical gradient in ${accent(o)} with a few soft light particles; nothing else. No text, no logo, no border, no watermark.`;

@@ -30,7 +30,7 @@ export const ICONIC = {
   吕布: 'Lu Bu: the mightiest warrior, tall and arrogant, pheasant-feather tails (two long pheasant plumes) on a golden crown helmet, red-and-black ornate armour, Sky Piercer halberd (fangtian huaji): a long two-handed shaft taller than he is, topped by a straight spear point flanked by crescent moon blades — NOT an axe or giant cleaver, fierce wild eyes',
   周瑜: 'Zhou Yu: elegant handsome Wu commander and musician, clean-shaven, refined features, red-and-white robe over light armour, sword and guqin motif, confident',
   马超: 'Ma Chao (Splendid Ma): young handsome western cavalry general, white lion-head armour, silver helmet with white plume, long spear, fierce noble look',
-  司马懿: 'Sima Yi: cunning long-lived strategist of Wei, sharp wolf-like glance over the shoulder, long thin beard, dark purple scholar robes with black hat, cold smile',
+  司马懿: 'Sima Yi: cunning long-lived strategist of Wei, sharp wolf-like calculating gaze, long thin beard, dark purple scholar robes with black hat, cold smile',
   典韦: "Dian Wei: Cao Cao's ferocious bodyguard, huge muscular build, wild beard, bald or short cropped hair, heavy dark armour, a pair of short-hafted iron ji halberds, one gripped in each fist like hand weapons — NOT a long glaive",
   许褚: 'Xu Chu (Tiger Fool): massive bare-armed brawler, bushy beard, simple armour open at the chest, huge spiked iron club or broad sword, reckless grin',
   黄忠: 'Huang Zhong: veteran archer general, old but vigorous, long white beard and white eyebrows, gold-and-green armour, great longbow and broad sabre',
@@ -58,7 +58,7 @@ export const ICONIC = {
 // Angle/pose/framing pool so the cast does not look like one template; stars get dynamic shots.
 const STAR_SHOTS = [
   'dramatic low-angle shot, full upper body, weapon raised overhead mid-swing with its whole length in frame, cloth and beard whipping in the wind, intense battle cry',
-  'three-quarter view facing left, looking over the shoulder at the viewer, weapon resting on the shoulder, confident fierce smile',
+  'three-quarter view facing right, chest, shoulders and face aligned the same way, weapon resting behind his near shoulder, confident fierce smile',
   'frontal heroic pose, waist-up, planting the weapon beside him, cape flowing, calm overwhelming presence',
   'dynamic diagonal composition, striding forward through swirling dust, weapon swept back along his flank in a ready stance, shouting',
   'side profile facing right on a rearing warhorse, cropped at the horse\'s chest, weapon held high',
@@ -66,7 +66,7 @@ const STAR_SHOTS = [
 // Strategist stars (智 well above 武) get commanding, cerebral poses instead of weapon swings.
 const SAGE_SHOTS = [
   'dramatic low-angle shot, raising a fan or hand to command unseen armies, robes and hair swirling in a sudden wind, glowing light behind',
-  'three-quarter view facing left, glancing back over the shoulder at the viewer with a knowing smile, scroll in hand',
+  'three-quarter view facing right, chest, shoulders and face aligned the same way, holding a strategy scroll in front of his chest with a knowing smile',
   'waist-up frontal pose, standing over a battle map with one hand pointing forward, firelight from below',
   'close half-body, slight high angle, fingers at the chin deep in thought, eyes sharp and calculating, drifting light particles',
   'side profile facing right, looking at distant stars, cloak in the wind, calm and enigmatic',
@@ -76,9 +76,9 @@ const SAGE_SHOTS = [
 const POLEARM = /guandao|glaive|halberd|huaji|spear|shemao|polearm|axe|刀|戟|枪|矛|斧/i;
 const ONE_HAND = /short-hafted|one gripped in each|twin|sword|whip|dao sword|剑|双戟/i;
 export function weaponRule(look) {
-  const base = 'Anatomy: exactly two hands with five fingers each, every hand attached to a visible arm; a weapon is never fused into the hand or the body.';
+  const base = 'Anatomy: exactly two hands with five fingers each, every hand attached to a visible arm and matching left/right chirality (when a right arm on the viewer\'s left raises a weapon overhead with thumb toward the right/blade, the shaft passes in front of the palm with the four fingers curling forward over the shaft — never draw a smooth back-of-hand hiding the shaft with a right-side thumb); head, chest, shoulders and belt buckle face a consistent direction (never twist head and torso into opposite left/right directions); a weapon is straight from end to end and never fused into the hand or the body.';
   if (ONE_HAND.test(look) && !/guandao|huaji|shemao/i.test(look)) return `${base} One-handed weapons (swords, twin short halberds, whips) are held by their grip in ONE hand each, at natural size.`;
-  if (POLEARM.test(look)) return `${base} Polearm handling (critical): the weapon is a LONG two-handed polearm — its shaft is longer than the man is tall and the blade sits only at the far top end. Both hands grip the wooden shaft about shoulder-width apart, at least an arm's length below the blade; no hand ever touches the blade or its collar. Show the shaft's length clearly (held upright beside him, diagonally across the body, or resting on the shoulder). Do NOT point the weapon at the viewer and do NOT foreshorten it into a short giant cleaver; the blade stays in realistic proportion to the body.`;
+  if (POLEARM.test(look)) return `${base} Polearm handling (critical): the weapon is a LONG polearm — its shaft is longer than the man is tall and the blade sits only at the far top end. Grip the wooden shaft at least an arm's length below the blade (no hand ever touches the blade or its collar): if the polearm stands upright at one side of the frame, grip it ONE-HANDED with the near hand while the far hand rests naturally at his belt or waist sword (NEVER stretch or bend the far-side arm across the torso to grab a shaft on the opposite edge, which breaks perspective); use a two-handed grip only when the polearm crosses diagonally in front of the body. Show the shaft's length clearly and straight; do NOT point the weapon at the viewer and do NOT foreshorten it into a short giant cleaver.`;
   return base;
 }
 const CALM_SHOTS = [

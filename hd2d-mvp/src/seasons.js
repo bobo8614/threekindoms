@@ -101,7 +101,9 @@ const vec3s = (n) => Array.from({ length: n }, () => new THREE.Color());
 export const U = {
   uGrass: { value: vec3s(5) }, uForest: { value: vec3s(5) }, uFarm: { value: vec3s(5) }, uLeaf: { value: vec3s(5) }, uCrimson: { value: vec3s(5) },
   uSouthG: { value: GRASS.subtropic }, uSouthF: { value: FOREST.subtropic }, uSouth: { value: 0 },
-  uSnowLat: { value: 44 }, uBlossom: { value: 0 }, uAutumn: { value: 0 }, uBare: { value: 0 }, uCloud: { value: 0.25 }, uWet: { value: 0 }, uTime: { value: 0 },
+  // uSnowFar: how far north the summer line (44, past the original board's 43°N) moves when the table reaches further (the japan
+  // region's boards to 46°N, sandregions.js); 0 without it, so a game without such a pack is as before.
+  uSnowLat: { value: 44 }, uSnowFar: { value: 0 }, uBlossom: { value: 0 }, uAutumn: { value: 0 }, uBare: { value: 0 }, uCloud: { value: 0.25 }, uWet: { value: 0 }, uTime: { value: 0 },
 };
 U.uCrimson.value.forEach((c, i) => c.copy(FOREST.crimson[i]));
 
@@ -120,7 +122,7 @@ const placeUniforms = (p = STRATEGY_PLACE) => ({ uLatFix: { value: p.lat ?? 0 },
 // GLSL shared by every patched material: hash/value noise, a 4×4 Bayer step, the latitude of a point,
 // and the snow cover there — north of the snow line, reached sooner on high ground, ragged.
 export const SEASON_GLSL = /* glsl */`
-uniform float uSnowLat, uBlossom, uAutumn, uBare, uCloud, uWet, uTime, uSouth, uLatFix, uSnowH, uPatch, uSnowMax, uCalm, uBloom;
+uniform float uSnowLat, uSnowFar, uBlossom, uAutumn, uBare, uCloud, uWet, uTime, uSouth, uLatFix, uSnowH, uPatch, uSnowMax, uCalm, uBloom;
 uniform vec4 uStage;
 uniform vec3 uSouthG[5], uSouthF[5];
 float s_lat(vec3 w) { return uLatFix > 0. ? uLatFix : 31.5 - w.z; }
@@ -131,7 +133,7 @@ float s_noise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * 
   return mix(mix(s_hash(i), s_hash(i + vec2(1., 0.)), f.x), mix(s_hash(i + vec2(0., 1.)), s_hash(i + vec2(1., 1.)), f.x), f.y); }
 float s_bayer(vec2 p) { vec2 q = mod(floor(p), 4.); int i = int(q.x) + int(q.y) * 4;
   float B[16] = float[16](0., 8., 2., 10., 12., 4., 14., 6., 3., 11., 1., 9., 15., 7., 13., 5.); return (B[i] + .5) / 16.; }
-float s_snow(vec3 w, float rag) { return smoothstep(uSnowLat - .45, uSnowLat + .45, s_lat(w) + max(0., w.y - .3) * uSnowH + (rag - .5) * 1.5); }
+float s_snow(vec3 w, float rag) { float l = uSnowLat + uSnowFar * smoothstep(42., 44., uSnowLat); return smoothstep(l - .45, l + .45, s_lat(w) + max(0., w.y - .3) * uSnowH + (rag - .5) * 1.5); }
 vec3 s_ramp(vec3 c[5], float t) { t = clamp(t, 0., 1.) * 4.; int i = int(min(t, 3.)); return mix(c[i], c[i + 1], t - float(i)); }
 vec3 s_snowCol(float lum) { return mix(vec3(.62, .70, .80), vec3(.97, .98, 1.), clamp(lum * 2.2 + .25, 0., 1.)); }
 // The dither step a snow edge is cut at: per texel on the strategy map, a clean edge on a calm board.

@@ -184,7 +184,7 @@ const strategy = await createStrategyShell({
   // At boot, no sand table means the procedural board as ever; a map already up stays rather than give way to that.
   // Mid-game the download may come in at any time, but the build is one long task: it waits for a map with nothing running on it, or it would freeze a war or a 白兵.
   load3d: async (c) => {
-    const sand = await loadSandtable();
+    const sand = await loadSandtable(D.pack?.boards ?? []); // the boards of a pack's extension regions (design §5.5, core/pack.js regionBoards); none without a pack
     if (c.month != null) {
       if (!sand) throw new Error('no sand table');
       while (!mapCalm()) await sleep(120);

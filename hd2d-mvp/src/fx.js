@@ -112,7 +112,7 @@ export function lightShafts(scene, count, area, seed = 9) {
     m.position.set((r() - 0.5) * area[0], 5, (r() - 0.5) * area[1]); m.rotation.set(0, r() * Math.PI, -0.55);
     m.userData.phase = r() * 6; scene.add(m); shafts.push(m);
   }
-  return { update(t) { for (const m of shafts) m.material.opacity = 0.1 + 0.08 * Math.sin(t * 0.4 + m.userData.phase); } };
+  return { meshes: shafts, update(t) { for (const m of shafts) m.material.opacity = 0.1 + 0.08 * Math.sin(t * 0.4 + m.userData.phase); } };
 }
 
 // Petals/leaves drifting across the scene.

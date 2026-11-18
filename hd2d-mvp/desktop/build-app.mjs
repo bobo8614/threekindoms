@@ -27,6 +27,12 @@ const mods = join(here, 'node_modules');
 // Generator inputs and editor-only material that the game never loads, and the dropped generated score (新编, assets/audio/bgm-*).
 const SKIP = [/(^|\/)source(\/|$)/, /^assets\/ai\/title-source/, /^assets\/audio\/(original|remix)\//, /^assets\/audio\/generated\.json$/, /^assets\/audio\/bgm-[^/]+\.mp3$/, /(^|\/)\.DS_Store$/];
 const KEEP = [/^index\.html$/, /^save-editor\.html$/, /^src\//, /^data\//, /^mods\//, /^assets\//]; // mods/: the data packs shipped with the game (core/pack.js)
+// An extension region of the 战略地图 ships only once it is open to packs (listed in its regions/index.json): until then no pack can
+// declare it, and its pictures would only weigh the package (docs/战略地图数据包_交接_2026-11-17.md).
+const REGIONS = 'assets/ai/sandtable/regions', regionIndex = join(game, REGIONS, 'index.json');
+// The boards of the open regions (one of a region's name, or a region's `boards`: src/core/pack.js regionBoards).
+const openRegions = new Set(existsSync(regionIndex) ? Object.entries(JSON.parse(readFileSync(regionIndex, 'utf8'))).flatMap(([n, e]) => (e.boards ? Object.keys(e.boards) : [n])) : []);
+SKIP.push({ test: (f) => f.startsWith(`${REGIONS}/`) && f !== `${REGIONS}/index.json` && !openRegions.has(f.slice(REGIONS.length + 1).split('/')[0]) });
 
 rmSync(out, { recursive: true, force: true });
 const listed = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: game, encoding: 'utf8' }).split('\0');

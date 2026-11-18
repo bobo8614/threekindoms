@@ -104,6 +104,15 @@ export function createStrategySky({ scene, sand, onSeason }) {
   return {
     ambience, addLights, addClouds, setSeason, applyLight, update, updateView,
     advance(time) { sky.update(time); shafts.update(time); },
+    // Extension regions (sandregions.js) widen the table: the far ridges ring the boards' joint box as they ring the original
+    // board, so a view framing the region never looks past their edge, and the light shafts spread over the whole table (one stood
+    // right over the east strip's seam, where it read as a fault in the join). Never called without a pack's regions.
+    fitBoards([X0, X1, Z0, Z1]) {
+      const [x0, x1, z0, z1] = sand.meta.box, k = Math.hypot(X1 - X0, Z1 - Z0) / Math.hypot(x1 - x0, z1 - z0);
+      sky.ridges.position.set((X0 + X1 - x0 - x1) / 2, sky.ridges.position.y, (Z0 + Z1 - z0 - z1) / 2); sky.ridges.scale.set(k, 1, k);
+      const kx = (X1 - X0) / (x1 - x0), kz = (Z1 - Z0) / (z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      for (const m of shafts.meshes) m.position.set((X0 + X1) / 2 + (m.position.x - cx) * kx, m.position.y, (Z0 + Z1) / 2 + (m.position.z - cz) * kz);
+    },
     updateTable(dt, world) { world.table?.material.color.lerp(TABLE_TINT[Math.floor(season.month / 3)], 1 - Math.exp(-dt * 1.6)); },
     get month() { return season.month; },
   };

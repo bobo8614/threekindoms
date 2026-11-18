@@ -1,0 +1,7 @@
+{
+  "add": [
+    { "name": "福冈", "lon": 130.42, "lat": 33.58, "tier": "major", "like": "建业" },
+    { "name": "宫崎", "lon": 131.4, "lat": 31.92, "tier": "county", "like": "长沙" },
+    { "name": "济州", "lon": 126.53, "lat": 33.45, "tier": "county", "like": "郁林" }
+  ]
+}

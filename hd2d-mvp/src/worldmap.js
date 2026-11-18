@@ -8,14 +8,28 @@ import { canvasTex, rng } from './pixel.js';
 import { dioramaTextures, vnoise, azureWaterTex } from './diorama.js';
 import { patchGround, groundChunk, seasonalTree, seasonalWater } from './seasons.js';
 import { plantTrees } from './structures.js';
-import { isLand, RIVERS, LAKES, nearest, ranges, plateaus, aridity } from './china.js';
+import { isLand as chinaLand, RIVERS as CHINA_RIVERS, LAKES as CHINA_LAKES, nearest, ranges as chinaRanges, plateaus as chinaPlateaus, aridity as chinaAridity, landOf, rangesOf } from './china.js';
 
 export const LON0 = 97.5, LON1 = 125, LAT0 = 20, LAT1 = 43;
 export const toX = (lon) => (lon - 111.5) * 0.9, toZ = (lat) => -(lat - 31.5);
 export const fromX = (x) => x / 0.9 + 111.5, fromZ = (z) => 31.5 - z;
 export const SEA_Y = 0.14;
-const STEP = 0.1, NX = Math.round((LON1 - LON0) / STEP) + 1, NZ = Math.round((LAT1 - LAT0) / STEP) + 1;
-const X0 = toX(LON0), X1 = toX(LON1), Z0 = toZ(LAT1), Z1 = toZ(LAT0);
+const STEP = 0.1;
+// The board's extent and geography: the original's, or an overseas region's (src/regions/<name>.js, made by tools/region_geo.py),
+// built only to be exported for its sand-table bake (tools/export_region_board.mjs). Same grain, same world mapping (toX/toZ).
+function geography(geo) {
+  const [lon0, lon1, lat0, lat1] = geo ? geo.box : [LON0, LON1, LAT0, LAT1];
+  return {
+    LON0: lon0, LON1: lon1, LAT0: lat0, LAT1: lat1, NX: Math.round((lon1 - lon0) / STEP) + 1, NZ: Math.round((lat1 - lat0) / STEP) + 1,
+    X0: toX(lon0), X1: toX(lon1), Z0: toZ(lat1), Z1: toZ(lat0),
+    isLand: geo ? landOf(geo.land) : chinaLand, RIVERS: geo ? geo.rivers : CHINA_RIVERS, LAKES: geo ? geo.lakes : CHINA_LAKES,
+    ranges: geo ? rangesOf(geo.ranges) : chinaRanges,
+    // A region beside the original's own country (the north strip) keeps its dry country and uplands, so they run on across the seam.
+    plateaus: geo && !geo.china ? () => ({ tibet: 0, loess: 0, h: 0 }) : chinaPlateaus, aridity: geo && !geo.china ? () => 0 : chinaAridity,
+    // Degrees inland over which the coastal plain and then the relief rise: the original's belts are wide, a region's islands narrow.
+    coastRise: geo?.coast ?? [0.6, 0.9],
+  };
+}
 const TPU = 32; // texels per world unit, as on the war map
 const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -28,7 +42,9 @@ const CROPS = [['#3e5a26', '#56782f', '#6a8c3a'], ['#8a7a36', '#a89444', '#bca85
 const BUND = hex('#4a3e2a');
 
 // cities: [{ lon, lat }] as drawn.
-export function buildWorld(scene, cities, seed = 5) {
+// region: an overseas region's geography (see geography); the original board without it.
+export function buildWorld(scene, cities, seed = 5, region = null) {
+  const { LON0, LAT1, NX, NZ, X0, X1, Z0, Z1, isLand, RIVERS, LAKES, ranges, plateaus, aridity, coastRise: [RISE, RELIEF] } = geography(region);
   const N = NX * NZ, lonOf = (k) => LON0 + k * STEP, latOf = (j) => LAT1 - j * STEP;
   // ---- Land mask and signed distance to the coast (degrees, + on land) ----
   const land = new Uint8Array(N);
@@ -52,7 +68,7 @@ export function buildWorld(scene, cities, seed = 5) {
     const R = rng0 * (0.7 + 0.6 * ridged(lon, lat)) * gorge, P = plateaus(lon, lat);
     const rough = P.tibet * 0.6 * ridged(lon * 0.7, lat * 0.7) ** 2 * gorge; // scattered peaks on the plateau
     const hills = 0.07 * (vnoise(lon * 1.7, lat * 1.7, seed + 3) - 0.5) + 0.06 * vnoise(lon * 0.45, lat * 0.45, seed + 4);
-    return 0.17 + 0.13 * sm(0, 0.6, cd) + (R + P.h + rough + hills) * sm(0, 0.9, cd);
+    return 0.17 + 0.13 * sm(0, RISE, cd) + (R + P.h + rough + hills) * sm(0, RELIEF, cd);
   };
   const H = new Float32Array(N), riverD = new Float32Array(N).fill(9), R0 = new Float32Array(N);
   // Cities stand in basins and on plains: their terrace is the land's height without the ranges, so a range

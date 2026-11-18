@@ -189,23 +189,31 @@ export async function runTactical({ battle, hs, looks, view, duel: stage, audio,
     h('div', { class: 'tq-round' }, h('small', {}, '回合'), h('b', {}, battle.round), h('em', {}, ['林', '沙', '平原', '河', '山', '城'][battle.terrain] + '战')),
     card('d'));
   let armed = null, armT = 0, aiming = false;
+  // Phone: the orders and the tactics stand folded in two narrow strips by the screen's edges (o0無名0o@bilibili: the open
+  // panels hid our own lines). A troop type shows only its standing order; a tap on it unfolds its four orders beside it,
+  // and a choice folds it again. 全军 and 战术 unfold the same way. One is open at a time; it folds by itself after a while.
+  let open = null, openT = 0;
+  const unfold = (id) => { open = id; clearTimeout(openT); if (id) openT = setTimeout(() => { if (open === id) { open = null; if (con.isConnected) drawConsole(); } }, 6000); drawConsole(); };
   const arm = (id) => { armed = id; clearTimeout(armT); armT = setTimeout(() => { if (armed === id) { armed = null; if (con.isConnected) drawConsole(); } }, 4500); drawConsole(); };
   const drawConsole = () => {
     const counts = Object.fromEntries(KINDS.map((k) => [k, battle.live.filter((u) => u.side === hs && u.kind === k).length]));
-    const rows = KINDS.slice().reverse().map((k) => h('div', { class: `tq-row ${counts[k] ? '' : 'none'}` },
-      h('span', { class: 'tq-kind' }, KIND_NAME[k], h('small', {}, k === 'gen' ? '' : `×${counts[k]}`)),
+    const rows = KINDS.slice().reverse().map((k) => h('div', { class: `tq-row ${counts[k] ? '' : 'none'}${PHONE && open === k ? ' open' : ''}` },
+      // (phone, unfolded: the name keeps the folded cell's place and width, so a quick second tap there folds it again and never
+      // lands on an order)
+      h('span', { class: 'tq-kind', onclick: PHONE ? () => unfold(null) : null }, KIND_NAME[k], h('small', {}, k === 'gen' ? '' : `×${counts[k]}`)),
       h('div', { class: 'tq-seg', role: 'radiogroup', 'aria-label': `${KIND_NAME[k]}的将令` }, ...Object.entries(COMMANDS).map(([c, label]) => h('button', {
-        class: `tq-cmd ${S.cmd[k] === c ? 'on' : ''}`, role: 'radio', 'aria-checked': S.cmd[k] === c, 'aria-label': label, disabled: !counts[k] || auto,
+        class: `tq-cmd ${S.cmd[k] === c ? 'on' : ''}`, role: 'radio', 'aria-checked': S.cmd[k] === c, 'aria-label': label, 'data-k': KIND_NAME[k], disabled: !counts[k] || auto,
         title: `${label}：${{ advance: '向敌将推进，遇敌即攻', retreat: '向本阵边缘撤出战场', wait: '原地待命，射程内仍会攻击', surround: '包围敌将但不攻击，第4回合起体力低的敌将可能被俘（君主不会被俘）' }[c]}`,
-        onclick: () => { S.cmd[k] = c; drawConsole(); },
+        onclick: () => { if (PHONE && open !== k) return void unfold(k); S.cmd[k] = c; if (PHONE) unfold(null); else drawConsole(); },
       }, h('i', {}, CMD_ICON[c]), CMD_SHORT[c])))));
     // 全军待机 / 全军包围: one press gives every troop type the order (the four segments light up to match).
     const ALL = { wait: ['全军待机', '所有兵种原地待命，射程内仍会攻击'], surround: ['全军包围', '所有兵种包围敌将但不攻击，第4回合起体力低的敌将可能被俘（君主不会被俘）'] };
-    const all = h('div', { class: 'tq-row tq-all' }, h('span', { class: 'tq-kind' }, '全军'),
+    const all = h('div', { class: `tq-row tq-all${PHONE && open === 'all' ? ' open' : ''}` }, h('span', { class: 'tq-kind' }, '全军'),
+      PHONE ? h('button', { class: 'tq-cmd tq-fold', 'aria-expanded': String(open === 'all'), disabled: auto || battle.over, onclick: () => unfold(open === 'all' ? null : 'all') }, '全军') : null,
       h('div', { class: 'tq-seg', role: 'group', 'aria-label': '全军的将令' }, ...Object.entries(ALL).map(([c, [label, tip]]) => h('button', {
         class: `tq-cmd tq-allcmd ${KINDS.every((k) => S.cmd[k] === c) ? 'on' : ''}`, 'data-all': c, 'aria-label': label, 'aria-pressed': String(KINDS.every((k) => S.cmd[k] === c)), disabled: auto || battle.over,
         title: `${label}：${tip}${auto ? '\n自动中，由电脑下令' : ''}`,
-        onclick: () => { battle.commandAll(hs, c); log(`<em>${label}！</em>`); drawConsole(); },
+        onclick: () => { battle.commandAll(hs, c); log(`<em>${label}！</em>`); if (PHONE) unfold(null); else drawConsole(); },
       }, h('i', {}, CMD_ICON[c]), CMD_SHORT[c]))));
     // Phone: a tactic's first tap only says what it does and costs (a mouse reads that off the button's tooltip) and the
     // second casts it; 全军撤退 asks the same way. Either lapses after a few seconds or when another is tapped.
@@ -213,16 +221,22 @@ export async function runTactical({ battle, hs, looks, view, duel: stage, audio,
     // 爆炎 flies the way the general faces (D87): its 3×3 is shown on the ground while the button is pointed at, or armed on a
     // phone; facing the board's edge it has nowhere to land and would waste its points, so it waits, saying why.
     const landing = battle.blastAt?.(hs) ?? null; let blastOk = false;
-    const tactics = h('div', { class: 'tq-tactics' }, ...TACTICS.map((t) => {
+    let running = null; // (phone) the tactic of ours in force, worn by the folded strip
+    const tacs = TACTICS.map((t) => {
       const edge = t.id === 'blast' && !landing && !!battle.blastAt;
       const ok = S.tp >= t.cost && battle.canTactic(hs, t.id) && !edge && !auto && !battle.over && !queued && !casting && !battle.duel;
       if (t.id === 'blast') blastOk = ok;
       const aimAt = (on) => { if (t.id !== 'blast') return; aiming = on && ok; view.aim?.(aiming ? landing : null); };
       const live = battle.untold(hs, t.id) ? 0 : Math.max(0, (fxHold?.fx ?? S.fx)[t.id] || 0); // ours running: the button wears the rounds left on its corner (not before a cast under 自动 is told)
+      if (live && !running) running = [t, live];
       return h('button', { class: `tq-tac ${live ? `live fx-${t.id}` : ''}${PHONE && armed === t.id ? ' armed' : ''}`, disabled: !ok, title: `${TACTIC_TIP[t.id]}\n需战术点${t.cost}${S.tp < t.cost ? `，现有${S.tp}（每场按智力×13÷100给出）` : ''}${live ? `\n生效中，还剩 ${live} 回合` : !battle.canTactic(hs, t.id) ? '\n已有战术生效中' : edge ? '\n将领面朝战场边缘，前方没有落点' : ''}`,
-        onmouseenter: () => aimAt(true), onfocus: () => aimAt(true), onmouseleave: () => aimAt(false), onblur: () => aimAt(false), onclick: () => { if (queued || casting || battle.duel) return; if (PHONE && armed !== t.id) { arm(t.id); return; } armed = null; queued = t.id; drawConsole(); resume(); } },
+        onmouseenter: () => aimAt(true), onfocus: () => aimAt(true), onmouseleave: () => aimAt(false), onblur: () => aimAt(false), onclick: () => { if (queued || casting || battle.duel) return; if (PHONE && armed !== t.id) { arm(t.id); unfold('tac'); return; } armed = null; queued = t.id; if (PHONE) open = null; drawConsole(); resume(); } },
         h('b', {}, t.name), h('span', {}, t.cost), live ? h('u', { class: 'tq-tac-live', 'aria-label': `生效中，还剩 ${live} 回合` }, `${live}回合`) : null);
-    }));
+    });
+    const fold = PHONE ? h('button', { class: `tq-tac tq-tacfold${running ? ` live fx-${running[0].id}` : ''}`, 'aria-expanded': String(open === 'tac'), title: '战术',
+      onclick: () => { if (open === 'tac') armed = null; unfold(open === 'tac' ? null : 'tac'); } },
+      h('b', {}, '战术'), h('span', { 'aria-label': '战术点' }, S.tp), running ? h('u', { class: 'tq-tac-live', 'aria-label': `${running[0].name}生效中，还剩 ${running[1]} 回合` }, `${running[0].name}${running[1]}`) : null) : null;
+    const tactics = h('div', { class: `tq-tactics${PHONE && open === 'tac' ? ' open' : ''}` }, ...tacs, fold);
     // Two low rows (orders; tactics and controls), so the field keeps most of the screen's height.
     con.replaceChildren(
       h('div', { class: 'tq-orders' }, h('div', { class: 'tq-label' }, '将令'), ...rows, all),
@@ -238,9 +252,15 @@ export async function runTactical({ battle, hs, looks, view, duel: stage, audio,
   };
   // Tell the view how much of the screen the cards and console cover so it frames the field between them.
   const frame = () => { if (root.classList.contains('dueling') || !con.isConnected) return view.setInsets?.(0, 0);
-    // Phone: the orders and the tactics stand in the bottom corners (src/phone.css) and leave the middle to the field: only the
-    // line of controls along the bottom is kept out of the frame.
-    if (PHONE) { const low = con.querySelector('.tq-ctrl') ?? con; return view.setInsets?.(30, Math.max(0, innerHeight - low.getBoundingClientRect().top + 2)); } // the two cards stand in the top corners, clear of the lines in the middle
+    // Phone: the orders and the tactics stand folded in narrow strips by the left and right edges: the field is framed between
+    // them (the folded widths: an unfolded row or grid is a passing thing and does not move the camera), below the top 30 px
+    // (the two cards stand in the top corners, clear of the lines in the middle) and above the line of controls.
+    if (PHONE) {
+      const low = con.querySelector('.tq-ctrl') ?? con;
+      const left = Math.max(0, ...[...con.querySelectorAll('.tq-orders .tq-row:not(.open):not(.none)')].map((e) => e.getBoundingClientRect().right));
+      const fold = con.querySelector('.tq-tacfold')?.getBoundingClientRect();
+      return view.setInsets?.(30, Math.max(0, innerHeight - low.getBoundingClientRect().top + 2), left && left + 4, fold?.width ? innerWidth - fold.left + 4 : 0);
+    }
     view.setInsets?.(top.getBoundingClientRect().bottom + 8, Math.max(0, innerHeight - con.getBoundingClientRect().top + 8)); };
   const log = (x) => { feed.prepend(h('p', { html: x })); while (feed.children.length > 7) feed.lastChild.remove(); };
   const update = () => {

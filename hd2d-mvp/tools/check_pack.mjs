@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBaseMap, mergePack, PACK_FILES } from '../src/core/pack.js';
+import { regionHeights, gridHeightAt } from '../src/regionseam.js';
 
 const MVP = fileURLToPath(new URL('..', import.meta.url)), MODS = path.join(MVP, 'mods');
 const json = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -20,18 +21,25 @@ const HALF = { capital: 0.58, major: 0.45, county: 0.34, pass: 0.43 };
 const toX = (lon) => (lon - 111.5) * 0.9, toZ = (lat) => -(lat - 31.5); // src/worldmap.js
 
 // A baked board's ground height (src/sandtable.js heightAt), from its board.json and height.bin.
-function board(dir) {
+function readBoard(dir) {
   const meta = json(path.join(dir, 'board.json')), raw = fs.readFileSync(path.join(dir, 'height.bin'));
-  const h16 = new Uint16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2), [X0, X1, Z0, Z1] = meta.box, [GW, GH] = meta.grid, [dx, dz] = meta.step;
-  const at = (k, j) => meta.h[0] + h16[Math.min(GH - 1, Math.max(0, j)) * GW + Math.min(GW - 1, Math.max(0, k))] / 65535 * (meta.h[1] - meta.h[0]);
-  const heightAt = (x, z) => {
-    const fk = (x - X0) / dx, fj = (z - Z0) / dz, k = Math.floor(fk), j = Math.floor(fj), a = fk - k, b = fj - j;
-    return (at(k, j) * (1 - a) + at(k + 1, j) * a) * (1 - b) + (at(k, j + 1) * (1 - a) + at(k + 1, j + 1) * a) * b;
-  };
-  return { meta, inside: (x, z) => x >= X0 && x <= X1 && z >= Z0 && z <= Z1, heightAt, sea: meta.sea };
+  return { meta, height: new Uint16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2) };
 }
-const boards = { base: board(path.join(MVP, 'assets/ai/sandtable/board')) };
-for (const name of Object.keys(regionIndex)) if (fs.existsSync(path.join(REGIONS_DIR, name, 'board.json'))) boards[name] = board(path.join(REGIONS_DIR, name));
+const shape = ({ meta }, heightAt) => { const [X0, X1, Z0, Z1] = meta.box; return { meta, inside: (x, z) => x >= X0 && x <= X1 && z >= Z0 && z <= Z1, heightAt, sea: meta.sea }; };
+const baseBoard = (() => { const b = readBoard(path.join(MVP, 'assets/ai/sandtable/board')); return shape(b, gridHeightAt(b.meta, Float32Array.from(b.height, (v) => b.meta.h[0] + v / 65535 * (b.meta.h[1] - b.meta.h[0])))); })();
+// The boards a pack stands on (its data.pack.boards) with the original, each region's heights eased into the boards it lies flush
+// against as both maps stand them (src/regionseam.js): land the easing sinks under the sea there is sea to the check too.
+const boardSets = new Map();
+export function boardsFor(names) {
+  const key = names.join(',');
+  if (!boardSets.has(key)) {
+    const rs = names.filter((n) => fs.existsSync(path.join(REGIONS_DIR, n, 'board.json'))).map((n) => ({ name: n, ...readBoard(path.join(REGIONS_DIR, n)) }));
+    const at = regionHeights(rs, baseBoard), set = { base: baseBoard };
+    rs.forEach((r, k) => { set[r.name] = shape(r, at[k]); });
+    boardSets.set(key, set);
+  }
+  return boardSets.get(key);
+}
 
 export function checkPack(dir) {
   const id = path.basename(dir), read = (f) => {
@@ -51,7 +59,7 @@ export function checkPack(dir) {
   errors.push(...bad);
   if (!data) return { errors, warnings };
   // Geography: on land, the whole footprint, on a board the pack may use.
-  const allowed = ['base', ...(data.pack.regions ?? [])];
+  const boards = boardsFor(data.pack.boards ?? []), allowed = ['base', ...(data.pack.boards ?? [])];
   for (const c of data.cities.slice(base.cities.length)) {
     const x = toX(c.lon), z = toZ(c.lat), r = HALF[c.tier];
     const b = allowed.map((k) => boards[k]).find((q) => q?.inside(x, z));

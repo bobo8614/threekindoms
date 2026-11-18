@@ -7,6 +7,7 @@ import { createSeasons, SEASON_TABLE, U } from './seasons.js';
 import { colorOf, paintBanner, surnameOf } from './strategy.js';
 import { heightField, townSeat, courseOf, waterIndex, wetCostOf } from './packgeo.js';
 import { SEA_Y } from './worldmap.js';
+import { regionHeights } from './regionseam.js';
 import { territoryHex, nearestSeat, TERRITORY_PALETTE, TERRITORY_FILL, TERRITORY_MID_BOOST, TERRITORY_BAND_WORLD, TERRITORY_BORDER_HALF_PX, TERRITORY_NEUTRAL_BORDER, TERRITORY_FOCUS_SCALE } from './sandtable.js';
 import { createSky2d } from './skyfx2d.js';
 import { layoutTags, measureTags } from './citytags.js';
@@ -46,10 +47,24 @@ const PACK_ROAD = '#d6c8a0', PACK_ROAD_W = 0.064 * PAN_UNIT; // as the sand tabl
 // roads and their land are laid over them. The bake's camera is fitted from its own 30 towns (where the sand table stands them, against
 // where the pictures show them: a projective map, within a tenth of a pixel), so a new seat lands where the 3D map stands it. Only a
 // pack's game fetches the sand table's board, heights and the town pictures' metadata.
+// With extension regions (data.pack.boards, design §5.5) each region's board answers its own heights and water, and its pictures
+// (tools/bake_strategy_flat.mjs --region) lie beside the original's where flat.json says; a region that fails to load is left out.
 async function packBoard(board, data) {
-  const SAND = 'assets/ai/sandtable/board';
-  const [meta, hbuf, towns] = await Promise.all([fetch(`${SAND}/board.json`).then((r) => r.json()), fetch(`${SAND}/height.bin`).then((r) => r.arrayBuffer()), fetch(`${DIR}/towns.json`).then((r) => r.json())]);
-  const heightAt = heightField(meta, new Uint16Array(hbuf)), groundY = (x, z) => Math.max(SEA_Y, heightAt(x, z));
+  const SAND = 'assets/ai/sandtable/board', json = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(`${u}: ${r.status}`); return r.json(); });
+  const region = (name) => {
+    const dir = `assets/ai/sandtable/regions/${name}`;
+    return Promise.all([json(`${dir}/board.json`), fetch(`${dir}/height.bin`).then((r) => r.arrayBuffer()), json(`${dir}/flat.json`)])
+      .then(([meta, h, flat]) => ({ name, dir, meta, flat, height: new Uint16Array(h) }))
+      .catch((e) => { console.error(`战略地图: extension region ${name} not loaded`, e); return null; });
+  };
+  const [meta, hbuf, towns, ...rs] = await Promise.all([fetch(`${SAND}/board.json`).then((r) => r.json()), fetch(`${SAND}/height.bin`).then((r) => r.arrayBuffer()), fetch(`${DIR}/towns.json`).then((r) => r.json()),
+    ...(data.pack.boards ?? []).map(region)]);
+  const regions = rs.filter(Boolean), inBox = ([x0, x1, z0, z1], x, z) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
+  U.uSnowFar.value = regions.some((r) => r.meta.box[2] < meta.box[2] - 1e-6) ? 5 : 0; // as strategy.js: the summer snow line past the boards
+  const mainAt = heightField(meta, new Uint16Array(hbuf)), SEABED = meta.h[0];
+  regionHeights(regions, { meta, heightAt: mainAt }).forEach((at, k) => { regions[k].heightAt = at; }); // eased into the boards beside them, as the 3D board
+  const heightAt = regions.length ? (x, z) => (inBox(meta.box, x, z) ? mainAt(x, z) : regions.find((r) => inBox(r.meta.box, x, z))?.heightAt(x, z) ?? SEABED) : mainAt;
+  const groundY = (x, z) => Math.max(SEA_Y, heightAt(x, z));
   // u = (P0 x + P1 y + P2 z + P3) / w, v = (P4 x + … + P7) / w, w = P8 x + P9 y + P10 z + 1: least squares over the baked towns.
   const A = Array.from({ length: 11 }, () => new Float64Array(12)), seen = new Map(board.cities.map((c) => [c.id, c]));
   const row = (r, b) => { for (let i = 0; i < 11; i++) { for (let j = 0; j < 11; j++) A[i][j] += r[i] * r[j]; A[i][11] += r[i] * b; } };
@@ -88,13 +103,13 @@ async function packBoard(board, data) {
     pos[c.id] = new THREE.Vector3(seat.x, seat.y, seat.z); seats.push({ id: c.id, x: seat.x, z: seat.z });
   }
   // A pack's roads by the sand table's own course (the fewest bridges), as strategyroads.js draws them.
-  const waterAt = waterIndex(meta.water, { cell: 0.5, margin: 0.09 }), wetCost = wetCostOf(waterAt);
+  const waterAt = waterIndex(regions.length ? [...meta.water, ...regions.flatMap((r) => r.meta.water)] : meta.water, { cell: 0.5, margin: 0.09 }), wetCost = wetCostOf(waterAt);
   const baked = new Set(board.roads.map((r) => `${Math.min(r.a, r.b)}-${Math.max(r.a, r.b)}`));
   for (const c of data.cities) for (const m of c.roads) if (c.id < m && !baked.has(`${c.id}-${m}`)) {
     const pts = courseOf(c.id, m, pos, groundY, wetCost), sea = pts.map((q) => heightAt(q.x, q.z) < SEA_Y + 0.01 && !waterAt(q.x, q.z));
     board.roads.push({ a: c.id, b: m, sea, pack: true, p: pts.flatMap((q, i) => project(q.x, Math.max(q.y, sea[i] ? SEA_Y : heightAt(q.x, q.z)), q.z)).map(n) });
   }
-  return { towns, added, groundAt, seats };
+  return { towns, added, groundAt, seats, regions };
 }
 
 // The board's coordinates and the first picture are in before it returns, so the map never opens blank. ctx.month: the month to open on
@@ -103,7 +118,9 @@ export async function createStrategyFlat(ctx) {
   const { data, month: start = 2 } = ctx;
   const board = await (await fetch(`${DIR}/board.json`)).json();
   const pack = data.pack ? await packBoard(board, data) : null; // a pack that changes no city or road leaves them as they are
-  const [W, H] = board.size, B = board.bounds, cities = [];
+  const [W, H] = board.size, R = pack?.regions ?? [], cities = [];
+  // The view's bounds: the original pictures' board, and each region's window beside it.
+  const B = R.length ? R.reduce((b, { flat: { rect: [x, y, w, h] } }) => ({ x0: Math.min(b.x0, x), y0: Math.min(b.y0, y), x1: Math.max(b.x1, x + w), y1: Math.max(b.y1, y + h) }), { ...board.bounds }) : board.bounds;
   for (const c of board.cities) cities[c.id] = c;
 
   const wrap = Object.assign(document.createElement('div'), { className: 'flatstrategy' }), cv = document.createElement('canvas');
@@ -182,14 +199,16 @@ export async function createStrategyFlat(ctx) {
     if (!loading.has(s)) {
       const bitmap = (f) => fetch(`${DIR}/${f}.webp`).then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); }).then((b) => createImageBitmap(b));
       // With a pack, the season's town pictures come with its board picture (a town with no picture would be a gap); they go with it.
-      loading.set(s, Promise.all([bitmap(SEASONS[s]), pack?.added.length ? bitmap(`towns-${SEASONS[s]}`) : null])
-        .then(([p, t]) => { if (asleep) { p.close(); t?.close(); throw new Error('released'); } if (t) p.towns = t; pics.set(s, p); return p; }).finally(() => loading.delete(s)));
+      // A region's picture for the season comes with it too (its board would be a hole in the table).
+      const regionPic = (r) => fetch(`${r.dir}/flat-${SEASONS[s]}.webp`).then((q) => { if (!q.ok) throw new Error(`${q.status}`); return q.blob(); }).then((b) => createImageBitmap(b));
+      loading.set(s, Promise.all([bitmap(SEASONS[s]), pack?.added.length ? bitmap(`towns-${SEASONS[s]}`) : null, ...R.map(regionPic)])
+        .then(([p, t, ...rp]) => { if (asleep) { p.close(); t?.close(); rp.forEach((b) => b.close()); throw new Error('released'); } if (t) p.towns = t; if (rp.length) p.regions = rp; pics.set(s, p); return p; }).finally(() => loading.delete(s)));
     }
     return loading.get(s);
   };
   const prune = () => {
     const keep = new Set([...layers.map((l) => l.s), want, (want + 1) % 4, trying]);
-    for (const [s, p] of pics) if (!keep.has(s)) { p.close(); p.towns?.close(); pics.delete(s); }
+    for (const [s, p] of pics) if (!keep.has(s)) { p.close(); p.towns?.close(); p.regions?.forEach((b) => b.close()); pics.delete(s); }
   };
   // Shows a season's picture when it is ready, the old one staying up until then; one that will not load gives way to a neighbour's.
   async function show(s, instant) {
@@ -228,20 +247,25 @@ export async function createStrategyFlat(ctx) {
     if (under.width !== cv.width || under.height !== cv.height) { under.width = cv.width; under.height = cv.height; }
     ug.setTransform(dpr, 0, 0, dpr, 0, 0); ug.imageSmoothingEnabled = true; ug.imageSmoothingQuality = 'high';
     ug.globalAlpha = 1; ug.fillStyle = `#${hex}`; ug.fillRect(0, 0, vw, vh);
-    for (const { pic, t } of layers) { ug.globalAlpha = t * t * (3 - 2 * t); ug.drawImage(pic, x, y, W * k, H * k); if (pack) drawPackTowns(ug, pic.towns, k, x, y); }
+    for (const { pic, t } of layers) {
+      ug.globalAlpha = t * t * (3 - 2 * t); ug.drawImage(pic, x, y, W * k, H * k);
+      pic.regions?.forEach((rp, i) => { const [rx, ry, rw, rh] = R[i].flat.rect; ug.drawImage(rp, x + rx * k, y + ry * k, rw * k, rh * k); });
+      if (pack) drawPackTowns(ug, pic.towns, k, x, y);
+    }
     ug.globalAlpha = 1;
     if (territoryOn && tintDraws) {
       // Canvas colour blending keeps the picture's luminance and paint instead of covering it with a flat fill.
       const z = THREE.MathUtils.smoothstep(view.z, FLAT_TERRITORY_ZOOM[0], FLAT_TERRITORY_ZOOM[1]), attention = territoryFocus ? TERRITORY_FOCUS_SCALE : 1;
       const fill = (THREE.MathUtils.lerp(TERRITORY_FILL[1], TERRITORY_FILL[0], z) + TERRITORY_MID_BOOST * 4 * z * (1 - z)) * attention;
       // Smooth faction transitions while clipping the colour to owned land, so neither sea nor unowned land is tinted.
-      ug.save(); ug.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y); ug.clip(ownedClip); ug.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const tx = x + TX * k, ty = y + TY * k; // the grid's corner on the pictures: theirs, or a region's further out
+      ug.save(); ug.setTransform(dpr * k, 0, 0, dpr * k, dpr * tx, dpr * ty); ug.clip(ownedClip); ug.setTransform(dpr, 0, 0, dpr, 0, 0);
       ug.globalCompositeOperation = 'color'; ug.globalAlpha = fill;
-      ug.imageSmoothingEnabled = true; ug.drawImage(tintCv, x, y, W * k, H * k); ug.restore();
+      ug.imageSmoothingEnabled = true; ug.drawImage(tintCv, tx, ty, TWD * k, THD * k); ug.restore();
       ug.globalCompositeOperation = 'source-over'; ug.globalAlpha = 1;
       // Each owner clips its own side of the seam. Wide translucent strokes make the wash fall off
       // inward; their world width grows at far zoom without repacking the colour grid every frame.
-      ug.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y);
+      ug.setTransform(dpr * k, 0, 0, dpr * k, dpr * tx, dpr * ty);
       ug.lineCap = ug.lineJoin = 'round';
       for (let f = 0; f < FC; f++) if (f !== NONE && clipUsed[f]) {
         ug.save(); ug.clip(landClip); ug.clip(ownerClips[f]);
@@ -322,11 +346,27 @@ export async function createStrategyFlat(ctx) {
 
   // ---- Owners' tint: a transparent colour grid over the existing seasonal pictures; land/sea is stored independently
   // of the old distance falloff, whose zero also covered land far from any city.
-  const T = board.tint, TW = T.territory?.w ?? T.w, TH = T.territory?.h ?? T.h;
+  const T = board.tint, TW0 = T.territory?.w ?? T.w, TH0 = T.territory?.h ?? T.h, GX = W / TW0, GY = H / TH0;
+  // With regions the grid takes in each region's land, on the same cells (the bake snaps its window to them): UX0, UY0 the grid's
+  // first cell on the original's, TX, TY its corner in picture px, TWD × THD its size. Without, the original grid as it is.
+  const UX0 = Math.min(0, ...R.map((r) => r.flat.cell[0])), UY0 = Math.min(0, ...R.map((r) => r.flat.cell[1]));
+  const TW = Math.max(TW0, ...R.map((r) => r.flat.cell[0] + r.flat.land.w)) - UX0, TH = Math.max(TH0, ...R.map((r) => r.flat.cell[1] + r.flat.land.h)) - UY0;
+  const TX = UX0 * GX, TY = UY0 * GY, TWD = R.length ? TW * GX : W, THD = R.length ? TH * GY : H;
+  const cellX = (i) => (R.length ? (i + UX0 + 0.5) * GX : (i + 0.5) / TW * W), cellY = (j) => (R.length ? (j + UY0 + 0.5) * GY : (j + 0.5) / TH * H);
   let tintCells = null, tintCv, tintG, tintPx;
+  const unrun = (code, n) => { // a baked grid's run-length cells: city id, or −1 for sea and outside
+    const packed = atob(code), cells = new Int16Array(n); let at = 0; if (packed.length % 2) throw new Error('flat territory runs are incomplete');
+    for (let i = 0; i < packed.length; i += 2) {
+      const value = packed.charCodeAt(i) - 1, length = packed.charCodeAt(i + 1);
+      if (!length || at + length > n) throw new Error('flat territory run has the wrong size');
+      cells.fill(value, at, at + length); at += length;
+    }
+    if (at !== n) throw new Error('flat territory grid has the wrong size');
+    return cells;
+  };
   function initTint() {
     if (tintCells) return;
-    const cells = new Int16Array(TW * TH);
+    let cells = new Int16Array(TW0 * TH0);
     if (T.territory) {
       const packed = atob(T.territory.city);
       if (T.territory.encoding === 'rle8') {
@@ -342,10 +382,19 @@ export async function createStrategyFlat(ctx) {
         for (let i = 0; i < cells.length; i++) cells[i] = packed.charCodeAt(i) - 1;
       } // zero is sea/outside; otherwise city id + 1
     } else for (let i = 0; i < cells.length; i++) cells[i] = (T.land ? T.land[i] : T.k[i] > 0) ? T.near[i] : -1; // older cached metadata stays safe at sea
+    if (R.length) { // the original's cells and each region's land in the larger grid; the region's towns are given below, as any pack's
+      const all = new Int16Array(TW * TH).fill(-1);
+      for (let j = 0; j < TH0; j++) all.set(cells.subarray(j * TW0, (j + 1) * TW0), (j - UY0) * TW - UX0);
+      for (const { flat: { cell: [ci, cj], land } } of R) {
+        const own = unrun(land.city, land.w * land.h);
+        for (let j = 0; j < land.h; j++) for (let i = 0; i < land.w; i++) if (own[j * land.w + i] >= 0) all[(cj + j - UY0) * TW + ci + i - UX0] = own[j * land.w + i];
+      }
+      cells = all;
+    }
     // A pack's towns take the land nearer them than any other town, by the 3D board's own rule; the rest of the grid stays as baked.
     if (pack?.added.length) for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
       const q = j * TW + i; if (cells[q] < 0) continue;
-      const g = pack.groundAt((i + 0.5) / TW * W, (j + 0.5) / TH * H), near = pack.seats[nearestSeat(g.x, g.z, pack.seats)].id;
+      const g = pack.groundAt(cellX(i), cellY(j)), near = pack.seats[nearestSeat(g.x, g.z, pack.seats)].id;
       if (near >= board.cities.length - pack.added.length) cells[q] = near;
     }
     tintCv = Object.assign(document.createElement('canvas'), { width: TW, height: TH }); tintG = tintCv.getContext('2d'); tintPx = tintG.createImageData(TW, TH); tintCells = cells;
@@ -373,7 +422,7 @@ export async function createStrategyFlat(ctx) {
     // Marching squares connects cell-edge midpoints, softening the coarse picture grid's otherwise square corners.
     borderPaths = Array.from({ length: FC }, () => [new Path2D(), new Path2D()]).flat(); borderUsed = borderPaths.map(() => false);
     ownerClips = Array.from({ length: F }, () => new Path2D()); landClip = new Path2D(); ownedClip = new Path2D(); clipUsed = ownerClips.map(() => false);
-    const xs = new Float32Array(4), ys = new Float32Array(4), kinds = new Int16Array(4), gx = W / TW, gy = H / TH;
+    const xs = new Float32Array(4), ys = new Float32Array(4), kinds = new Int16Array(4), gx = R.length ? GX : W / TW, gy = R.length ? GY : H / TH;
     // Horizontal runs keep the clipping paths small and ensure colour and glow cannot spill onto the sea.
     for (let j = 0; j < TH; j++) for (let i = 0; i < TW;) {
       const city = tintCells[j * TW + i], f = city < 0 ? -1 : tintOwners[city]; let end = i + 1;

@@ -37,8 +37,18 @@ const META = new Set(['id', 'name', 'version', 'author', 'game', 'regions', 'des
 // The longitude and latitude a seat may take: the original board (src/worldmap.js LON0…LAT1), or a declared region's box.
 export const BASE_BOX = { lon: [97.5, 125], lat: [20, 43] };
 
+// The boards the regions a pack names stand on, [[board, { lon, lat }]] in the order named; a board inside another's box (east
+// inside japan's) is left to that one, which has the same land.
+export function regionBoards(regions, index = {}) {
+  const all = regions.flatMap((r) => { const e = index?.[r]; return !e ? [] : e.boards ? Object.entries(e.boards) : [[r, e]]; });
+  const inside = (a, b) => a.lon[0] >= b.lon[0] && a.lon[1] <= b.lon[1] && a.lat[0] >= b.lat[0] && a.lat[1] <= b.lat[1];
+  return all.filter(([n, b], i) => all.findIndex(([m]) => m === n) === i && !all.some(([m, c]) => m !== n && inside(b, c) && !(inside(c, b) && m > n)));
+}
+
 // pack: { meta: pack.json, cities, roads, factions, officers } as parsed (missing files undefined).
-// opts.regions: { name: { lon: [w, e], lat: [s, n] } } of the official extension regions that exist.
+// opts.regions: the official extension regions open to packs (assets/ai/sandtable/regions/index.json): { name: { lon: [w, e], lat: [s, n] } }
+// for a region that is one board of its name, or { name: { boards: { board: { lon, lat }, … } } } for one opened as several boards
+// together (japan: the north strip and the east of the table to 46°N, so the table stays one rectangle; regionBoards).
 // Returns { data, errors }: data is null when anything is wrong (the game then never starts on half a pack).
 export function mergePack(base, pack, opts = {}) {
   const errors = [], err = (where, msg) => errors.push(`${where}：${msg}`);
@@ -55,7 +65,8 @@ export function mergePack(base, pack, opts = {}) {
   const regions = meta.regions ?? [];
   if (!Array.isArray(regions) || regions.some((r) => typeof r !== 'string')) err('pack.json', 'regions 应为地块名的数组');
   else for (const r of regions) if (!opts.regions?.[r]) err('pack.json', `regions 里的「${r}」不是已开放的官方扩展地块`);
-  const boxes = [BASE_BOX, ...(Array.isArray(regions) ? regions : []).map((r) => opts.regions?.[r]).filter(Boolean)];
+  const boards = Array.isArray(regions) ? regionBoards(regions, opts.regions) : [];
+  const boxes = [BASE_BOX, ...boards.map(([, b]) => b)];
 
   const list = (file, v, shape) => {
     if (v == null) return shape === 'object' ? {} : [];
@@ -292,7 +303,7 @@ export function mergePack(base, pack, opts = {}) {
     if (gap < MIN_CITY_GAP) err(`城 ${c.name}`, `离${o.name}太近（${gap.toFixed(2)}，至少 ${MIN_CITY_GAP}）`);
   }
   if (errors.length) return { data: null, errors };
-  d.pack = { id: meta.id, name: meta.name, version: meta.version, author: meta.author ?? '', regions: [...regions] };
+  d.pack = { id: meta.id, name: meta.name, version: meta.version, author: meta.author ?? '', regions: [...regions], boards: boards.map(([n]) => n) };
   return { data: d, errors };
 }
 

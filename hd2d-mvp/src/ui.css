@@ -1,6 +1,7 @@
 /* Colours the 战略地图 changes with the season (body[data-season], below); registered so they can ease as the month turns. */
 @property --panel { syntax: "<color>"; inherits: true; initial-value: rgba(22, 15, 10, .9); }
 @property --lacquer { syntax: "<color>"; inherits: true; initial-value: #1a120c; }
+@property --lacquer-95 { syntax: "<color>"; inherits: true; initial-value: rgba(26, 18, 12, .95); }
 @property --lacquer2 { syntax: "<color>"; inherits: true; initial-value: #24180f; }
 @property --gold2 { syntax: "<color>"; inherits: true; initial-value: #8a6a34; }
 @property --rule { syntax: "<color>"; inherits: true; initial-value: #5a4428; }
@@ -14,7 +15,7 @@
 @property --menu-bg { syntax: "<color>"; inherits: true; initial-value: rgba(14, 10, 8, .92); }
 :root {
   /* As their @property values above, for browsers without @property (Safari before 16.4, Firefox before 128). The seasons' rules on body win by inheritance. tests/seasonui.test.mjs keeps the two the same. */
-  --panel: rgba(22, 15, 10, .9); --lacquer: #1a120c; --lacquer2: #24180f; --gold2: #8a6a34; --rule: #5a4428; --btn-a: #3a2a1a; --btn-b: #24180f; --btn-hi-a: #4c3820; --btn-hi-b: #2c1e12; --btn-on: #5a3a1c; --tag-bg: #120c08b8; --th-bg: #1e150d; --menu-bg: rgba(14, 10, 8, .92);
+  --panel: rgba(22, 15, 10, .9); --lacquer: #1a120c; --lacquer-95: rgba(26, 18, 12, .95); --lacquer2: #24180f; --gold2: #8a6a34; --rule: #5a4428; --btn-a: #3a2a1a; --btn-b: #24180f; --btn-hi-a: #4c3820; --btn-hi-b: #2c1e12; --btn-on: #5a3a1c; --tag-bg: #120c08b8; --th-bg: #1e150d; --menu-bg: rgba(14, 10, 8, .92);
   --ink: #f3e9d2; --dim: #b9aa8c; --gold: #d8b46a; --red: #c8402f; --atk: #5fa8ff; --def: #ff7a62; --good: #8fd46a; --bad: #ff8a70;
   --serif: "Noto Serif SC", "Songti SC", serif; --brush: "Ma Shan Zheng", "Noto Serif SC", serif;
 }
@@ -50,12 +51,12 @@ button { font: inherit; color: var(--ink); cursor: pointer; }
 /* ---------- The 战略地图's UI through the year: 春 willow, 夏 dark jade, 秋 russet, 冬 frost. Still dark lacquer under
    the same ink and gold text, so only the hue moves; the months as the 季节 chip counts them (app.js seasonUi). The war
    and every other screen keep the lacquer of :root. ---------- */
-body[data-screen=strategy][data-season=s0] { --th-bg: #222c16; --panel: rgba(24, 30, 16, .9); --lacquer: #1a2212; --lacquer2: #242e18; --gold2: #8f9a4e; --rule: #5a6838; --btn-a: #364422; --btn-b: #242e18; --btn-hi-a: #485a2c; --btn-hi-b: #2c381c; --btn-on: #586e30; --tag-bg: #141a0cb8; --menu-bg: rgba(16, 20, 10, .92); }
-body[data-screen=strategy][data-season=s1] { --th-bg: #122a2c; --panel: rgba(12, 28, 30, .9); --lacquer: #0e2024; --lacquer2: #142c30; --gold2: #4f8a80; --rule: #386058; --btn-a: #1e3e40; --btn-b: #142c30; --btn-hi-a: #2a5052; --btn-hi-b: #183438; --btn-on: #33706e; --tag-bg: #0a181ab8; --menu-bg: rgba(8, 18, 20, .92); }
-body[data-screen=strategy][data-season=s2] { --th-bg: #2a1a0a; --panel: rgba(34, 20, 8, .9); --lacquer: #241508; --lacquer2: #301c0a; --gold2: #a87830; --rule: #6a4a20; --btn-a: #4a2e12; --btn-b: #301c0a; --btn-hi-a: #5e3c18; --btn-hi-b: #38220e; --btn-on: #80521f; --tag-bg: #1a0e04b8; --menu-bg: rgba(22, 13, 5, .92); }
-body[data-screen=strategy][data-season=s3] { --th-bg: #1a222c; --panel: rgba(20, 26, 34, .9); --lacquer: #141a22; --lacquer2: #1c2430; --gold2: #7f93a8; --rule: #4e5e70; --btn-a: #2e3a4a; --btn-b: #1c2430; --btn-hi-a: #3e4c60; --btn-hi-b: #222c3a; --btn-on: #465a74; --tag-bg: #0e131ab8; --menu-bg: rgba(13, 17, 23, .92); }
+body[data-screen=strategy][data-season=s0] { --th-bg: #222c16; --panel: rgba(24, 30, 16, .9); --lacquer: #1a2212; --lacquer-95: rgba(26, 34, 18, .95); --lacquer2: #242e18; --gold2: #8f9a4e; --rule: #5a6838; --btn-a: #364422; --btn-b: #242e18; --btn-hi-a: #485a2c; --btn-hi-b: #2c381c; --btn-on: #586e30; --tag-bg: #141a0cb8; --menu-bg: rgba(16, 20, 10, .92); }
+body[data-screen=strategy][data-season=s1] { --th-bg: #122a2c; --panel: rgba(12, 28, 30, .9); --lacquer: #0e2024; --lacquer-95: rgba(14, 32, 36, .95); --lacquer2: #142c30; --gold2: #4f8a80; --rule: #386058; --btn-a: #1e3e40; --btn-b: #142c30; --btn-hi-a: #2a5052; --btn-hi-b: #183438; --btn-on: #33706e; --tag-bg: #0a181ab8; --menu-bg: rgba(8, 18, 20, .92); }
+body[data-screen=strategy][data-season=s2] { --th-bg: #2a1a0a; --panel: rgba(34, 20, 8, .9); --lacquer: #241508; --lacquer-95: rgba(36, 21, 8, .95); --lacquer2: #301c0a; --gold2: #a87830; --rule: #6a4a20; --btn-a: #4a2e12; --btn-b: #301c0a; --btn-hi-a: #5e3c18; --btn-hi-b: #38220e; --btn-on: #80521f; --tag-bg: #1a0e04b8; --menu-bg: rgba(22, 13, 5, .92); }
+body[data-screen=strategy][data-season=s3] { --th-bg: #1a222c; --panel: rgba(20, 26, 34, .9); --lacquer: #141a22; --lacquer-95: rgba(20, 26, 34, .95); --lacquer2: #1c2430; --gold2: #7f93a8; --rule: #4e5e70; --btn-a: #2e3a4a; --btn-b: #1c2430; --btn-hi-a: #3e4c60; --btn-hi-b: #222c3a; --btn-on: #465a74; --tag-bg: #0e131ab8; --menu-bg: rgba(13, 17, 23, .92); }
 /* Over the map's own 2.5 s turn of the month (strategy.js setSeason); on the body, because the HUD is rebuilt on every change. */
-body.season-turning { transition: --panel 2.5s, --lacquer 2.5s, --lacquer2 2.5s, --gold2 2.5s, --rule 2.5s, --btn-a 2.5s, --btn-b 2.5s, --btn-hi-a 2.5s, --btn-hi-b 2.5s, --btn-on 2.5s, --tag-bg 2.5s, --th-bg 2.5s, --menu-bg 2.5s; }
+body.season-turning { transition: --panel 2.5s, --lacquer 2.5s, --lacquer-95 2.5s, --lacquer2 2.5s, --gold2 2.5s, --rule 2.5s, --btn-a 2.5s, --btn-b 2.5s, --btn-hi-a 2.5s, --btn-hi-b 2.5s, --btn-on 2.5s, --tag-bg 2.5s, --th-bg 2.5s, --menu-bg 2.5s; }
 
 /* ---------- Title ---------- */
 .title-wrap { position: absolute; inset: 0; z-index: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;
@@ -584,9 +585,11 @@ body[data-screen="war"] .sysbtns { --sys-top: 64px; right: auto; left: 12px; ali
 
 /* ===================== 白兵 tactical console ===================== */
 .tq { --tq-gold: #e6c27a; --tq-gold2: #8c6a33; --tq-glass: rgba(18, 12, 8, .72); --tq-line: rgba(230, 194, 122, .35);
-  --tq-me: #6ab8ff; --tq-foe: #ff8a70; position: fixed; inset: 0; z-index: 14; pointer-events: none; font-family: var(--serif); color: var(--ink); }
+  --tq-me: #6ab8ff; --tq-foe: #ff8a70; --tq-me-dk: #4a81b3; --tq-foe-dk: #b3614e; position: fixed; inset: 0; z-index: 14; pointer-events: none; font-family: var(--serif); color: var(--ink); }
 .tq > * { pointer-events: auto; }
-.tq[data-side=defender] { --tq-me: #ff8a70; --tq-foe: #6ab8ff; }
+.tq[data-side=defender] { --tq-me: #ff8a70; --tq-foe: #6ab8ff; --tq-me-dk: #b3614e; --tq-foe-dk: #4a81b3; }
+/* --tq-*-dk: the side colours at 70% over black, worked out here: color-mix() in a background leaves the bar empty on
+   an Android WebView older than Chrome 111. */
 .tq-kicker { font: 600 14px var(--serif); letter-spacing: .5em; color: var(--tq-gold); text-transform: uppercase; opacity: .85; }
 .tq-sub { color: var(--dim); margin: 4px 0 26px; letter-spacing: .08em; }
 
@@ -662,10 +665,10 @@ body:has(.tq) #ui-top:has(> .shade) { z-index: 15; }
 .tq-bar span em { font-style: normal; color: #ffe08a; }
 .tq-bar.hp.low i { background: linear-gradient(90deg, #a8780a, #ffd34d); animation: tq-low .9s ease-in-out infinite alternate; }
 .tq-card.r .tq-bar.hp.low i { background: linear-gradient(270deg, #a8780a, #ffd34d); }
-@keyframes tq-low { to { filter: brightness(1.35); } } .tq-bar.tr i { background: linear-gradient(90deg, color-mix(in srgb, var(--tq-me) 70%, #000), var(--tq-me)); }
-.tq-card.foe .tq-bar.tr i { background: linear-gradient(90deg, color-mix(in srgb, var(--tq-foe) 70%, #000), var(--tq-foe)); }
-.tq-card.r .tq-bar.tr i { background: linear-gradient(270deg, color-mix(in srgb, var(--tq-me) 70%, #000), var(--tq-me)); }
-.tq-card.r.foe .tq-bar.tr i { background: linear-gradient(270deg, color-mix(in srgb, var(--tq-foe) 70%, #000), var(--tq-foe)); }
+@keyframes tq-low { to { filter: brightness(1.35); } } .tq-bar.tr i { background: linear-gradient(90deg, var(--tq-me-dk), var(--tq-me)); }
+.tq-card.foe .tq-bar.tr i { background: linear-gradient(90deg, var(--tq-foe-dk), var(--tq-foe)); }
+.tq-card.r .tq-bar.tr i { background: linear-gradient(270deg, var(--tq-me-dk), var(--tq-me)); }
+.tq-card.r.foe .tq-bar.tr i { background: linear-gradient(270deg, var(--tq-foe-dk), var(--tq-foe)); }
 .tq-bar span { position: relative; z-index: 1; display: block; white-space: nowrap; font: 600 13px/16px var(--serif); padding: 0 8px; letter-spacing: .06em; text-shadow: 0 1px 2px #000; }
 .tq-tp { display: flex; gap: 3px; align-items: center; margin-top: 7px; flex-wrap: wrap; }
 .tq-card.r .tq-tp { justify-content: flex-end; }
@@ -673,9 +676,15 @@ body:has(.tq) #ui-top:has(> .shade) { z-index: 15; }
 .tq-tp em { font-style: normal; font-size: 14px; color: var(--dim); margin-left: 6px; }
 .tq-fx { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; } .tq-card.r .tq-fx { justify-content: flex-end; }
 /* Tactic badges (暴力倾向@devblog, 2026-11-13): one colour an effect, the same on the cards, the field's tags, the tactic buttons and the cast's ring. */
+/* the tactic's colour wherever it is worn (a running tactic's button and its corner, the 3D tags); the effect tags read theirs
+   from the scoped rules after it, which outweigh .tq-fx span's default (4c309b25 had scoped this line too: the running
+   buttons lost their colour) */
 .fx-bind { --fx: #c070ff; } .fx-xbow { --fx: #7ad0ff; } .fx-fire { --fx: #ff8a30; } .fx-morale { --fx: #ffe070; }
-.tq-fx span { --fx: #c070ff; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; line-height: 20px; padding: 1px 8px 1px 2px; border-radius: 999px; white-space: nowrap;
-  background: color-mix(in srgb, var(--fx) 20%, rgba(12,10,8,.6)); border: 1px solid color-mix(in srgb, var(--fx) 60%, transparent); color: color-mix(in srgb, var(--fx) 30%, #fff); }
+.tq-fx .fx-bind { --fx: #c070ff; --fx-bg: rgba(65, 40, 81, .68); } .tq-fx .fx-xbow { --fx: #7ad0ff; --fx-bg: rgba(44, 68, 81, .68); } .tq-fx .fx-fire { --fx: #ff8a30; --fx-bg: rgba(83, 48, 20, .68); } .tq-fx .fx-morale { --fx: #ffe070; --fx-bg: rgba(83, 73, 39, .68); }
+/* --fx-bg: the colour at 20% over rgba(12,10,8,.6), worked out here (no color-mix() in a background: tests/csscompat.test.mjs).
+   Under .tq-fx so they outrank .tq-fx span's default: as bare .fx-* every chip came out 束缚's purple. */
+.tq-fx span { --fx: #c070ff; --fx-bg: rgba(65, 40, 81, .68); display: inline-flex; align-items: center; gap: 5px; font-size: 14px; line-height: 20px; padding: 1px 8px 1px 2px; border-radius: 999px; white-space: nowrap;
+  background: var(--fx-bg); border: 1px solid color-mix(in srgb, var(--fx) 60%, transparent); color: color-mix(in srgb, var(--fx) 30%, #fff); }
 .tq-fx span b, .tq-dfx b { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font: 700 12px/1 var(--serif); color: #14100a; background: var(--fx); box-shadow: 0 0 8px color-mix(in srgb, var(--fx) 60%, transparent); }
 .tq-fx span.bad { animation: tqFxBad 1.2s ease-in-out infinite alternate; } @keyframes tqFxBad { to { box-shadow: 0 0 10px color-mix(in srgb, var(--fx) 70%, transparent); } }
 .tq-round { pointer-events: none; width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; align-content: center; text-align: center;

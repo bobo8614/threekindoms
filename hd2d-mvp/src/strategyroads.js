@@ -54,7 +54,8 @@ export function createStrategyRoads({ scene, data, sand, world, cityPos, groundY
   if (sand) {
     const edge = new THREE.Color(ROAD_EDGE), land = new THREE.Color(ROAD_LAND), sea = new THREE.Color(ROAD_SEA), pieces = [];
     const widths = [1, ROAD_CORE, -ROAD_CORE, -1], bridges = sand.meta.pieces.bridge ?? [];
-    const waterAt = waterIndex(sand.meta.water, { cell: ROAD_WATER_CELL, margin: ROAD_WATER_MARGIN });
+    // A pack's extension regions bring their own rivers (sandregions.js); without one, the original board's alone.
+    const waterAt = waterIndex(sand.regions?.length ? [...sand.meta.water, ...sand.regions.flatMap((r) => r.meta.water)] : sand.meta.water, { cell: ROAD_WATER_CELL, margin: ROAD_WATER_MARGIN });
     // Remove only points within a sub-pixel lateral tolerance and the local ground relief.
     const thin = (pts) => {
       const kept = [pts[0]]; let start = 0;

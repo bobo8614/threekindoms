@@ -10,7 +10,7 @@ test('each registered colour has the same value in :root, so the two cannot drif
   const registered = [...css.matchAll(/@property (--[\w-]+)\s*\{[^}]*initial-value:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]);
   const root = css.match(/:root\s*\{([^}]*)\}/)[1];
   const declared = Object.fromEntries([...root.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
-  assert.equal(registered.length, 13);
+  assert.equal(registered.length, 14);
   for (const [name, value] of registered) assert.equal(declared[name], value, name);
   // Every colour the seasons change is among them, or it would not ease.
   for (const m of css.matchAll(/body\[data-screen=strategy\]\[data-season=s\d\]\s*\{([^}]*)\}/g)) for (const [, name] of m[1].matchAll(/(--[\w-]+):/g)) assert.ok(registered.some(([n]) => n === name), name);

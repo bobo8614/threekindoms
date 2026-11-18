@@ -10,6 +10,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { U, SEASON_GLSL, SAND_REF, seasonalPiece, seasonalWater } from './seasons.js';
 import { NONE } from './core/game.js';
 import { townSeat } from './packgeo.js';
+import { toX, toZ } from './worldmap.js';
+import { easeSeams } from './regionseam.js';
 
 const DIR = 'assets/ai/sandtable/board';
 const STAGED_DIR = 'assets/ai/sandtable/source/ranges-board'; // ?board=staged: review the mountain side bake before installation
@@ -54,13 +56,15 @@ export function nearestSeat(x, z, cities) {
   return best;
 }
 
-export async function loadSandtable() {
+// regions: the official extension regions a data pack names (data.pack.regions, design §5.5), each its own board in
+// assets/ai/sandtable/regions/<name>/ drawn with this board's piece models; none, as without a pack, fetches nothing there.
+export async function loadSandtable(regions = []) {
   const board = new URLSearchParams(location.search).get('board');
   if (board != null && board !== 'sand' && board !== 'staged') return null;
   const dir = board === 'staged' ? STAGED_DIR : DIR;
   try {
     const meta = await (await fetch(`${dir}/board.json`)).json();
-    const tex = (f, srgb) => new THREE.TextureLoader().loadAsync(`${dir}/${f}`).then((t) => {
+    const tex = (f, srgb, from = dir) => new THREE.TextureLoader().loadAsync(`${from}/${f}`).then((t) => {
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 8; return t;
     });
     const loader = new GLTFLoader();
@@ -72,12 +76,24 @@ export async function loadSandtable() {
       fetch(`${dir}/height.bin`).then((r) => r.arrayBuffer()),
       ...kinds.map(model), ...farKinds.map((k) => model(`${k}-far`)),
     ]);
-    return { meta, albedo, light, mask, sea, frame, height: new Uint16Array(height), models: Object.fromEntries(kinds.map((k, i) => [k, models[i]])),
+    const S = { meta, albedo, light, mask, sea, frame, height: new Uint16Array(height), models: Object.fromEntries(kinds.map((k, i) => [k, models[i]])),
       farModels: Object.fromEntries(farKinds.map((k, i) => [k, models[kinds.length + i]])) };
+    // A region that fails to load is left out loudly, not the whole baked board: its towns then stand on the open sea.
+    if (regions.length) S.regions = (await Promise.all(regions.map((name) => loadRegion(name, S, tex).catch((e) => { console.error(`extension region ${name} not loaded`, e); return null; })))).filter(Boolean);
+    return S;
   } catch (e) {
     console.warn('sand table not loaded, procedural board instead', e);
     return null;
   }
+}
+
+// A region's board: its own ground, light, vegetation, sea and heights, the original's piece models (kinds it does not use are skipped).
+async function loadRegion(name, S, texOf) {
+  const dir = `assets/ai/sandtable/regions/${name}`, meta = await (await fetch(`${dir}/board.json`)).json();
+  const tex = (f, srgb) => texOf(f, srgb, dir);
+  const [albedo, light, mask, sea, height] = await Promise.all([tex('albedo.webp', true), tex('light.webp'), tex('mask.png'), tex('sea.png'),
+    fetch(`${dir}/height.bin`).then((r) => r.arrayBuffer())]);
+  return { name, meta, albedo, light, mask, sea, frame: S.frame, height: new Uint16Array(height), models: S.models, farModels: S.farModels };
 }
 
 // The meshes of a piece kind with their materials, made seasonal once.
@@ -98,6 +114,10 @@ function partsOf(root, kind) {
 // opts.cities: the game's city list; any past the bake's (a data pack's, docs/战略地图数据包扩展设计_2026-11-17.md) stand at their
 // seat with the tier's model, and the small pieces under their walls are lifted. opts.factions: more than eight houses take
 // a fourth owner bit in the territory field (owner 7 stays the unowned side). Without a pack both are as before.
+// With extension regions (sandregions.js) each board is built by this: opts.owns(city) says which towns stand on it (the
+// others stay in its list, at their seat, for the territory rule), and opts.frame false leaves the frame and table to the
+// joint outline; opts.seat(city) gives a town on another board its seat there, opts.light the shared light uniforms. Without regions
+// none is given.
 export function buildSandtable(scene, S, opts = {}) {
   const { meta } = S, [X0, X1, Z0, Z1] = meta.box, [GW, GH] = meta.grid, SEA_Y = meta.sea;
   const N = GW * GH, [dx, dz] = meta.step;
@@ -113,6 +133,9 @@ export function buildSandtable(scene, S, opts = {}) {
   // height.bin: the sculpted heights, then the game's own (snow), each 16-bit over its range; row 0 is the north.
   const H = new Float32Array(N), H0 = new Float32Array(N);
   for (let i = 0; i < N; i++) { H[i] = meta.h[0] + S.height[i] / 65535 * (meta.h[1] - meta.h[0]); H0[i] = meta.h0[0] + S.height[N + i] / 65535 * (meta.h0[1] - meta.h0[0]); }
+  // An extension board flush against others (sandregions.js opts.seams): its heights ease in from the west neighbour's last column
+  // and the south neighbour's first row (regionseam.js easeSeams, shared with the 2D map and the pack check).
+  if (opts.seams) easeSeams(H, meta, opts.seams);
   const at = (k, j) => H[Math.min(GH - 1, Math.max(0, j)) * GW + Math.min(GW - 1, Math.max(0, k))];
   const heightAt = (x, z) => {
     const fk = (x - X0) / dx, fj = (z - Z0) / dz, k = Math.floor(fk), j = Math.floor(fj), a = fk - k, b = fj - j;
@@ -132,6 +155,10 @@ export function buildSandtable(scene, S, opts = {}) {
     pos[i * 3] = x; pos[i * 3 + 1] = H[i]; pos[i * 3 + 2] = z;
     uv[i * 2] = (x - X0) / (X1 - X0); uv[i * 2 + 1] = 1 - (z - Z0) / (Z1 - Z0);
   }
+  // Its first column (at that board's heights already) moves onto the west board's last grid column, so no crack opens where one
+  // board's grid stops short of its box; its last row onto the south board's first.
+  if (opts.seams?.west) for (let j = 0; j < GH; j++) pos[j * GW * 3] = opts.seams.west.x;
+  if (opts.seams?.south) for (let k = 0; k < GW; k++) pos[((GH - 1) * GW + k) * 3 + 2] = opts.seams.south.z;
   let n = 0;
   for (let j = 0; j < GH - 1; j++) for (let k = 0; k < GW - 1; k++) { const a = j * GW + k, b = a + 1, c = a + GW, e = c + 1; idx.set([a, c, b, b, c, e], n); n += 6; }
   const geo = new THREE.BufferGeometry();
@@ -143,7 +170,8 @@ export function buildSandtable(scene, S, opts = {}) {
   geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeVertexNormals();
   // Unlit but for the bake: albedo × (lamp × baked lamp light + sky × baked sky light). strategy.js feeds the
   // month's lamp and sky (lightUniforms) so the board answers the same light as the pieces on it.
-  const uSun = { value: new THREE.Color(1, 1, 1) }, uSky = { value: new THREE.Color(0.3, 0.3, 0.3) }, uWoodsFloor = { value: new THREE.Color(0, 0, 0) };
+  // An extension board shares the main one's lamp, sky and woods floor (opts.light), so strategysky's month reaches every board.
+  const { uSun, uSky, uWoodsFloor } = opts.light ?? { uSun: { value: new THREE.Color(1, 1, 1) }, uSky: { value: new THREE.Color(0.3, 0.3, 0.3) }, uWoodsFloor: { value: new THREE.Color(0, 0, 0) } };
   const groundMat = new THREE.MeshBasicMaterial({ map: S.albedo });
   groundMat.customProgramCacheKey = () => (HI ? 'sandGroundHi' : 'sandGround');
   groundMat.onBeforeCompile = (sh) => {
@@ -249,16 +277,21 @@ export function buildSandtable(scene, S, opts = {}) {
   // ---- Water: varnished painted blue; the sea greener over the shallows (the ground under it shows through as
   // depth), rivers deep in the channel and pale at the banks, streaks running with the flow ----
   const flowing = [];
-  const waterMat = (kind) => {
+  // 'gap': the open sea between this board and another (seaPatch), its shallows map blended from this board's to the other's
+  // (`other`) across the strait, so neither board's edge shows as a step in the sea's colour.
+  const waterMat = (kind, other) => {
+    const gap = kind === 'gap'; if (gap) kind = 'sea';
+    const fetch = (b) => (gap ? `mix(texture2D(uSeaMap, vRU${b}), texture2D(uSeaMap2, vRU2${b}), vGW)` : `texture2D(uSeaMap, vRU${b})`);
     const m = new THREE.MeshStandardMaterial({ roughness: 0.22, metalness: 0, transparent: true, depthWrite: false });
     const uTimeW = { value: 0 }; flowing.push(uTimeW);
-    m.customProgramCacheKey = () => `sandWater${kind}`;
+    m.customProgramCacheKey = () => `sandWater${kind}${gap ? 'gap' : ''}`;
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uTimeW = uTimeW; sh.uniforms.uSeaMap = { value: S.sea }; sh.uniforms.uDetailFade = uDetailFade;
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 ruv; varying vec3 vWW; varying vec2 vRU;')
-        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.)).xyz; vRU = ruv;');
+      if (gap) sh.uniforms.uSeaMap2 = { value: other };
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 ruv; varying vec3 vWW; varying vec2 vRU;' + (gap ? ' attribute vec2 ruv2; attribute float gw; varying vec2 vRU2; varying float vGW;' : ''))
+        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.)).xyz; vRU = ruv;' + (gap ? ' vRU2 = ruv2; vGW = gw;' : ''));
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        uniform float uTimeW, uDetailFade; uniform sampler2D uSeaMap; varying vec3 vWW; varying vec2 vRU;
+        uniform float uTimeW, uDetailFade; uniform sampler2D uSeaMap; varying vec3 vWW; varying vec2 vRU;${gap ? ' uniform sampler2D uSeaMap2; varying vec2 vRU2; varying float vGW;' : ''}
         float w_h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float w_n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(w_h(i), w_h(i + vec2(1, 0)), f.x), mix(w_h(i + vec2(0, 1)), w_h(i + vec2(1, 1)), f.x), f.y); }`)
         .replace('#include <map_fragment>', `
@@ -272,10 +305,10 @@ export function buildSandtable(scene, S, opts = {}) {
           c = mix(c, vec3(.7, .8, .85), st * .55 * across);
           diffuseColor.a = smoothstep(0., .18, across) * .95;` : `
           vec3 c = mix(vec3(${kind === 'sea' ? '.012, .07, .2' : '.015, .08, .24'}), vec3(${kind === 'sea' ? '.03, .16, .36' : '.05, .22, .46'}), n);
-          ${kind === 'sea' ? `vec3 sm = texture2D(uSeaMap, vRU).rgb;
+          ${kind === 'sea' ? `vec3 sm = ${fetch('')}.rgb;
           // Depth: the shore map's coarse mip levels spread its narrow shallows band into a wide run from the coast
           // to open water (one biased fetch, no second texture), so the sea reads calm navy offshore and teal inshore.
-          float shelf = texture2D(uSeaMap, vRU, ${SEA_SHELF_BIAS.toFixed(1)}).r, open = smoothstep(${SEA_SHELF[0].toFixed(2)}, ${SEA_SHELF[1].toFixed(2)}, 1. - shelf);
+          float shelf = ${fetch(`, ${SEA_SHELF_BIAS.toFixed(1)}`)}.r, open = smoothstep(${SEA_SHELF[0].toFixed(2)}, ${SEA_SHELF[1].toFixed(2)}, 1. - shelf);
           c = mix(vec3(${SEA_DEEP.join(', ')}), vec3(${SEA_MID.join(', ')}), n * ${SEA_GRAIN.toFixed(2)} + (1. - open) * ${(1 - SEA_GRAIN).toFixed(2)});
           c = mix(c, vec3(${SEA_SHALLOW.join(', ')}), max(sm.r, (1. - open) * ${SEA_SHELF_TINT.toFixed(2)}));
           c = mix(c, vec3(.42, .5, .5), sm.g * (.75 + .25 * sin(uTimeW * .8 + p.x * 3.)));` : ''}
@@ -310,6 +343,8 @@ export function buildSandtable(scene, S, opts = {}) {
 
 
   // ---- Frame: dark lacquered wood carved with gilt cloud scrolls along the top, on a dark table ----
+  let table = null;
+  if (opts.frame !== false) {
   const FW = 1.5, top = SEA_Y + 0.36, BOT = -2;
   const carve = S.frame; carve.wrapS = carve.wrapT = THREE.RepeatWrapping;
   const lacquer = new THREE.MeshStandardMaterial({ color: '#2a120a', roughness: 0.35, metalness: 0 });
@@ -321,8 +356,9 @@ export function buildSandtable(scene, S, opts = {}) {
     const box = new THREE.Mesh(new THREE.BoxGeometry(len, top - BOT, FW), [lacquer, lacquer, topMat, lacquer, lacquer, lacquer]);
     box.position.set(x, (top + BOT) / 2, z); box.rotation.y = ry; scene.add(box);
   }
-  const table = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#1a0c06', roughness: 0.6 }));
+  table = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#1a0c06', roughness: 0.6 }));
   table.rotation.x = -Math.PI / 2; table.position.y = BOT; scene.add(table);
+  }
 
   // ---- Pieces: one instanced mesh per part per kind; trees vary a little in hue and value as in the review ----
   const rnd = (i) => { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); };
@@ -365,17 +401,18 @@ export function buildSandtable(scene, S, opts = {}) {
   // A pack's towns: their seats on the board, and the small pieces their walls would stand in lifted (a tree through a
   // roof). The long ranges and massifs stay; tools/check_pack.mjs warns a pack author off them.
   const extra = (opts.cities ?? []).slice(meta.cities.length).map((c) => {
+    if (opts.owns && !opts.owns(c)) { const { x, z } = opts.seat?.(c) ?? { x: toX(c.lon), z: toZ(c.lat) }; return { id: c.id, name: c.name, tier: c.tier, x, z, mx: x, mz: z, y: SEA_Y, ms: 1, mod: true, away: true }; }
     const { x, z, y } = townSeat(c, meta.size, heightAt);
     return { id: c.id, name: c.name, tier: c.tier, x, z, mx: x, mz: z, y, ms: 1, mod: true };
   });
   const STAY = new Set(['range-a', 'range-b', 'massif', 'ridge']);
-  const lifted = (kind, x, z) => !STAY.has(kind) && extra.some((c) => Math.hypot(x - c.x, z - c.z) < meta.size[TIER[c.tier]] * 0.65 + (meta.size[kind] ?? 0) / 2);
+  const lifted = (kind, x, z) => !STAY.has(kind) && extra.some((c) => !c.away && Math.hypot(x - c.x, z - c.z) < meta.size[TIER[c.tier]] * 0.65 + (meta.size[kind] ?? 0) / 2);
   for (const [kind, arr] of Object.entries(meta.pieces)) {
     const parts = partsOf(S.models[kind], kind), tiles = new Map(), grid = RANGE_PIECES.has(kind) ? RANGE_TILES : T;
     if (kind === 'hamlet') for (const { mat } of parts) { mat.transparent = true; hamletMats.push(mat); }
     const farGeos = []; S.farModels?.[kind]?.updateMatrixWorld(true); S.farModels?.[kind]?.traverse((o) => { if (o.isMesh) farGeos.push(o.geometry.clone().applyMatrix4(o.matrixWorld)); });
     if (SEASONED[kind]) farGeos.forEach((g, i) => { if (parts[i]) fitFarFootprint(parts[i].geo, g, kind); });
-    for (let i = 0; i < arr.length / 6; i++) { if (extra.length && lifted(kind, arr[i * 6], arr[i * 6 + 2])) continue; const t = tileOf(arr[i * 6], arr[i * 6 + 2], grid); if (!tiles.has(t)) tiles.set(t, []); tiles.get(t).push(i); }
+    for (let i = 0; i < arr.length / 6; i++) { if (extra.length && lifted(kind, arr[i * 6], arr[i * 6 + 2])) continue; if (opts.seams && kind !== 'boat' && heightAt(arr[i * 6], arr[i * 6 + 2]) < SEA_Y + 0.01) continue; /* in the sea the seam's easing made */ const t = tileOf(arr[i * 6], arr[i * 6 + 2], grid); if (!tiles.has(t)) tiles.set(t, []); tiles.get(t).push(i); }
     for (const [t, ids] of tiles) {
       const neighbors = treeNeighbors.get(kind), keep = (i) => kind === 'grove' || neighbors[i] > TREE_ISOLATED_MAX_NEIGHBORS;
       let kept = ids.length;
@@ -430,10 +467,29 @@ export function buildSandtable(scene, S, opts = {}) {
 
   const nearestCity = (x, z) => nearestSeat(x, z, cities);
   // Each vertex belongs to the nearest city in the warped board. This geometry never changes when an owner changes.
-  let near = null; const cityOwner = new Int16Array(cities.length), cityHue = new Array(cities.length);
+  let near = null; const gapSea = new Map(); const cityOwner = new Int16Array(cities.length), cityHue = new Array(cities.length);
   return {
     heightAt, surfaceAt, ground, table, cities, roadPath, cityModel, size: meta.size, sea: SEA_Y,
     pieceModel: (kind) => cityModel(kind), // any baked piece's meshes (a pack road's bridge)
+    box: meta.box,
+    // Open sea between this board and another (sandregions.js; `other` its shallows map and box): each board's shallows map
+    // clamped at its edge, blended across the strait by distance to the two edges. A material of its own: the 2D map's bake
+    // clips each board's own at the board's edge (strategy.js bakeView).
+    seaPatch(x0, x1, z0, z1, other) {
+      const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, Math.max(1, Math.ceil((x1 - x0) / 0.06)), Math.max(1, Math.ceil((z1 - z0) / 0.06)));
+      const uvs = [], uvs2 = [], ws = [], [P0, P1, Q0, Q1] = other.box, cl = (v) => Math.min(1, Math.max(0, v));
+      const dist = ([a0, a1, b0, b1], x, z) => Math.hypot(Math.max(a0 - x, 0, x - a1), Math.max(b0 - z, 0, z - b1));
+      for (let i = 0; i < g.attributes.position.count; i++) {
+        const x = (x0 + x1) / 2 + g.attributes.position.getX(i), z = (z0 + z1) / 2 - g.attributes.position.getY(i);
+        uvs.push(cl((x - X0) / (X1 - X0)), cl(1 - (z - Z0) / (Z1 - Z0)));
+        uvs2.push(cl((x - P0) / (P1 - P0)), cl(1 - (z - Q0) / (Q1 - Q0)));
+        const dm = dist(meta.box, x, z), d2 = dist(other.box, x, z); ws.push(dm + d2 > 0 ? dm / (dm + d2) : 0);
+      }
+      g.setAttribute('ruv', new THREE.Float32BufferAttribute(uvs, 2)); g.setAttribute('ruv2', new THREE.Float32BufferAttribute(uvs2, 2));
+      g.setAttribute('gw', new THREE.Float32BufferAttribute(ws, 1));
+      if (!gapSea.has(other.sea)) gapSea.set(other.sea, waterMat('gap', other.sea));
+      const m = new THREE.Mesh(g, gapSea.get(other.sea)); m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, SEA_Y, (z0 + z1) / 2); scene.add(m); return m;
+    },
     lightUniforms: { uSun, uSky }, uWoodsFloor,
     disableDetail() { detailEnabled = false; }, // bakeView restores full sea crests and opaque hamlets
     setTerritory(on) { on = !!on; if (on === territoryEnabled) return; territoryEnabled = on; if (!on) uTerritory.value.x = 0; detailDist = NaN; },

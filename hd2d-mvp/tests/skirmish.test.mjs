@@ -345,7 +345,7 @@ test('a running tactic wears its badge on the units, the card and the button it 
     const live = document.querySelector('.tq-tac.live');
     return { arc: tags('.tk.attacker.arc').map((e) => e.querySelector('.fxs')?.textContent ?? ''), inf: tags('.tk.attacker.inf').map((e) => e.querySelector('.fxs')?.textContent ?? ''),
       gen: tags('.tk.attacker.gen').map((e) => [e.querySelector('.fxs b')?.textContent, e.querySelector('.fxs b')?.dataset.n]), foe: tags('.tk.defender').map((e) => e.querySelector('.fxs')?.textContent ?? '').join(''),
-      me: fx('me'), him: fx('foe'), live: live && [live.querySelector('b').textContent, live.querySelector('.tq-tac-live').textContent], n: [b.side.d.fx.xbow, b.side.a.fx.bind] };
+      me: fx('me'), him: fx('foe'), live: live && [live.querySelector('b').textContent, live.querySelector('.tq-tac-live').textContent], liveBg: live && getComputedStyle(live.querySelector('.tq-tac-live')).backgroundColor, n: [b.side.d.fx.xbow, b.side.a.fx.bind] };
   });
   assert.ok(seen.arc.length && seen.arc.every((t) => t === '弩'), `every archer squad of ours wears 弩: ${seen.arc}`);
   assert.ok(seen.inf.every((t) => t === ''), 'the infantry wears none');
@@ -354,6 +354,7 @@ test('a running tactic wears its badge on the units, the card and the button it 
   assert.deepEqual(seen.me, [`缚被咒缚 ${seen.n[1]}回合`, `弩强弩 ${seen.n[0]}回合`], 'our card: bound, and our 强弩');
   assert.deepEqual(seen.him, [], 'his card: nothing works on him');
   assert.deepEqual(seen.live, ['强弩', `${seen.n[0]}回合`], 'the 强弩 button wears the rounds left');
+  assert.equal(seen.liveBg, 'rgb(122, 208, 255)', 'in 强弩\'s colour (4c309b25 had scoped the .fx-* colours to the effect tags: the corner went see-through)');
   // the badges go when the counters run out
   await page.evaluate(() => { const b = window.__tq; b.side.d.fx.xbow = 1; b.side.a.fx.bind = 1; b.side.a.tp = 0; b.queue = []; }); // tp 0: the AI casts nothing new at the round's end
   await page.locator('.tq-btn', { hasText: '继续' }).click();
