@@ -18,15 +18,15 @@
   "triumph"
  ],
  "cell": [
-  179,
-  124
+  139,
+  119
  ],
- "anchor": 86,
+ "anchor": 70,
  "figH": 112,
  "base": {
-  "idle_ref": 0,
-  "allin_charge_1": 0,
-  "allin_charge_2": 1,
+  "idle_ref": 1,
+  "allin_charge_1": 1,
+  "allin_charge_2": 2,
   "allin_leap": 0,
   "allin_smear": 0,
   "allin_impact": 0,
@@ -43,32 +43,32 @@
  },
  "tips": {
   "allin_charge_1": [
-   72,
+   61,
    52
   ],
   "allin_charge_2": [
-   69,
-   48
+   59,
+   52
   ],
   "allin_leap": [
-   66,
-   45
+   57,
+   48
   ],
   "allin_smear": [
-   86,
-   66
+   65,
+   80
   ],
   "allin_impact": [
-   90,
-   41
+   65,
+   48
   ],
   "allin_land": [
-   69,
-   59
+   62,
+   55
   ],
   "triumph": [
-   63,
-   66
+   60,
+   54
   ]
  },
  "take": "c",

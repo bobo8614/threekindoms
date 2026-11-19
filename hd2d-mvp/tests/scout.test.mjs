@@ -29,7 +29,12 @@ after(async () => { await game?.close(); });
 const books = () => page.evaluate(() => window.__game.g.books);
 const info = (city) => page.getByRole('dialog', { name: `侦察：${city.name}`, exact: true });
 const picker = () => page.getByRole('dialog', { name: '侦察哪座城？', exact: true });
-const choose = async (city) => { await picker().getByRole('button', { name: city.name, exact: true }).click(); await info(city).waitFor(); };
+// With the mouse the picker has no list (app.js pickOnMap list: false, 阿拉神丁@qq 2026-11-19): a key brings it back, as for a player on the keys.
+const choose = async (city) => {
+  await page.keyboard.press('Tab');
+  const b = picker().getByRole('button', { name: city.name, exact: true });
+  await b.focus(); await page.keyboard.press('Enter'); await info(city).waitFor();
+};
 const begin = async () => {
   await cmd(page, '军', '侦察');
   // Wait for either the old picker or the intended confirmation so the red test fails on behavior, not timing.

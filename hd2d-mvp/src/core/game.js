@@ -5,6 +5,7 @@
 
 import { roll100 } from './origrng.js';
 import { withBaseMap, mergePack, readPack } from './pack.js';
+import { aiIncome } from './warliketiers.js';
 export const NONE = 7; // city owner value for "no faction"; with a pack's factions (8 on, core/pack.js) its slot is a placeholder
 export const DEAD = 3, SERVING = 2, UNAPPEARED = 1, RONIN = 0;
 export const FACTION_COLORS = ['#5a5a66', '#c8402f', '#7a4ad0', '#e0a020', '#3f8f4f', '#c060a0', '#2f9fb0'];
@@ -143,7 +144,7 @@ export function income(g, kind) {
     if (c.faction === NONE) continue;
     const Dv = kind === 'gold' ? c.industry : c.land, N = kind === 'gold' ? 80 : 60;
     const q = Math.floor((c.pop * (Math.floor(Dv / A) + B)) / N);
-    const inc = Math.floor((q * GOV_C(c.gov)) / 100);
+    const inc = aiIncome(g, c, kind, Math.floor((q * GOV_C(c.gov)) / 100)); // 电脑好战 上级 bonus (off: unchanged)
     c[kind] = Math.min(9999, c[kind] + inc);
     out.push([c.id, inc]);
   }
@@ -598,7 +599,7 @@ export function appoint(g, cid, id) {
 }
 export function buyRice(g, cid, rice) {
   const c = g.cities[cid], [, buy] = D.cities[cid].rice_rate;
-  if (!buy) return { ok: false, msg: '此城没有米市' };
+  if (!buy) return { ok: false, msg: '此城没有市集' };
   const max = Math.ceil((c.gold * buy) / 100); rice = Math.min(rice, max, 9999 - c.rice);
   if (rice <= 0) return { ok: false, msg: '金不足' };
   c.gold = Math.max(0, c.gold - Math.floor((rice * 100) / buy)); c.rice += rice;
@@ -606,7 +607,7 @@ export function buyRice(g, cid, rice) {
 }
 export function sellRice(g, cid, rice) {
   const c = g.cities[cid], [sell] = D.cities[cid].rice_rate;
-  if (!sell) return { ok: false, msg: '此城没有米市' };
+  if (!sell) return { ok: false, msg: '此城没有市集' };
   rice = Math.min(rice, c.rice); if (rice <= 0) return { ok: false, msg: '没有米' };
   c.rice -= rice; c.gold = Math.min(9999, c.gold + Math.floor((rice * sell) / 100));
   return { ok: true, msg: `卖米 ${rice}` };

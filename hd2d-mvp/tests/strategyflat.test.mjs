@@ -211,8 +211,14 @@ test('tag classes are the selection feedback', async () => {
   await page.waitForTimeout(400);
   const mine = await page.evaluate(() => { const { g } = window.__game; return g.cities.map((c) => c.faction === g.player); });
   (await cls()).forEach((x, i) => assert.equal(/mine/.test(x), mine[i], `city ${i}`));
-  const text = await page.evaluate(() => { const s = window.__game.strategy, { g, G } = window.__game; s.refresh(g, () => 7); const el = document.querySelectorAll('.flatstrategy .ctag')[0]; const out = el.textContent; s.refresh(g); return [out, G.cityName(0)]; });
-  assert.ok(text[0].startsWith(text[1]) && text[0].endsWith('·7将'), text[0]);
+  // a war's headcount shows on one's own tags; a rival's tag names its owner alone (citytags.js tagHtml)
+  const text = await page.evaluate(() => {
+    const s = window.__game.strategy, { g, G } = window.__game, tags = document.querySelectorAll('.flatstrategy .ctag');
+    const own = g.factions[g.player].city, foe = g.cities.find((c) => c.faction !== g.player && c.faction !== G.NONE).id;
+    s.refresh(g, () => 7); const out = [tags[own].textContent, tags[foe].textContent]; s.refresh(g); return [...out, G.cityName(own), G.cityName(foe)];
+  });
+  assert.ok(text[0].startsWith(text[2]) && text[0].endsWith('·7将'), text[0]);
+  assert.ok(text[1].startsWith(text[3]) && !text[1].includes('将'), text[1]);
 });
 
 test('later layers have their methods already, none of them throwing', async () => {

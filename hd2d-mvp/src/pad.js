@@ -58,21 +58,22 @@ function paintGlyphs(family, east) {
   b.dataset.glyphArt = family;
 }
 
-export function createPad({ onButton, onDir, onLook, onFrame, onActivate, onLost }) {
+export function createPad({ onButton, onDir, onLook, onFrame, onActivate, onMouse, onLost }) {
   const down = {}, at = {}, held = {}; // per logical button: pressed now, when it went down, whether its hold fired
   const stale = {}; let settle = false, live = false; // buttons still down from before the window came back or the pad was found again: not presses
   let lastRumble = 0, dirKey = null, dirNext = 0, stickOn = false, family = 'xbox', active = false, seen = false, raf = 0, last = 0;
   let confirm = store.get(CONFIRM_KEY); // 'south' | 'east' | null (null: by the pad's family)
   const body = document.body;
 
-  const setInput = (kind) => {
+  const setInput = (kind, event) => {
     if (body.dataset.input === kind) return;
     body.dataset.input = kind;
     if (kind === 'pad') onActivate?.();
+    else if (kind === 'mouse') onMouse?.(event);
   };
   // The mouse or the keyboard takes over as soon as it is used (a synthetic key from this module does not count).
-  addEventListener('pointermove', (e) => { if (e.isTrusted && (e.movementX || e.movementY) && active) { active = false; setInput('mouse'); } }, true);
-  addEventListener('pointerdown', (e) => { if (e.isTrusted) { active = false; setInput('mouse'); } }, true);
+  addEventListener('pointermove', (e) => { if (e.isTrusted && (e.movementX || e.movementY) && body.dataset.input !== 'mouse') { active = false; setInput('mouse', e); } }, true);
+  addEventListener('pointerdown', (e) => { if (e.isTrusted) { active = false; setInput('mouse', e); } }, true);
   addEventListener('keydown', (e) => { if (e.isTrusted && !e.fromPad) { active = false; setInput('key'); } }, true);
   addEventListener('gamepadconnected', (e) => { if (e.gamepad.mapping === 'standard') start(); });
   // Everything held is let go (its release told, so a view held open closes), and whatever is still down when the pad is read
@@ -147,7 +148,13 @@ export function createPad({ onButton, onDir, onLook, onFrame, onActivate, onLost
     get family() { return family; },
     // 确定键: 'south' (bottom) or 'east' (right); the default follows the pad.
     get confirm() { return east() ? 'east' : 'south'; },
-    setConfirm(v) { confirm = v; store.set(CONFIRM_KEY, v); paintGlyphs(family, east()); },
+    setConfirm(v) {
+      // A thumb still on the old confirm key must lift before it can act as cancel.
+      if (down.a || down.b) stale.a = stale.b = true;
+      confirm = v;
+      store.set(CONFIRM_KEY, v);
+      paintGlyphs(family, east());
+    },
     isDown: (k) => !!down[k],
     // A short buzz (strength 0…1), at most one every 70 ms while a shake goes on; only while the pad is in use.
     rumble(k) {

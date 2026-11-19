@@ -31,7 +31,7 @@ const DETAIL_ZOOM = [18, 55], HAMLET_FAR_OPACITY = 0.55, SEA_CREST_FADE = 0.7;
 const SEA_DEEP = [0.006, 0.034, 0.105], SEA_MID = [0.014, 0.08, 0.2], SEA_SHALLOW = [0.03, 0.2, 0.26];
 const SEA_SHELF_BIAS = 5.5, SEA_SHELF = [0.05, 0.75], SEA_SHELF_TINT = 0.45, SEA_GRAIN = 0.3, SEA_CREST = 0.12;
 // Wash colours keep the flags' identities in snow and ochre fields; the wash changes chroma, not the painted texture.
-export const TERRITORY_PALETTE = ['#5a5a66', '#d12d3e', '#7a4ad0', '#f5c51a', '#3f8f4f', '#c060a0', '#2f9fb0'];
+export const TERRITORY_PALETTE = ['#5a5a66', '#d12d3e', '#7a4ad0', '#ff7a1a', '#3f8f4f', '#c060a0', '#2f9fb0'];
 // A pack's house (8 and up) washes in its own land colour; a slot with no house stays grey so no seam can read as black.
 export const territoryHex = (f, factions) => TERRITORY_PALETTE[f] ?? factions?.[f]?.colors?.land ?? '#8a8a8a';
 export const TERRITORY_FILL = [0.008, 0.5], TERRITORY_RIM_FILL = 0.2, TERRITORY_BAND_WORLD = [0.35, 4.5];

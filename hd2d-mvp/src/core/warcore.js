@@ -1,5 +1,6 @@
 // War set-up and write-back shared by field battles (player involved) and AI-vs-AI auto battles.
 // 出阵 (5.9 §7), 战后 (6.10 §3–6), AI 自动战 (6.5 第五/六批).
+import { markFought } from './warlike.js';
 import { data, rng, NONE, DEAD, SERVING, RONIN, roads, officerCity, capturedLoyalty, recruitLoyalty, addExp, citiesOf, kill, isRuler } from './game.js';
 
 // Remove the expedition from its source city and empty the target into the defender's war chest.
@@ -140,6 +141,7 @@ export function resolveWar(g, war, res) {
     // moves his house there; checkFactions then gives the house an heir or lets it fall.
     if (c && c.faction === f) { g.factions[f].city = c.id; c.officers = [ruler, ...c.officers.filter((x) => x !== ruler)]; }
   }
+  if (g.warlike) markFought(g, war);
   return { winner: winF, loser: loseF };
 }
 

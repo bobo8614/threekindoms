@@ -2,6 +2,7 @@
 // faction/difficulty/situation weights (`10:A19C` uses D4AD, so sums above 16 never reach the last
 // branches), then attack/vacant expansion, inner moves + BD7A reinforcement, diplomacy, or domestic work.
 import { data, rng, NONE, SERVING, UNAPPEARED, RONIN, roads, citiesOf, troopsOf, recruitLoyalty, books, isRuler, officerCity, searchQueue, maxHp } from './game.js';
+import { tier, warlikePrelude, searchOdds, sourceExtra, giveDrop, keepDrop, extraPoints, devK, aiRecruitLoyalty, pickDomestic, adjustWeights, pickTarget, strongEnough } from './warlike.js';
 import { setupWar, occupyEmpty, autoBattle } from './warcore.js';
 import { phantomWar } from './ahuinan.js';
 
@@ -12,7 +13,7 @@ const rowOf = (f) => data().factions[f]?.like ?? f;
 
 export async function aiTurn(g, f, io) {
   const r = rng(g);
-  let pts = books(g, f) * 10;
+  let pts = books(g, f) * 10 + extraPoints(g);
   const spend = (n) => (pts -= n) > 0;
   // A war on the player hands over the points left at that moment: a war suspended on the field (战场中断, src/core/suspend.js)
   // resumes the rest of this turn through aiDomestic with them, as the turn itself goes on below once the war is settled.
@@ -20,8 +21,9 @@ export async function aiTurn(g, f, io) {
   // A00F is entered twice per turn and runs the whole prelude each time: phase 0 then reads the weights (A043),
   // phase 1 draws from them (A19C), so the second pass does not change them.
   housekeeping(g, f, r, spend);
-  const w = weights(g, f);
+  const w = adjustWeights(g, weights(g, f)); // 电脑好战: + the tier's attack weight (off: unchanged)
   if (pts > 0) housekeeping(g, f, r, spend);
+  if (g.warlike && pts > 0) warlikePrelude(g, f, spend);
   if (pts <= 0 || g.over) return;
   // A19C dispatches once. Every path enters BEC7, which stays in domestic work; a war gets there through
   // A8D7/CA19 once settled. D4AD masks to 0–15 even when the nominal weight sum exceeds 16.
@@ -96,11 +98,11 @@ const moveTo = (g, f, from, to, id) => {
 
 // A00F prelude: ruler retreat (C50E), talent search (C5D2/C6CC), medical (C79A), governor (C9A5), rice sale (CC12).
 export function housekeeping(g, f, r, spend) {
-  const D = data(), ruler = g.factions[f].ruler, aff = D.rules.search_preference[String(f)] || [];
+  const D = data(), ruler = g.factions[f].ruler, aff = D.rules.search_preference[String(f)] || [], odds = searchOdds(g);
   evade(g, f, spend);
   for (const c of citiesOf(g, f)) {
-    if (r(100) < 10 && c.officers.length < 10) {
-      // C5D2: each entry in turn whose year has come, up to the first whose has not, on its own affinity draw, so a
+    if (r(100) < odds.search && c.officers.length < 10) {
+      // C5D2 (gate 10, miss 10; 好战 per-tier odds.search/miss): each entry in turn whose year has come, up to the first whose has not, on its own affinity draw, so a
       // later one can come first (诸葛亮 194 before 徐庶 192 in 荆州). The head alone (F23, 2026-10-31) left an entry the
       // ruler does not favour holding back those he does, for years (devblog #98/#102, 2026-11-03). The player's 搜索 keeps
       // to the head (`$B964`, core/game.js), the original's own asymmetry.
@@ -108,14 +110,14 @@ export function housekeeping(g, f, r, spend) {
         const o = g.officers[id];
         if (D.officers[id].year > g.year) break;
         if (o.status !== UNAPPEARED) continue;
-        if (r(100) < (aff.includes(id) ? 90 : 10)) { o.status = SERVING; c.officers.push(id); break; }
+        if (r(100) < (aff.includes(id) ? 90 : odds.miss)) { o.status = SERVING; c.officers.push(id); break; }
       }
     }
-    if (r(100) < 10 && c.officers.length < 10) {
-      // C6CC: every ronin spends its affinity draw (C66F 10/90) before the here-or-adjacent check.
+    if (r(100) < odds.ronin && c.officers.length < 10) {
+      // C6CC (好战 odds.ronin/roninMiss): every ronin spends its affinity draw (C66F 10/90) before the here-or-adjacent check.
       const near = [c.id, ...roads(c.id)];
-      const o = g.officers.find((x) => x.status === RONIN && r(100) < (aff.includes(x.id) ? 90 : 10) && near.includes(x.loc));
-      if (o) { o.status = SERVING; o.loyalty = recruitLoyalty(g.officers[ruler].virtue, o.loyalty); c.officers.push(o.id); }
+      const o = g.officers.find((x) => x.status === RONIN && r(100) < (aff.includes(x.id) ? 90 : odds.roninMiss) && near.includes(x.loc));
+      if (o) { o.status = SERVING; o.loyalty = aiRecruitLoyalty(g, recruitLoyalty(g.officers[ruler].virtue, o.loyalty)); c.officers.push(o.id); }
     }
   }
   medical(g, f, r, spend);
@@ -178,16 +180,6 @@ function medical(g, f, r, spend) {
   }
 }
 
-// 电脑好战 (g.warlike, an option off by default and absent from older records; not in the ROM). Under the original
-// rules (counted in this remake, tools/sim_warlike.mjs) about one attack dispatch in ten marches, and four in ten
-// stop at A303 short of officers. With the option on, three
-// numbers of the march on an enemy city change and nothing else, no draw added or dropped: the source needs
-// defenders+2 officers instead of +3 (A208), each city A303 draws on gives down to one below its threshold (never its
-// last officer; the empty-city march B10E gathers through the same A303), and one fewer stays behind (A6C9). Measured over 56 five-year campaigns a level with a player who only
-// garrisons: wars on the player 1.5–1.9 → 2.8–3.2, campaigns never attacked about 50% → 21–29%, wars between AI
-// factions ×1.4–1.7, the size of a marching army unchanged. The 阿会喃 march (core/ahuinan.js) keeps the original count.
-const warlike = (g) => (g.warlike ? 1 : 0);
-
 function outCount(g, n, r, eager = 0) {
   const x = r(100), t = KEEP[g.level];
   const keep = x < t[0] ? 4 : x < t[1] ? 3 : x < t[2] ? 2 : 1;
@@ -202,7 +194,7 @@ function outCount(g, n, r, eager = 0) {
 function gather(g, f, dst, need, mode, spend) {
   const ruler = g.factions[f].ruler, home = capitalOf(g, f), link = linker(g, f);
   for (const pass of [0, 1]) {
-    const th = Math.max(2, (pass ? FRONT : REAR)[rowOf(f)] - warlike(g));
+    const th = Math.max(2, (pass ? FRONT : REAR)[rowOf(f)] - giveDrop(g));
     for (const c of g.cities) {
       if (c === dst || c.faction !== f || (c === home || isFront(g, f, c)) !== (pass === 1) || !link(dst.id, c.id)) continue;
       while (c.officers.length >= th) {
@@ -245,13 +237,23 @@ function fill(c, o, paid) {
   c.reserve = Math.min(9999, c.reserve + (cost / 20) * 100 - need); o.soldiers = 1000;
 }
 
+// A79C: the first n officers by floor(war/2)+loyalty, loyalty 100 excluded, last slot on ties.
+function marchers(g, src, n) {
+  return src.officers.filter((id) => g.officers[id].loyalty !== 100)
+    .map((id, i) => ({ id, k: Math.floor(g.officers[id].war / 2) + g.officers[id].loyalty, i })).sort((a, b) => b.k - a.k || b.i - a.i)
+    .slice(0, n).map((p) => p.id);
+}
+
 async function attackBranch(g, f, r, io, spend) {
   if (r(100) < (g.level === 2 ? 30 : 20)) return vacant(g, f, r, spend);
   const open = g.level === 2 || g.year >= 190 || (g.level === 1 && g.month >= 6);
   if (!open) return false;
-  // A240: target with the fewest officers among non-allied enemy neighbours.
+  // A240: target with the fewest officers among non-allied enemy neighbours. 电脑好战 中级/上级 rank the same
+  // candidates by troops as well (warlike.js pickTarget).
+  const wt = tier(g);
   let target = null, source = null;
-  for (const c of citiesOf(g, f)) for (const n of roads(c.id)) {
+  if (wt && wt.target !== 'original') { const p = pickTarget(g, f); if (p) ({ target, source } = p); }
+  else for (const c of citiesOf(g, f)) for (const n of roads(c.id)) {
     const t = g.cities[n];
     if (t.faction === NONE || t.faction === f || g.factions[f].alliance[t.faction] > 0) continue;
     if (target == null || t.officers.length < g.cities[target].officers.length || (t.officers.length === g.cities[target].officers.length && n !== target)) { target = n; source = c.id; }
@@ -267,8 +269,19 @@ async function attackBranch(g, f, r, io, spend) {
   }
   const src = g.cities[source];
   // A208: the source must hold min(10, defenders+3) officers, else A303 gathers them (failure → domestic).
-  const need = Math.min(10, g.cities[target].officers.length + 3 - warlike(g));
+  const need = Math.min(10, g.cities[target].officers.length + sourceExtra(g));
   if (src.officers.length < need) { const ok = gather(g, f, src, need, 0, spend); if (ok !== true) return ok === null; }
+  // 电脑好战 中级/上级 strength check (warlike.js strongEnough): A6C9's count and A79C's order are taken here, before
+  // A481, and reused below (A481 draws nothing and moves no one, so the draws keep their order). A march that would
+  // take nobody or empty the source exits as below, before any fill. Short → domestic work, as A303's failure (no
+  // conscription retry: it changes neither side of the check). Off and 初级: n and ids are taken after A481, as the ROM.
+  const early = wt?.strength > 0;
+  let n, ids;
+  if (early) {
+    n = outCount(g, src.officers.length, r, keepDrop(g)); ids = marchers(g, src, n);
+    if (!ids.length || ids.length >= src.officers.length) return false;
+    if (!strongEnough(g, g.cities[target], ids.length)) return false;
+  }
   // A45C/A481: every officer in the source to 1000, 2 points each. Short of gold, A55C requisitions it; when
   // no city can pay, the whole attack is dropped for domestic work (no one marches under strength).
   for (const id of [...src.officers]) {
@@ -280,14 +293,10 @@ async function attackBranch(g, f, r, io, spend) {
     if (!spend(2)) return true;
   }
   // A6C9: marching count and supplies (rice 120 each, gold 100 each ± draw100), requisitioned or → domestic.
-  const n = outCount(g, src.officers.length, r, warlike(g));
+  if (!early) n = outCount(g, src.officers.length, r, keepDrop(g));
   const rice = n * 120, gold = Math.max(0, n * 100 + (r(256) >= 128 ? 1 : -1) * r(100));
   for (const [k, amt] of [['gold', gold], ['rice', rice]]) { const t = cover(g, f, src, k, amt, spend); if (t !== true) return t === null; }
-  // A79C: officers by floor(war/2)+loyalty, loyalty 100 excluded, last slot on ties.
-  const pool = src.officers.filter((id) => g.officers[id].loyalty !== 100)
-    .map((id, i) => ({ id, k: Math.floor(g.officers[id].war / 2) + g.officers[id].loyalty, i })).sort((a, b) => b.k - a.k || b.i - a.i);
-  const ids = pool.slice(0, n).map((p) => p.id);
-  if (!ids.length || ids.length >= src.officers.length) return false;
+  if (!early) { ids = marchers(g, src, n); if (!ids.length || ids.length >= src.officers.length) return false; }
   const war = setupWar(g, { from: source, to: target, ids, commander: ids[0], gold, rice });
   if (!g.factions[war.defender].ai) { await io.war(war); return 'war'; }
   const res = autoBattle(g, war);
@@ -389,67 +398,116 @@ function reinforce(g, f, spend) {
   spend(2);
 }
 
-// One BEC7 action in the selected city: faction threshold out of 80, then the sub-draw.
-function domestic(g, f, c, r, spend) {
-  const D = data(), K = D.rules.ai_domestic.development_multiplier_tenths[g.level];
-  if (r(80) < D.rules.ai_domestic.faction_development_threshold_out_of_80[f]) {
-    const x = r(100);
-    if (x < 70) {
-      const cost = 10 + r(14);
-      if (c.gold < cost) return false;
-      const gain = Math.floor((cost * K) / 10);
-      c.gold -= cost;
-      if (x < 40) {
-        const field = g.month >= 3 && g.month <= 7 ? 'land' : 'industry';
-        c.gov = Math.min(100, c.gov + (gain >= 31 ? 2 : 1));
-        c[field] = Math.min(999, c[field] + gain);
-      } else { c.gov = Math.min(100, c.gov + 1); c.pop = Math.min(9999, c.pop + Math.floor(gain / 2)); }
-    } else if (x < 90) {
-      const cost = 10 + r(10);
-      if (c.gold < cost) return false;
-      c.gold -= cost; c.disaster = Math.min(99, c.disaster + Math.floor((cost * D.rules.ai_domestic.disaster_multiplier_tenths[g.level]) / 10));
-    } else {
-      const gc = 30 + r(30); if (c.gold < gc) return false; c.gold -= gc;
-      const rc = 30 + r(30); if (c.rice < rc) return false; c.rice -= rc; // gold already spent is not refunded
-      c.gov = Math.min(99, c.gov + Math.floor((gc + rc) / [25, 20, 15][g.level]));
-    }
-    return spend(5) || true;
-  }
-  const base = D.rules.ai_domestic.study_reward_base_gain[g.level];
-  if (r(100) < 30) {
-    const id = [...c.officers].sort((a, b) => g.officers[a].loyalty - g.officers[b].loyalty).find((x) => g.officers[x].loyalty < 70);
-    if (id == null) return equip(g, c, r, spend);
+// The BEC7 jobs, each (g, c, r) → true when done, false (gold or rice short, nobody to train) before any debit except
+// charity's gold. Bodies are the original sub-branches verbatim: same draws in the same order, same caps (gov 100 for
+// development, 99 for charity). Exported for tests; the warlike path (pickDomestic) calls the same bodies.
+const devGain = (g, cost) => Math.floor((cost * devK(g, data().rules.ai_domestic.development_multiplier_tenths[g.level])) / 10);
+// x < 40: land or industry, the field chosen by month (3–7 land) in the original draw; gov +2 on a gain of 31 or more.
+function develop(field) {
+  return (g, c, r) => {
+    const cost = 10 + r(14);
+    if (c.gold < cost) return false;
+    const gain = devGain(g, cost);
+    c.gold -= cost;
+    c.gov = Math.min(100, c.gov + (gain >= 31 ? 2 : 1));
+    c[field] = Math.min(999, c[field] + gain);
+    return true;
+  };
+}
+// Officer who gets a reward: the least loyal below 70 (pickDomestic's rewardBelow must stay ≤ 70, or the warlike path
+// would choose a reward this finds no one for, and fail in that city every visit).
+const rewardTarget = (g, c) => [...c.officers].sort((a, b) => g.officers[a].loyalty - g.officers[b].loyalty).find((x) => g.officers[x].loyalty < 70);
+export const DO = {
+  land: develop('land'),
+  industry: develop('industry'),
+  // 40 ≤ x < 70: population, half the gain, gov +1.
+  pop(g, c, r) {
+    const cost = 10 + r(14);
+    if (c.gold < cost) return false;
+    const gain = devGain(g, cost);
+    c.gold -= cost;
+    c.gov = Math.min(100, c.gov + 1); c.pop = Math.min(9999, c.pop + Math.floor(gain / 2));
+    return true;
+  },
+  // 70 ≤ x < 90: flood control.
+  flood(g, c, r) {
+    const cost = 10 + r(10);
+    if (c.gold < cost) return false;
+    c.gold -= cost; c.disaster = Math.min(99, c.disaster + Math.floor((cost * data().rules.ai_domestic.disaster_multiplier_tenths[g.level]) / 10));
+    return true;
+  },
+  // x ≥ 90: charity.
+  charity(g, c, r) {
+    const gc = 30 + r(30); if (c.gold < gc) return false; c.gold -= gc;
+    const rc = 30 + r(30); if (c.rice < rc) return false; c.rice -= rc; // gold already spent is not refunded
+    c.gov = Math.min(99, c.gov + Math.floor((gc + rc) / [25, 20, 15][g.level]));
+    return true;
+  },
+  // Past the threshold, r(100) < 30: reward (the original falls back to equip with no one below 70; domestic does that).
+  reward(g, c, r) {
+    const id = rewardTarget(g, c);
+    if (id == null) return false;
     const cost = 20 + r(10); if (c.gold < cost) return false;
-    c.gold -= cost; g.officers[id].loyalty = Math.min(100, g.officers[id].loyalty + base + r(5));
-  } else {
-    // 武将不能读书 (g.noStudy, game.js study): the draw finds no one to study, the same as no officer at 50–79.
+    c.gold -= cost; g.officers[id].loyalty = Math.min(100, g.officers[id].loyalty + data().rules.ai_domestic.study_reward_base_gain[g.level] + r(5));
+    return true;
+  },
+  // Otherwise study. 武将不能读书 (g.noStudy, game.js study): the draw finds no one to study, the same as no officer at 50–79.
+  study(g, c, r) {
     const id = g.noStudy ? null : [...c.officers].sort((a, b) => g.officers[a].int - g.officers[b].int).find((x) => g.officers[x].int >= 50 && g.officers[x].int < 80);
     if (id == null) return false;
     const cost = 20 + r(10); if (c.gold < cost) return false;
-    c.gold -= cost; g.officers[id].int += base + r(5);
+    c.gold -= cost; g.officers[id].int += data().rules.ai_domestic.study_reward_base_gain[g.level] + r(5);
+    return true;
+  },
+};
+
+// One BEC7 action in the selected city: faction threshold out of 80, then the sub-draw. 电脑好战 replaces both draws
+// with pickDomestic (warlike.js, no draws); the chosen job, its cost draws and the five-point charge are unchanged.
+function domestic(g, f, c, r, spend) {
+  if (g.warlike) {
+    const k = pickDomestic(g, f, c, equipPick(g, c)?.price ?? null);
+    if (k == null) return false;
+    if (k === 'equip') return equip(g, c, r, spend);
+    return DO[k](g, c, r) ? (spend(5) || true) : false;
   }
-  return spend(5) || true;
+  const D = data();
+  if (r(80) < D.rules.ai_domestic.faction_development_threshold_out_of_80[f]) {
+    const x = r(100);
+    const job = x < 40 ? (g.month >= 3 && g.month <= 7 ? 'land' : 'industry') : x < 70 ? 'pop' : x < 90 ? 'flood' : 'charity';
+    return DO[job](g, c, r) ? (spend(5) || true) : false;
+  }
+  if (r(100) < 30) {
+    if (rewardTarget(g, c) == null) return equip(g, c, r, spend);
+    return DO.reward(g, c, r) ? (spend(5) || true) : false;
+  }
+  return DO.study(g, c, r) ? (spend(5) || true) : false;
 }
 
-// C337 equipment: highest-war officer with an upgrade in the AI stock; armour always charged 240. Repeats
-// (the same officer may upgrade again) until no candidate, short of gold, or out of budget.
-export function equip(g, c, r, spend) {
+// C337's choice: highest-war officer (the later one on a tie) with an upgrade in the AI stock, and its item and price;
+// armour always charged 240. null with no weapons shop, no candidate, or gold short of that price. Draws nothing.
+export function equipPick(g, c) {
   const D = data();
-  if (!D.cities[c.id].facilities.weapons) return false;
+  if (!D.cities[c.id].facilities.weapons) return null;
   const stock = D.cities[c.id].ai_shop; // its own table (0x164FE), not the player's shop with 关王刀 and 蛇矛
+  let best = null, item = null;
+  for (const id of c.officers) {
+    const o = g.officers[id], grp = Math.floor(o.weapon / 8);
+    let it = stock.find((e) => e < 24 && Math.floor(e / 8) === grp && e > o.weapon);
+    if (it == null) it = stock.find((e) => e >= 24 && e - 24 > o.armor);
+    if (it != null && (best == null || o.war >= g.officers[best].war)) { best = id; item = it; }
+  }
+  if (best == null) return null;
+  const price = item < 24 ? D.equipment[item].price : 240;
+  return c.gold < price ? null : { id: best, item, price };
+}
+
+// C337 equipment: repeats equipPick (the same officer may upgrade again) until no candidate, short of gold, or out of budget.
+export function equip(g, c, r, spend) {
   for (let bought = false; ;) {
-    let best = null, item = null;
-    for (const id of c.officers) {
-      const o = g.officers[id], grp = Math.floor(o.weapon / 8);
-      let it = stock.find((e) => e < 24 && Math.floor(e / 8) === grp && e > o.weapon);
-      if (it == null) it = stock.find((e) => e >= 24 && e - 24 > o.armor);
-      if (it != null && (best == null || o.war >= g.officers[best].war)) { best = id; item = it; }
-    }
-    if (best == null) return bought;
-    const price = item < 24 ? D.equipment[item].price : 240;
-    if (c.gold < price) return bought;
-    c.gold -= price;
-    if (item < 24) g.officers[best].weapon = item; else g.officers[best].armor = item - 24;
+    const p = equipPick(g, c);
+    if (p == null) return bought;
+    c.gold -= p.price;
+    if (p.item < 24) g.officers[p.id].weapon = p.item; else g.officers[p.id].armor = p.item - 24;
     bought = true;
     if (!spend(5)) return true;
   }
@@ -490,7 +548,7 @@ async function recruit(g, f, r, io) {
   if (r(100) >= th) return;
   const from = officerCity(g, target), lostF = from.faction;
   from.officers = from.officers.filter((x) => x !== target); if (!from.officers.length) from.faction = NONE;
-  dest.officers.push(target); t.loyalty = recruitLoyalty(g.officers[g.factions[f].ruler].virtue, t.loyalty);
+  dest.officers.push(target); t.loyalty = aiRecruitLoyalty(g, recruitLoyalty(g.officers[g.factions[f].ruler].virtue, t.loyalty));
   await io.event({ type: 'aiLure', faction: f, id: target, from: lostF, city: dest.id, reporter: informant(g, lostF) });
 }
 async function ally(g, f, r, io) {

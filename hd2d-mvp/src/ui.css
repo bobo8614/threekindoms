@@ -258,23 +258,35 @@ body:has(.vig-dim) .cmd-preview { display: none; } /* a show is up (from the boo
 .rightcol > * { pointer-events: auto; }
 .rightcol > .panel { position: relative; top: auto; right: auto; width: auto; }
 .rightcol > .logbox { max-height: 42vh; flex: 0 1 auto; }
+/* The strategy log under the standings, folded to its newest line or whole (app.js toggleLogFold, 阿拉神丁@qq 2026-11-19). */
+.rightcol > .logwrap { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; }
+.logwrap > .logbox { position: relative; top: auto; right: auto; width: auto; max-height: 42vh; padding-right: 48px; }
+.logwrap:has(> .logbox:empty) { display: none; }
+.logwrap.folded > .logbox { overflow: hidden; }
+.logwrap.folded > .logbox p:not(:first-of-type) { display: none; }
+.logwrap.folded > .logbox p { border-bottom: 0; padding-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logfold { position: absolute; top: 5px; right: 6px; z-index: 1; padding: 1px 7px; font: 12px/1.5 var(--serif); color: var(--dim); background: #ffffff0d; border: 1px solid var(--rule); border-radius: 3px; cursor: pointer; }
+.logfold:hover, .logfold:focus-visible { color: #fff3d6; border-color: var(--gold2); }
 .endturn { position: fixed; bottom: 12px; right: 12px; }
 body.handoff .dock, body.handoff .endturn { pointer-events: none; opacity: .45; filter: saturate(.4); transition: opacity .3s, filter .3s; }
-.ctag { position: relative; pointer-events: auto; cursor: pointer; transform: translateY(var(--dy, 0px)) scale(var(--s, 1)); opacity: var(--o, 1); transition: box-shadow .15s, background .15s, opacity .3s; font: 600 13px/1.2 var(--serif); text-align: center; text-shadow: 0 1px 2px #000; padding: 1px 5px 1px; border-radius: 3px; background: var(--tag-bg); box-shadow: inset 0 -2px 0 var(--c), 0 2px 6px #0006; }
-.ctag.far small { display: none; }
+.ctag { position: relative; pointer-events: auto; cursor: pointer; transform: translateY(var(--dy, 0px)) scale(var(--s, 1)); opacity: var(--o, 1); transition: box-shadow .15s, background .15s, opacity .3s; font: 600 13px/1.2 var(--serif); color: var(--ink, #fff4dc); text-align: center; text-shadow: 0 1px 2px #000; padding: 1px 5px 1px; border-radius: 3px; background: var(--tag-bg); box-shadow: inset 0 -2px 0 var(--c), 0 2px 6px #0006; }
+/* The name alone, in its owner's ink (citytags.js tagHtml, 阿拉神丁@qq 2026-11-19); the owner's name under it only while pointed
+   at or offered in a map pick, and 无主 always (.open), so an empty city never rests on its colour alone. */
+.ctag small { display: none; }
+.ctag small.open, .ctag.hov small, .ctag.cand small { display: block; }
+.ctag.far:not(.hov, .cand) small { display: none; }
 /* A tag stepped up out of a neighbour's way hangs on a thin leader down to its city (strategy.js update, T14). */
 .ctag::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: var(--lead, 0px); background: linear-gradient(var(--c), #0000); opacity: .85; pointer-events: none; }
 /* The city under the pointer, from its model or its tag: the one a click takes. */
-.ctag.hov { opacity: 1; background: #4a3214f0; color: #fff4d0; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 2px #ffe890, 0 0 18px #ffe06099; }
-.ctag.hov small { display: block; }
-.ctag small { display: block; font-size: 12px; font-weight: 400; color: var(--c); filter: brightness(1.45) saturate(.8); }
-.ctag.mine { font-weight: 900; color: #fff3d6; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 1px #ffd89070, 0 2px 6px #0006; }
+.ctag.hov { opacity: 1; background: #4a3214f0; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 2px #ffe890, 0 0 18px #ffe06099; }
+.ctag small { font-size: 12px; font-weight: 400; color: var(--c); filter: brightness(1.45) saturate(.8); }
+.ctag.mine { font-weight: 900; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 1px #ffd89070, 0 2px 6px #0006; }
 .ctag.news { box-shadow: inset 0 -2px 0 var(--c), 0 0 0 2px var(--news), 0 0 20px var(--news); animation: newsBlink .45s ease-in-out 4 alternate; }
 .ctag.news::before { content: attr(data-news); position: absolute; left: 50%; bottom: calc(100% + 4px); z-index: 1; pointer-events: none; transform: translateX(-50%); padding: 1px 8px; border-radius: 3px; white-space: nowrap; font: 17px var(--brush); letter-spacing: 2px; color: #fff4dc; background: #120c08e8; box-shadow: inset 0 -2px 0 var(--news), 0 2px 8px #000a; }
 @keyframes newsBlink { from { filter: brightness(1); } to { filter: brightness(1.7); } }
 .ctag.hl { background: #3a2610e0; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 2px #ffe060, 0 0 18px #ffe06088; }
 /* Map picking: candidate cities glow, the others step back. */
-.ctag.cand { opacity: 1; background: #3a2610f0; color: #fff4d0; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 2px #ffd860, 0 0 16px #ffd04a90; animation: candGlow 1.2s ease-in-out infinite alternate; }
+.ctag.cand { opacity: 1; background: #3a2610f0; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 2px #ffd860, 0 0 16px #ffd04a90; animation: candGlow 1.2s ease-in-out infinite alternate; }
 .ctag.cand.hl { background: #6a4618f4; box-shadow: inset 0 -2px 0 var(--c), 0 0 0 3px #fff0a0, 0 0 24px #ffe060; }
 .ctag.dim { opacity: .28; filter: grayscale(.7); }
 @keyframes candGlow { to { box-shadow: inset 0 -2px 0 var(--c), 0 0 0 2px #ffe890, 0 0 26px #ffd04ac0; } }
@@ -283,6 +295,10 @@ body.handoff .dock, body.handoff .endturn { pointer-events: none; opacity: .45; 
 .mappick h4 { font: 22px var(--brush); letter-spacing: 2px; color: #fff3d6; margin: 0; }
 .mappick .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .mappick .chips .btn small { margin-left: 6px; color: var(--dim); letter-spacing: 0; }
+/* 侦察 / 出阵 / 运输 (app.js pickOnMap list: false): with the mouse the glowing cities are the list; the keys and the pad
+   (data-input, src/pad.js) and a phone still get the names to step through and tap. */
+body:not(.phone)[data-input="mouse"] .mappick.nolist .chips .btn:not(.ghost) { display: none; }
+body:not(.phone)[data-input="mouse"] .mappick.nolist .chips { justify-content: flex-end; margin-top: -2px; }
 /* While a city is picked on the map the rest of the HUD waits (endTurn() also refuses). */
 body.picking #ui > :is(.endturn, .dock, .sysbtns, .citypanel) { opacity: .45; filter: grayscale(.5); }
 .btn.ghost { background: transparent; border-color: #8a6a3470; color: var(--dim); }
@@ -568,7 +584,7 @@ body[data-screen="war"] .sysbtns { --sys-top: 64px; right: auto; left: 12px; ali
 }
 @media (max-width: 900px) {
   .rulers { grid-template-columns: repeat(4, minmax(0, 130px)); } .ruler { height: 240px; } .ruler img { height: 180px; } .ruler small.towns { display: none; } .ruler b { font-size: 22px; }
-  .citypanel { width: min(300px, calc(100% - 24px)); } /* its height makes way for the dock in placeStrategyHud (app.js) */ .logbox { display: none; } .logo { font-size: 72px; }
+  .citypanel { width: min(300px, calc(100% - 24px)); } /* its height makes way for the dock in placeStrategyHud (app.js) */ .logbox, .logwrap { display: none; } .logo { font-size: 72px; }
   .warcards { right: 12px; bottom: 70px; } .unitpanel { grid-template-columns: 72px minmax(0, 1fr); gap: 8px 10px; } .unitpanel > img { width: 72px; height: 96px; } .wardock { left: 12px; right: 12px; flex-wrap: wrap; justify-content: center; }
   .acts { max-width: calc(100vw - 40px); }
 }
@@ -577,7 +593,10 @@ body[data-screen="war"] .sysbtns { --sys-top: 64px; right: auto; left: 12px; ali
 #tip em { color: var(--bad); font-style: normal; } #tip strong { color: var(--good); }
 #tip .ground { color: #d8c8a4; font-size: 13px; }
 .legend { padding: 6px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; flex: none; }
-.lg { display: grid; grid-template-columns: 28px 8px 1fr auto auto; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 3px; font-size: 14px; }
+.lg { display: grid; grid-template-columns: 28px 8px 1fr auto auto; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 3px; font: inherit; font-size: 14px; color: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
+.lg:hover, .lg:focus-visible { background: #ffffff1a; }
+/* The ruler whose 势力范围 alone is on the map (app.js territoryOf). */
+.lg.only, .lg.me.only { background: #ffd8902a; box-shadow: inset 0 0 0 1px #ffd890c0; }
 .lg img { width: 28px; height: 34px; object-fit: cover; object-position: 50% 10%; border-radius: 2px; border: 1px solid var(--rule); }
 .lg i { width: 8px; height: 8px; border-radius: 50%; } .lg b { font-size: 16px; } .lg em { font-style: normal; font-size: 14px; color: var(--good); }
 .lg.me { background: #ffffff12; } .lg.now { box-shadow: inset 0 0 0 1px #ffd890; }
@@ -1311,3 +1330,37 @@ body[data-glyph-art][data-input=pad] .ctl-tabs::before { --gi: var(--gi-lb); --g
 .lasttag::before { content: '上次'; } /* drawn, not text: a command's or a general's own text stays his name */
 kbd.keycap::before { content: attr(data-label); } /* a key named beside a command without becoming part of its text */
 .otable tbody tr:focus-visible { background: #ffd89018; box-shadow: inset 3px 0 0 #ffd890; } /* the row the keys are on (the officer of last time, to begin with) reads at a glance */
+
+/* Controller menu: shoulder buttons switch pages. 常用 puts the two numbered-slot actions side by side. */
+.sysmenu-list.pad-pages { display: grid; width: min(410px, calc(100vw - 28px)); padding: 9px; gap: 8px; }
+.sysmenu-list.pad-pages[hidden], .sysmenu-list.pad-pages .sysmenu-group[hidden] { display: none; }
+.pad-pages .pad-page-tabs { display: flex; flex-wrap: wrap; gap: 3px; }
+.pad-pages .pad-page-tabs .btn { padding: 3px 6px; font-size: 13px; }
+.pad-page-tabs [aria-selected=true] { border-color: var(--gold); color: var(--gold); }
+.pad-pages .sysmenu-group { margin: 0; border: 0; padding: 0; }
+.pad-pages .sysmenu-group[data-tab=常用] { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.pad-pages > .hint { margin: 0; }
+body[data-input=pad] .otree summary:focus { outline: 2px solid var(--gold); outline-offset: -2px; }
+.modal:has(> .otree) { display: flex; flex-direction: column; }
+.modal > .otree { min-height: 0; }
+.tree-pad-hint { display: none; margin-right: auto; }
+body[data-input=pad] .tree-pad-hint { display: inline; }
+body[data-input=pad] .modal:has(> .otree) .sort-hint { display: none; }
+.record-keys { display: grid; gap: 5px; }
+.record-keys .btn { text-align: left; }
+body[data-input=pad][data-screen=strategy][data-pad-record-keys~="x"] .wikibtn kbd,
+body[data-input=pad][data-screen=strategy][data-pad-record-keys~="view"] .roadsbtn kbd { display: none; }
+
+/* Reserve a second line only for the shortcuts this player assigned. Keep the resource row's intrinsic width. */
+.record-hints { display: none; }
+body[data-input=pad] .topbar:has(.record-hints:not(:empty)) { padding-bottom: 26px; }
+body[data-input=pad] .record-hints:not(:empty) {
+  position: absolute; bottom: 3px; left: 8px; right: 8px; display: flex; justify-content: center; gap: 14px;
+  color: var(--dim); font-size: 13px; line-height: 18px;
+}
+.record-hints > span { display: inline-flex; align-items: center; gap: 4px; }
+body[data-input=pad] .record-hints kbd[data-glyph] { margin: 0; }
+body.picking .record-hints { opacity: .55; }
+@media (max-width: 700px) {
+  body[data-input=pad] .record-hints:not(:empty) { gap: 6px; font-size: 12px; }
+}

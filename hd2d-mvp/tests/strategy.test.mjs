@@ -277,7 +277,7 @@ for (const how of ['the R key', 'the 人物志 button']) {
 test('pointing at a stepped-up city tag lights it and nothing moves', async () => {
   let tag = null;
   await page.setViewportSize({ width: 960, height: 600 }); // cities are small enough now that tags only crowd on a small window
-  for (const [zoom, focus] of [[1530, 15], [1530, 14], [1130, 15], [1130, 10], [670, 15], [670, 14], [330, 15], [330, 10]]) { // pulled back past the default (24), to where tags crowd
+  for (const [zoom, focus] of [[1530, 15], [1530, 14], [1130, 15], [1130, 10], [670, 15], [670, 14], [330, 15], [330, 10], [2600, 15], [2600, 14]]) { // pulled back past the default (24), to where tags crowd; one-line tags (2026-11-19) crowd only further out
     await page.mouse.move(5, 5);
     await page.evaluate(([z, f]) => { const s = window.__game.strategy; s.resetView(); s.focusCity(f); s.zoom(z); }, [zoom, focus]);
     await page.waitForTimeout(2200);

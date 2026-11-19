@@ -4,6 +4,7 @@
 // buttons and a line from each callout to its button. The pictures are assets/ai/pad/{offset,sym,mouse}.webp
 // (tools/gen_pad_glyphs_codex.sh, tools/slice_pad_glyphs.py --pictures), POS the buttons' places on them.
 import { h } from './ui.js';
+import { RECORD_ACTIONS, recordAction } from './padrecords.js';
 import { cellOf } from './pad.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -89,7 +90,9 @@ function touchView(scene) {
 
 function padView(family, east, scene, label) {
   const layout = family === 'ps' ? 'sym' : 'offset', pos = POS[layout];
-  const rows = PAD[scene].map(([k, t]) => { const c = cellOf(east, k); return { k, t, c, p: pos[c] }; });
+  const entries = [...PAD[scene]];
+  if (scene === '战略' && recordAction('r3')) entries.push(['r3', '镜头复位']);
+  const rows = entries.map(([k, t]) => { const c = cellOf(east, k); return { k, t: scene === '战略' ? RECORD_ACTIONS[recordAction(k)] ?? t : t, c, p: pos[c] }; });
   const side = (left) => rows.filter((r) => (r.p[0] < 0.5) === left).sort((a, b) => a.p[1] - b.p[1])
     .map((r) => h('div', { class: 'ctl-call', 'data-x': r.p[0], 'data-y': r.p[1] }, glyph(r.k, label), h('span', {}, r.t)));
   // One glyph per place on the picture (a stick and its click share one): the first callout's.
@@ -99,7 +102,7 @@ function padView(family, east, scene, label) {
     h('div', { class: 'ctl-fig' }, h('img', { src: `assets/ai/pad/${layout}.webp`, alt: '手柄' }),
       ...[...at.values()].map((r) => h('span', { class: 'ctl-on', style: { left: `${r.p[0] * 100}%`, top: `${r.p[1] * 100}%` } }, glyph(r.k, label)))),
     h('div', { class: 'ctl-side right' }, ...side(false)),
-    lines(), h('p', { class: 'ctl-foot' }, '「☰ 系统 → 手柄确定键」可把确定键换到右侧（任天堂习惯）'));
+    lines(), h('p', { class: 'ctl-foot' }, '手柄打开「系统 → 手柄」可切换确定键、设置战略地图存读档快捷键'));
 }
 
 // Where the mouse's parts are on its picture, as fractions.

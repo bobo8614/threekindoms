@@ -310,6 +310,11 @@
     .se-who .se-acts .se-back { display: inline-block; }
   }
   @media (max-height: 520px) and (min-aspect-ratio: 4/3) and (max-width: 640px) { .ed-tabs .slotpick small { display: none; } }
+.ed-pad-help { display: none; }
+body[data-input=pad] .ed-pad-help { display: inline; color: var(--dim); }
+body[data-input=pad] .ed :focus, body[data-input=pad] #dock :focus { outline: 2px solid var(--gold); outline-offset: -2px; }
+body[data-input=pad] .stat:focus-within { box-shadow: inset 0 0 0 2px var(--gold); }
+@media (max-width: 800px) { body[data-input=pad] .ed-pad-help { font-size: 11px; } }
 </style>
 </head>
 <body>
@@ -324,6 +329,7 @@
   <section id="body"></section>
 </main>
 <div class="panel dock-ed" id="dock">
+  <small class="ed-pad-help">↑↓ 选项　←→ 调数值　<kbd class="pg" data-glyph="start"></kbd> 写回　<kbd class="pg" data-glyph="b"></kbd> 返回</small>
   <span class="count" id="count"></span>
   <button class="btn" id="revert">放弃改动</button>
   <button class="btn primary" id="write">写回记录</button>
@@ -336,6 +342,7 @@
 </div>
 <div id="ui-top"></div>
 <script type="module">
+import { createPad, firstIn, walk, sendKey, shown } from './src/pad.js';
 import * as G from './src/core/game.js';
 import { h, modal, toast, avatar, figure, setPortraits, setFaces, setHalfbody } from './src/ui.js';
 import { OFFICER_FIELDS, CITY_FIELDS, ALLIANCE_MAX, hpText, setOfficer, setCity, setAlliance, checkRecord, setBug, setPhantomOwner } from './src/core/saveedit.js';
@@ -405,7 +412,7 @@ function slotCard({ s, n }, onPick) {
   const cls = `slotc${n === 'quick' ? ' quick' : ''}`;
   if (!s) return h('button', { class: cls, disabled: true }, h('span', { class: 'blank' }), h('span', { class: 'no' }, slotName(n)), h('span', { class: 'when' }, n === 'quick' && G.hasQuick() ? '无法读取' : '空'));
   const ruler = s.factions[s.player].ruler;
-  return h('button', { class: `${cls} ${n === slot ? 'on' : ''}`, onclick: () => onPick(n), title: `${G.factionName(s, s.player)} · ${s.year}年${s.month + 1}月` },
+  return h('button', { class: `${cls} ${n === slot ? 'on' : ''}`, onclick: () => onPick(n), 'data-slot': n, title: `${G.factionName(s, s.player)} · ${s.year}年${s.month + 1}月` },
     avatar(ruler), h('span', { class: 'no' }, slotName(n), s.edited ? h('i', {}, '已编辑') : null),
     h('span', { class: 'when' }, `${s.year}年${s.month + 1}月 · ${G.name(ruler)}`));
 }
@@ -419,12 +426,13 @@ async function pickSlot() {
   const n = await modal('选择记录', (close) => [
     h('div', { class: 'slots-rail', style: { gridTemplateColumns: 'repeat(4, minmax(0,1fr))', padding: 0 } }, slotRows().map((r) => slotCard(r, close))),
     h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'))], { wide: true });
-  if (n != null) switchTo(n);
+  if (n != null && await switchTo(n) && editorPad.active) selectedRow()?.focus();
 }
 async function switchTo(n) {
-  if (n === slot) return;
+  if (n === slot) return true;
   if (changes().length && !(await ask('切换记录', h('p', {}, '当前记录还有未写回的改动，切换会丢弃它们。'), '丢弃并切换'))) return;
   open(n);
+  return true;
 }
 function open(n) {
   slot = n; quickOpened = n === 'quick' ? G.quickToken() : null; paneDetail = false; listTop = 0;
@@ -814,6 +822,74 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && paneDetail && onePane.matches && !document.querySelector('.shade') && (tab === 'officers' || tab === 'cities')) { e.preventDefault(); showList(); }
 }, true);
 addEventListener('beforeunload', (e) => { if (!leaving && changes().length) e.preventDefault(); });
+// Focus moves between slots, the roster and the detail pane. Re-rendered rows are found by selection,
+// so editing a general below the fold returns to that same general.
+const selectedRow = () => document.querySelector('.rows .row.on') ?? document.querySelector('.rows .row');
+const selectedSlot = () => [...document.querySelectorAll('#slots .slotc.on, #tabs .slotpick')].find(shown)
+  ?? [ $('back'), $('back-rail') ].find(shown);
+const modalTop = () => $('ui-top').lastElementChild;
+const editorPad = createPad({
+  onActivate() { if (!modalTop()) selectedSlot()?.focus(); },
+  onFrame() {
+    if (!editorPad.active) return;
+    const dialog = modalTop(), a = document.activeElement;
+    if (dialog && (!dialog.contains(a) || a.matches('.panel'))) firstIn(dialog)?.focus();
+    else if (!dialog && a === document.body) selectedSlot()?.focus();
+  },
+  onButton(k, phase) {
+    if (phase !== 'press') return;
+    const dialog = modalTop(), a = document.activeElement;
+    if (dialog) {
+      if (k === 'b') sendKey('Escape');
+      if (k === 'a') (dialog.contains(a) && a.matches('button') ? a : firstIn(dialog))?.click();
+      return;
+    }
+    if (k === 'start') return $('write').click();
+    if (k === 'b') {
+      if (a.closest('.detail')) { showList(); selectedRow()?.focus(); }
+      else if (a.closest('#body')) selectedSlot()?.focus();
+      else $('back').click();
+      return;
+    }
+    if (k !== 'a') return;
+    if (a.matches('#slots [data-slot]')) {
+      switchTo(a.dataset.slot === 'quick' ? 'quick' : Number(a.dataset.slot)).then(ok => {
+        if (ok) selectedRow()?.focus();
+      });
+    } else if (a.matches('.rows .row')) {
+      a.click();
+      document.querySelector('.detail input[type=range]:not(:disabled)')?.focus();
+    } else if (a.matches('button')) a.click();
+  },
+  onDir(dx, dy) {
+    const dialog = modalTop(), a = document.activeElement;
+    if (dialog) return walk(dialog, dx, dy);
+    if (a.matches('.detail input[type=range]')) {
+      if (dy) {
+        const rows = [...document.querySelectorAll('.detail input[type=range]:not(:disabled)')];
+        const next = rows[rows.indexOf(a) + dy];
+        if (next) next.focus();
+        else walk(document.body, 0, dy);
+      } else if (dx) {
+        dx > 0 ? a.stepUp() : a.stepDown();
+        a.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      return;
+    }
+    if (a.matches('.rows .row') && dy) {
+      const next = dy > 0 ? a.nextElementSibling : a.previousElementSibling;
+      if (next) { next.focus(); return; }
+    }
+    if (a.matches('select') && dx) {
+      a.selectedIndex = Math.max(0, Math.min(a.length - 1, a.selectedIndex + dx));
+      a.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    const next = walk(document.body, dx, dy);
+    if (next?.matches('.stat input[type=number]')) next.closest('.stat').querySelector('input[type=range]').focus();
+  },
+  onLook() {},
+});
 window.__editor = { get g() { return g; }, get slot() { return slot; }, changes };
 
 const list = renderSlots(), latest = G.latest(list);

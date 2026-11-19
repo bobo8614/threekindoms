@@ -9,26 +9,7 @@ let game;
 before(async () => { game = await startGame({ width: 1280, height: 800 }); });
 after(() => game?.close());
 
-const STD = ['a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'view', 'start', 'l3', 'r3', 'up', 'down', 'left', 'right', 'home'];
-// A fake pad on the page: window.__fakePad.set(name, on), .axes[i] = v.
-const fakePad = (id) => (ctx) => ctx.addInitScript((id) => {
-  const pad = { id, index: 0, mapping: 'standard', connected: true, timestamp: 0, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
-  Object.defineProperty(navigator, 'getGamepads', { value: () => [pad, null, null, null] });
-  window.__fakePad = { pad, set(i, on) { pad.buttons[i] = { pressed: on, touched: on, value: on ? 1 : 0 }; pad.timestamp = performance.now(); } };
-}, id);
-const XBOX = fakePad('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)');
-const NINTENDO = fakePad('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)');
-const btn = (page, k, on) => page.evaluate(([i, on]) => window.__fakePad.set(i, on), [STD.indexOf(k), on]);
-// A press of a few frames.
-export async function padTap(page, k, { wait = 120 } = {}) { await btn(page, k, true); await page.waitForTimeout(70); await btn(page, k, false); await page.waitForTimeout(wait); }
-export async function padHold(page, k, ms = 800) { await btn(page, k, true); await page.waitForTimeout(ms); await btn(page, k, false); await page.waitForTimeout(150); }
-const state = (page) => page.evaluate(() => window.__game.pad.state);
-const focused = (page) => page.evaluate(() => { const a = document.activeElement; return a && a !== document.body ? a.textContent.trim() : null; });
-// Walks the focus (d-pad) until the focused control's text matches, at most n steps that way.
-async function walkTo(page, dir, re, n = 12) {
-  for (let i = 0; i < n; i++) { if (re.test((await focused(page)) ?? '')) return; await padTap(page, dir, { wait: 60 }); }
-  assert.match((await focused(page)) ?? '', re);
-}
+import { XBOX, NINTENDO, btn, padTap, padHold, state, focused, walkTo } from './pad.mjs';
 
 test('a new campaign, the 战略地图 and a command, with the pad alone', async () => {
   const page = await game.open('', { setup: XBOX });
@@ -238,6 +219,7 @@ for (const view of ['flat', '3D']) test(`the war map on the pad (${view}): deplo
   if (view === '3D') {
     const open = () => page.evaluate(() => window.__game.warNav.open), was = await open();
     await padTap(page, 'start', { wait: 300 });
+    await padTap(page, 'rb'); // 画面
     await walkTo(page, 'down', /小地图/);
     await padTap(page, 'a'); assert.equal(await open(), !was, 'the row toggles the minimap');
     assert.match(await focused(page), was ? /小地图 关/ : /小地图 开/);

@@ -37,7 +37,7 @@ test('a city opens with the list closed; a group opens, swaps and closes it', as
 test('each row says what it does, or why it cannot be done', async () => {
   await openCmds(page, '町');
   assert.deepEqual((await rows()).map((r) => [r.name, r.note, r.off]), [
-    ['买米', '在米市用金买米', false], ['卖米', '在米市卖米换金', false], ['卖宝', '没有宝物', true],
+    ['买米', '在市集用金买米', false], ['卖米', '在市集卖米换金', false], ['卖宝', '没有宝物', true],
     ['病院', '没有负伤的武将', true], ['书馆', '此城没有书馆', true], ['铁铺', '为武将购买武器与防具', false]]);
   await openCmds(page, '军');
   assert.deepEqual((await rows()).filter((r) => r.free).map((r) => r.name), ['分兵', '任命']);

@@ -27,3 +27,19 @@ export function layoutTags(entries, { dt }) {
     m.el.style.setProperty('--lead', `${Math.max(0, (-m.dy - h * 0.55 + foot) / s).toFixed(1)}px`);
   }
 }
+
+// What a tag says (阿拉神丁@qq, 2026-11-19): the city's name, inked in its owner's colour (tagInk), and under it, shown only while
+// pointed at (ui.css), the owner's name; the legend on the right already pairs each colour with its ruler. A rival's officer count
+// is no longer on the map, as his city panel keeps it for 侦察; one's own cities and the 退却 map (a war's headcount) still give it.
+// An unowned city keeps 无主 in sight, so it is never told from a house by its colour alone (1(3) of the same feedback: colour-weak players).
+export function tagHtml(name, owner, { mine = false, none = false, count = 0 } = {}) {
+  return `${name}<small${none ? ' class="open"' : ''}>${owner}${mine && count ? `·${count}将` : ''}</small>`;
+}
+// The name's ink: the owner's colour, lifted toward white until it reads on the tag's dark ground (董卓's slate would not).
+export function tagInk(hex) {
+  const v = parseInt(String(hex).replace('#', '').slice(0, 6), 16), c = [v >> 16 & 255, v >> 8 & 255, v & 255];
+  const lum = (p) => p.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }).reduce((a, x, i) => a + x * [0.2126, 0.7152, 0.0722][i], 0);
+  let t = 0, p = c;
+  while (lum(p) < 0.3 && t < 1) { t += 0.05; p = c.map((x) => Math.round(x + (255 - x) * t)); }
+  return `rgb(${p.join(',')})`;
+}

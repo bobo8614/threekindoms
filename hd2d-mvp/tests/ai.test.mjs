@@ -129,6 +129,7 @@ async function march(g) {
 function warlikeFixture(seed, warlike, { source = 5, defenders = 3 } = {}) {
   const { g, source: src } = warFixture();
   g.seed = seed; g.factions[0].ai = false; if (warlike) g.warlike = true;
+  src.reserve = 10000; // 在没有可征兵、可搜人的夹具里，抽取顺序不变 (no conscription or search spends points here)
   src.officers = [20, 21, 22, 23, 24, 25, 26, 27, 28].slice(0, source);
   for (const id of src.officers) Object.assign(g.officers[id], { int: 60, loyalty: 90, soldiers: 1000 });
   const target = g.cities[G.roads(2)[0]];
@@ -145,11 +146,12 @@ test('电脑好战 is off in a new game and the original needs defenders+3 at th
   }
 });
 
-test('电脑好战: defenders+2 at the source is enough to march', async () => {
+test('电脑好战 中级: defenders+2 at the source is enough to march; 初级 keeps the original +3', async () => {
   let wars = 0;
-  for (let seed = 0; seed < 40; seed++) { const { g } = warlikeFixture(seed, true); if (await march(g)) wars++; }
+  for (let seed = 0; seed < 40; seed++) { const { g } = warlikeFixture(seed, true); g.level = 1; if (await march(g)) wars++; }
   assert.ok(wars > 20, `most seeds march (the rest draw the empty-city branch), got ${wars}`);
-  for (let seed = 0; seed < 40; seed++) { const { g } = warlikeFixture(seed, true, { source: 4 }); assert.equal(await march(g), null, 'defenders+1 is still not enough'); }
+  for (let seed = 0; seed < 40; seed++) { const { g } = warlikeFixture(seed, true, { source: 4 }); g.level = 1; assert.equal(await march(g), null, 'defenders+1 is still not enough'); }
+  for (let seed = 0; seed < 40; seed++) { const { g } = warlikeFixture(seed, true); assert.equal(await march(g), null, `seed ${seed}: 初级 five on three do not march (+3, as the original)`); }
 });
 
 test('电脑好战: one fewer stays behind, on the same draws, and never nobody', async () => {
@@ -225,3 +227,39 @@ for (const side of ['a', 'd']) for (const [count, draw, fires] of [[2, 39, true]
     if (fires) assert.equal(t.side[side].tp, 0);
   });
 }
+
+// 电脑好战 2.0 strength check (§4.3), after A303 and before A481: n marchers × 1000 (A481 fills each to 1000 or drops
+// the attack) against the target defenders' soldiers × 0.5 (中级) or × 1 (上级), reserves on neither side. Short → the
+// attack is dropped for domestic work. A far own city with gold pays the supplies by A55C.
+function strengthFixture(seed, level, { defence, defenders = 2 }) {
+  const { g, src, target } = warlikeFixture(seed, true, { source: 5, defenders });
+  g.level = level;
+  Object.assign(src, { reserve: 4500, gold: 200 }); // 中级's gold floor: no conscription is affordable
+  for (const id of src.officers) g.officers[id].soldiers = 100; // the prelude refills them from the reserve
+  for (const id of target.officers) g.officers[id].soldiers = defence;
+  const near = new Set([src.id, target.id, ...G.roads(src.id), ...G.roads(target.id)]);
+  const bank = g.cities.find((c) => !near.has(c.id) && G.roads(c.id).every((n) => !near.has(n)));
+  Object.assign(bank, { faction: 4, officers: [40], gold: 9999, rice: 9999 });
+  return { g, src };
+}
+test('中级 drops an attack below 50% strength', async () => {
+  let control = 0;
+  for (let seed = 0; seed < 40; seed++) {
+    // 2 × 5000 × 0.5 = 5000 defending; at most 4 of the 5 march (4000).
+    const weak = strengthFixture(seed, 1, { defence: 5000 });
+    assert.equal(await march(weak.g), null, `seed ${seed}: too weak to march`);
+    assert.equal(weak.src.officers.length, 5, 'nobody left the source');
+    if (await march(strengthFixture(seed, 1, { defence: 1000 }).g)) control++;
+  }
+  assert.ok(control > 20, `the same source marches on 2 × 1000, got ${control}`);
+});
+test('上级 attacks when strong enough', async () => {
+  let wars = 0;
+  for (let seed = 0; seed < 40; seed++) {
+    // 3 defenders: 上级 needs 3 + 2 at the source, so 2–4 march; 3 × 500 is beaten by any of them.
+    const strong = strengthFixture(seed, 2, { defenders: 3, defence: 500 }), war = await march(strong.g);
+    if (war) { wars++; assert.ok(war.att.ids.length * 1000 >= 1500); }
+    assert.equal(await march(strengthFixture(seed, 2, { defenders: 3, defence: 2000 }).g), null, `seed ${seed}: 6000 > 4 × 1000`);
+  }
+  assert.ok(wars > 20, `most seeds march (30% draw the empty-city branch), got ${wars}`);
+});

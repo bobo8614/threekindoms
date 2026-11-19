@@ -141,28 +141,20 @@ test('退出游戏 in a game asks first: 取消 and Esc stay, 不记录 leaves, 
   await page.waitForFunction(() => window.__desk.calls.includes('quit'), null, { timeout: 10000 });
 });
 
-test('with a pad alone: Start opens the menu, the d-pad reaches 全屏, 回到标题 and 退出游戏, and 退出游戏 can be answered', async () => {
+test('with a pad alone: Start opens the menu, the shoulder buttons and d-pad reach 全屏, 回到标题 and 退出游戏, and 退出游戏 can be answered', async () => {
   const tap = async (i, wait = 150) => { await page.evaluate((i) => window.__padButton(i, true), i); await page.waitForTimeout(70); await page.evaluate((i) => window.__padButton(i, false), i); await page.waitForTimeout(wait); };
-  const START = 9, UP = 12, DOWN = 13, LEFT = 14, RIGHT = 15;
+  const START = 9, DOWN = 13;
   const focused = () => page.evaluate(() => document.activeElement?.textContent.trim() ?? '');
   const south = await page.evaluate(() => window.__game.pad.state.confirm !== 'east'); // which face button confirms
   await tap(START, 300);
   assert.ok(await page.evaluate(() => document.querySelector('.sysmenu-list:not([hidden])')?.contains(document.activeElement)), 'the menu is open and focused');
-  const go = async (dir, n) => { for (let i = 0; i < n; i++) await tap(dir, 60); };
   const until = async (dir, text, n) => { for (let i = 0; i < n && (await focused()) !== text; i++) await tap(dir, 60); assert.equal(await focused(), text); };
-  // the left column from its top: 全屏 is on the way down
-  await go(LEFT, 3); await go(UP, 25);
+  await tap(5); // RB to 画面
   await until(DOWN, '全屏 关', 8);
-  // the right column from its foot: 说明, 欣赏模式, then the row the two share
-  await go(RIGHT, 3);
-  await until(DOWN, '说明', 25);
-  await go(UP, 2);
-  assert.equal(await focused(), '回到标题', 'up from 欣赏模式');
-  await tap(RIGHT, 100);
-  assert.equal(await focused(), '退出游戏', 'right of 回到标题');
-  await tap(LEFT, 100);
-  assert.equal(await focused(), '回到标题', 'and back');
-  await tap(RIGHT, 100);
+  await tap(4); await tap(4); // 常用, then 其他
+  await until(DOWN, '回到标题', 8);
+  await tap(DOWN);
+  assert.equal(await focused(), '退出游戏');
   await calls();
   await tap(south ? 0 : 1, 400);
   await page.locator('.modal', { hasText: '确定退出游戏吗' }).waitFor();

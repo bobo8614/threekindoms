@@ -11,6 +11,7 @@ import { buildSandtable, territoryHex } from './sandtable.js';
 import { buildBoards } from './sandregions.js';
 import { placeCities } from './china.js';
 import { NONE, factionColor, cityName, factionName } from './core/game.js';
+import { tagHtml, tagInk } from './citytags.js';
 import { createStrategyRoads } from './strategyroads.js';
 import { createStrategyCities, townShadow } from './strategycities.js';
 import { TIER_KIND } from './packgeo.js';
@@ -57,12 +58,15 @@ export function createStrategy(ctx) {
   const ownerColor = (f) => { if (!ownerColors.has(f)) ownerColors.set(f, new THREE.Color(sand ? territoryHex(f, data.factions) : colorOf(f))); return ownerColors.get(f); };
   const tintOwners = new Int16Array(data.cities.length).fill(-1);
   let tintPlayer = -1;
+  // territoryOnly: one house's land alone (the legend's ruler, app.js), the others' left as if unowned; null for all of them.
+  let territoryOnly = null;
+  const shownOwner = (c) => (territoryOnly == null || c.faction === territoryOnly ? c.faction : NONE);
   function tint(g) {
     let changed = tintPlayer !== g.player;
-    for (const c of g.cities) if (tintOwners[c.id] !== c.faction) changed = true;
+    for (const c of g.cities) if (tintOwners[c.id] !== shownOwner(c)) changed = true;
     if (!changed) return;
-    world.tint((cid) => { const f = g.cities[cid].faction; return f === NONE ? null : ownerColor(f); }, (cid) => g.cities[cid].faction, g.player);
-    tintPlayer = g.player; for (const c of g.cities) tintOwners[c.id] = c.faction;
+    world.tint((cid) => { const f = shownOwner(g.cities[cid]); return f === NONE ? null : ownerColor(f); }, (cid) => shownOwner(g.cities[cid]), g.player);
+    tintPlayer = g.player; for (const c of g.cities) tintOwners[c.id] = shownOwner(c);
   }
   // Recolour from the game state: owner colour, officer count, ruler crown. A war passes its own count (Field.headcount).
   function refresh(g, officerCount = (c) => c.officers.length) {
@@ -71,11 +75,10 @@ export function createStrategy(ctx) {
     if (territoryOn) { tint(g); world.setTerritory?.(true); }
     for (const c of g.cities) {
       const m = marks[c.id], col = colorOf(c.faction);
-      m.flag.material.color.set(col); m.flag.material.emissive.set(col); m.el.style.setProperty('--c', col);
+      m.flag.material.color.set(col); m.flag.material.emissive.set(col); m.el.style.setProperty('--c', col); m.el.style.setProperty('--ink', tagInk(col));
       m.glaze = c.faction === NONE ? null : new THREE.Color(col); // unowned cities keep plain grey tile
       m.el.classList.toggle('mine', c.faction === g.player);
-      const n = officerCount(c);
-      m.el.innerHTML = `${cityName(c.id)}<small>${factionName(g, c.faction)}${n ? `·${n}将` : ''}</small>`;
+      m.el.innerHTML = tagHtml(cityName(c.id), factionName(g, c.faction), { mine: c.faction === g.player, none: c.faction === NONE, count: officerCount(c) });
       m.ruled = g.factions.some((f) => f.ruler != null && f.city === c.id && c.officers.includes(f.ruler));
       m.crown.visible = m.ruled && !scenicOn;
     }
@@ -195,6 +198,7 @@ export function createStrategy(ctx) {
       candidates = cids ? new Set(cids) : null;
       visualMarks.clearCandidates();
       marks.forEach((m, i) => { m.el.classList.toggle('cand', !!candidates?.has(i)); m.el.classList.toggle('dim', !!candidates && !candidates.has(i) && i !== from); });
+      cities.invalidate(); // a candidate's tag shows its owner too (ui.css), and is taller for it
       visualMarks.addCandidates(candidates);
       territoryAttention();
     },
@@ -253,6 +257,9 @@ export function createStrategy(ctx) {
       world.setTerritory?.(on && !!territoryGame);
     },
     get territoryOn() { return territoryOn; },
+    // The 势力范围 of one house alone (f), or of all again (null); shown once territory(true) is on.
+    territoryOf(f = null) { territoryOnly = f; if (territoryOn && territoryGame) tint(territoryGame); },
+    get territoryOnly() { return territoryOnly; },
     // 欣赏模式: the ruler's crown sits under the city tag, so with the tags away it goes too.
     scenic(on) { scenicOn = on; for (const m of marks) m.crown.visible = !!m.ruled && !on; },
     click(ndc) { const c = pick(ndc); ctx.onCity(c ? c.id : null); },
@@ -282,7 +289,7 @@ export function createStrategy(ctx) {
     // the bare board in a month's settled light from the fixed view, and where everything lands in a picture of size [w, h] of that view.
     // Weather, drifting cloud shade and wet ground are off and the clock fixed, so the four pictures differ by season alone and cross-fade cleanly.
     bakeView({ month, size: [W, H] }) {
-      this.select(null); this.highlight(null); hoverCity(null); this.pickMode(null); this.roads(false); this.territory(false);
+      this.select(null); this.highlight(null); hoverCity(null); this.pickMode(null); this.roads(false); this.territory(false); territoryOnly = null;
       world.disableDetail(); roadLayer.hideBase(); // the flat pictures retain full sea crests and their baked roads
       setSeason(month, true); // territory is live ink, never part of the seasonal pictures
       const [X0, X1, Z0, Z1] = sand.meta.box, centre = new THREE.Vector3((X0 + X1) / 2, 0, (Z0 + Z1) / 2 + 1.5); // the frame's near side reaches further down the view
