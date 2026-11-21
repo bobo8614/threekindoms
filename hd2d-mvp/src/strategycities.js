@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { canvasTex, rng } from './pixel.js';
 import { seasonalRoof } from './seasons.js';
 import { layoutTags, measureTags } from './citytags.js';
+import { labelK } from './labelsize.js';
 import { toX, toZ } from './worldmap.js';
 import { buildFortress, buildTown, buildPass, roofTex, M, MAT } from './structures.js';
 
@@ -131,7 +132,7 @@ export function createStrategyCities({ scene, data, sand, world, sites, onCity, 
       // City tags: nearer is larger, the far ones shrink and fade (the player's, selected and pointed-at ones stay solid).
       const tags = [];
       for (const [i, m] of marks.entries()) {
-        const d = camera.position.distanceTo(tmpV.copy(cityPos[i])), s = Math.min(1.15, Math.max(0.72, dist / d));
+        const d = camera.position.distanceTo(tmpV.copy(cityPos[i])), s = Math.min(1.15, Math.max(0.72, dist / d)) * labelK(); // 系统 → 地图标签
         // Pointing at a tag lights it but never reorders the spacing below: a stepped-up tag that took the front
         // would slide down from under the pointer, its neighbour slide in, and the two trade the hover every frame.
         const keep = roadsOn || i === selected || m.el.classList.contains('mine') || m.el.classList.contains('hl') || !!candidates?.has(i);

@@ -10,7 +10,8 @@ import { W, H, FOREST, RIVER, MOUNT, CASTLE } from './core/field.js';
 import { name, data } from './core/game.js';
 import { createSky2d } from './skyfx2d.js';
 import { rng } from './pixel.js';
-import { PHONE, TOUCH, margins } from './phone.js';
+import { PHONE, TOUCH, FLAT_DPR, margins } from './phone.js';
+import { labelK } from './labelsize.js';
 
 const KIND = ['forest', 'sand', 'grass', 'river', 'hill', 'castle'];
 // px kept for the HUD strips (ui.css body.flat2d). Under 1200 px the foe's card stacks as a strip above ours (ui.css .unitpanel.compare), so the bottom strip is that much taller.
@@ -157,8 +158,10 @@ export function flatten(war, G, blankScene) {
   let box = null, time = 0, tv = 0; // tv: how far the ground view (F04) is shown
   const sky = createSky2d(); let skyT;
   const thin = new Map(); // each general's eased opacity while he covers the hovered cell
+  const shift = new Map(); // each general's plaque, eased off its own place out of a neighbour's way (draw)
+  let plateRects = []; // the plaques as last drawn, for the tests: { id, x, y, w, h, up }
   function layout() {
-    const dpr = Math.min(2, devicePixelRatio || 1), vw = innerWidth, vh = innerHeight;
+    const dpr = Math.min(FLAT_DPR, devicePixelRatio || 1), vw = innerWidth, vh = innerHeight;
     cv.width = vw * dpr; cv.height = vh * dpr; cv.style.width = `${vw}px`; cv.style.height = `${vh}px`;
     place();
   }
@@ -166,7 +169,7 @@ export function flatten(war, G, blankScene) {
   // finger: it must not touch the canvas's size, which would allocate a new backing store each time (iOS Safari caps the
   // memory all canvases may hold and frees it late).
   function place() {
-    const dpr = Math.min(2, devicePixelRatio || 1), vw = innerWidth, vh = innerHeight;
+    const dpr = Math.min(FLAT_DPR, devicePixelRatio || 1), vw = innerWidth, vh = innerHeight;
     // The board as large as the band between the HUD strips allows; the countryside runs on under the strips.
     const B = pic.board, band = vh - FLAT_INSET.top - FLAT_INSET.bottom, k0 = Math.min((vw - FLAT_INSET.side * 2) / B.w, band / B.h), k = k0 * view.z;
     // The phone's drag and pinch (view): the board may slide until its far edge is a third of the screen in from the side,
@@ -250,7 +253,7 @@ export function flatten(war, G, blankScene) {
   }
 
   function draw() {
-    const { cw: c, ch, x: ox, y: oy, dpr } = box, s = war.flatState();
+    const { cw: c, ch, x: ox, y: oy, dpr } = box, s = war.flatState(), LK = labelK(); // 系统 → 地图标签: the plaques' type
     paintBase(); frames++;
     // The board, copied 1:1 in device pixels (it is opaque and covers the canvas, so nothing needs clearing first).
     g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(base, 0, 0);
@@ -319,7 +322,7 @@ export function flatten(war, G, blankScene) {
       }
       const cost = dest && war.st.reach?.dist.get(`${dest.x},${dest.y}`);
       if (cost != null && s.hover && s.hover.x === dest.x && s.hover.y === dest.y) {
-        const fsC = Math.max(12, Math.round(ch * 0.4)), t = `−${cost}`; g.font = `bold ${fsC}px "Noto Serif SC", serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        const fsC = Math.round(Math.max(12, ch * 0.4) * LK), t = `−${cost}`; g.font = `bold ${fsC}px "Noto Serif SC", serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
         const tw = g.measureText(t).width + 12, X = Math.round(ex - tw / 2) + 0.5, Y = Math.round(ey - ch * 0.5 - fsC - 6) + 0.5;
         g.fillStyle = 'rgba(24, 16, 8, 0.88)'; g.fillRect(X, Y, tw, fsC + 4); g.strokeStyle = '#c8a45a'; g.lineWidth = 1; g.strokeRect(X, Y, tw, fsC + 4);
         g.fillStyle = '#ffd75a'; g.fillText(t, X + tw / 2, Y + fsC / 2 + 2); g.textAlign = 'start';
@@ -332,7 +335,7 @@ export function flatten(war, G, blankScene) {
     }
     // The villages' shop signs (米 rice, 武 arms, 医 healer), as the 3D view's tags: a small lacquered plaque at the
     // cell's upper left corner, under the generals.
-    const fsV = Math.max(10, Math.round(ch * 0.36)); g.font = `${fsV}px "Noto Serif SC", serif`; g.textBaseline = 'middle'; g.textAlign = 'center';
+    const fsV = Math.round(Math.max(10, ch * 0.36) * LK); g.font = `${fsV}px "Noto Serif SC", serif`; g.textBaseline = 'middle'; g.textAlign = 'center';
     for (const v of s.villages) {
       const X = ox + v.x * c + 2, Y = oy + v.y * ch + 2, w = fsV + 6, hh = fsV + 4;
       g.fillStyle = 'rgba(12, 9, 5, 0.72)'; g.fillRect(X, Y, w, hh);
@@ -348,7 +351,7 @@ export function flatten(war, G, blankScene) {
     const aimOf = (v) => aimed.get(`${Math.round(v.x)},${Math.round(v.y)}`);
     const all = document.body.classList.contains('alt-held'), D = data();
     const here = (v, p) => p && Math.round(v.x) === p.x && Math.round(v.y) === p.y;
-    const fs = Math.max(11, Math.round(c * 0.26)), pad = Math.max(3, Math.round(fs * 0.3)), tall = c * 1.65;
+    const fs = Math.round(Math.max(11, c * 0.26) * LK), pad = Math.max(3, Math.round(fs * 0.3)), tall = c * 1.65;
     // Every plaque laid out first (drawn last): the hover below asks what each general covers.
     const plate = new Map();
     for (const v of units) {
@@ -369,6 +372,36 @@ export function flatten(war, G, blankScene) {
     // cell while he stands on another thins out, so the cell can be seen without moving anyone.
     const dt = Math.min(0.05, time - (draw.t ?? time)), ease = 1 - Math.exp(-dt * 14); draw.t = time;
     tv += ((document.body.classList.contains('terrain-view') ? 1 : 0) - tv) * ease;
+    // Plaques that would cover one another part (the phone's small cells, and 系统 → 地图标签 大: 关羽's plaque over 张飞's name beside him,
+    // 2026-11-20). Neighbours in a row first nudge aside by half of what they share; one still covered steps up over the other, a thin
+    // leader in his side's colour running back to his head, as the city tags and the 3D war map's tags do. The selected or pointed-at general's
+    // keeps its place, then the front rows'. Offsets ease (shift), so a march past a neighbour does not make the plaques jump.
+    const shown = units.filter((v) => v.opacity >= 0.5), want = (v) => (s.sel === v.u ? 2 : plate.get(v).full ? 1 : 0);
+    for (const v of shown) { const p = plate.get(v); p.tx = 0; p.ty = 0; }
+    for (let it = 0; it < 4; it++) for (let i = 0; i < shown.length; i++) for (let j = i + 1; j < shown.length; j++) {
+      const a = plate.get(shown[i]), b = plate.get(shown[j]), dx = (b.cx + b.tx) - (a.cx + a.tx);
+      if (Math.abs(a.Y + a.hh - b.Y - b.hh) > Math.min(a.hh, b.hh) * 0.5 || !dx) continue; // a row: their feet level
+      const ov = (a.w + b.w) / 2 + 2 - Math.abs(dx); if (ov <= 0 || ov > c * 0.5) continue;
+      const lim = c * 0.3, d = Math.sign(dx) * ov / 2;
+      a.tx = Math.max(-lim, Math.min(lim, a.tx - d)); b.tx = Math.max(-lim, Math.min(lim, b.tx + d));
+    }
+    const placed = [];
+    for (const v of [...shown].sort((a, b) => want(b) - want(a) || b.y - a.y || a.x - b.x)) {
+      const p = plate.get(v);
+      for (let k = 0; k < 4; k++) {
+        const x = p.cx + p.tx, y = p.Y + p.ty, hit = placed.find((r) => Math.abs(r.x - x) < (r.w + p.w) / 2 - 1 && y < r.y + r.hh - 1 && y + p.hh > r.y + 1);
+        if (!hit) break;
+        p.ty = hit.y - p.hh - 2 - p.Y;
+      }
+      placed.push({ x: p.cx + p.tx, y: p.Y + p.ty, w: p.w, hh: p.hh });
+    }
+    for (const v of shown) {
+      const p = plate.get(v), sh = shift.get(v.u) ?? { x: 0, y: 0 }; shift.set(v.u, sh);
+      sh.x += (p.tx - sh.x) * ease; sh.y += (p.ty - sh.y) * ease;
+      const mx = Math.round(sh.x), my = Math.round(sh.y);
+      p.headX = p.cx; p.headY = p.Y + p.hh; p.cx += mx; p.X += mx; p.Y += my; p.up = -my;
+    }
+    plateRects = shown.map((v) => { const p = plate.get(v); return { id: v.u.id, x: p.X, y: p.Y, w: p.w, h: p.hh, up: p.up }; });
     const hv = s.hover && { x0: ox + (s.hover.x + 0.15) * c, x1: ox + (s.hover.x + 0.85) * c, y0: oy + (s.hover.y + 0.15) * ch, y1: oy + (s.hover.y + 0.85) * ch };
     const hits = (r) => !!hv && r.x0 < hv.x1 && r.x1 > hv.x0 && r.y0 < hv.y1 && r.y1 > hv.y0;
     for (const v of units) {
@@ -426,6 +459,10 @@ export function flatten(war, G, blankScene) {
       if (v.opacity < 0.5 || a < 0.02) continue;
       const [col, lit] = SIDE[v.side], { o, full, label, stats, sf, chip, cf, w, hh, bars, cx, X, Y } = plate.get(v), max = D.officers[v.u.id]?.hp || o.hp || 1;
       g.globalAlpha = a;
+      const pl = plate.get(v);
+      if (pl.up > 2) { // stepped up: the leader back to his head
+        for (const [lc, lw] of [['rgba(0, 0, 0, 0.7)', 3], [col, 1]]) { g.strokeStyle = lc; g.lineWidth = lw; g.beginPath(); g.moveTo(Math.round(cx) + 0.5, Y + hh); g.lineTo(Math.round(pl.headX) + 0.5, pl.headY + 2); g.stroke(); }
+      }
       g.fillStyle = 'rgba(0, 0, 0, 0.35)'; g.fillRect(X + 1.5, Y + 2, w, hh);
       g.fillStyle = 'rgba(22, 16, 10, 0.9)'; g.fillRect(X, Y, w, hh);
       const aim = aimOf(v);
@@ -459,7 +496,7 @@ export function flatten(war, G, blankScene) {
     if (tv > 0.01) {
       const cells = new Set(s.hover ? [`${s.hover.x},${s.hover.y}`] : []);
       for (const v of units) { const x = Math.round(v.x), y = Math.round(v.y); for (let d = 0; d < 3 && y - d >= 0; d++) cells.add(`${x},${y - d}`); }
-      const fsT = Math.max(11, Math.round(ch * 0.34)), w = fsT + 10, hh = fsT + 6;
+      const fsT = Math.round(Math.max(11, ch * 0.34) * LK), w = fsT + 10, hh = fsT + 6;
       g.font = `bold ${fsT}px "Noto Serif SC", serif`;
       for (const key of cells) {
         const [x, y] = key.split(',').map(Number), X = ox + x * c, Y = oy + y * ch;
@@ -571,7 +608,7 @@ export function flatten(war, G, blankScene) {
     scene: blankScene, flat: true, flatHud: true,
     composite: () => mapImg ?? paintFlatMap(G, field), // the composed map: the layout guide a painting is made from (tools/flat_shot.mjs --dump)
     // For the tests: how often the board under the generals was painted (paintBase) against frames drawn.
-    flatDebug: () => ({ basePaints, frames, base: [base.width, base.height], canvas: [cv.width, cv.height], country: pic.country }),
+    flatDebug: () => ({ plates: plateRects, basePaints, frames, base: [base.width, base.height], canvas: [cv.width, cv.height], country: pic.country }),
     // A hidden window still moves the war on (app.js runs it 30 times a second) but paints nothing, as the 3D views.
     update(dt) { time += dt; war.update(dt); if (TOUCH) follow(dt); if (!document.hidden) draw(); },
     hover(ndc) { return war.hoverCell(cellAt(ndc)); },

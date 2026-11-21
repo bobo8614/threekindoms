@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('desktop', {
   toggleFullscreen: () => ipcRenderer.send('desktop:fullscreen'),
   isFullscreen: () => ipcRenderer.invoke('desktop:is-fullscreen'),
   onFullscreen: (f) => { ipcRenderer.on('desktop:fullscreen', (_e, on) => f(!!on)); },
+  // 界面大小 (desktop/uiscale.js SIZES: small / normal / large): the page zoomed to fit the window; answers the zoom now in use.
+  setUiSize: (size) => ipcRenderer.invoke('desktop:ui-size', String(size)),
   // A game is on that closing the window would lose: the window's ✕, Alt+F4 and ⌘Q then ask first (main.js).
   setUnsaved: (on) => ipcRenderer.send('desktop:unsaved', !!on),
   // 退出游戏: the page has already asked the player, so this closes without asking again.

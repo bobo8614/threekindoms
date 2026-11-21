@@ -1,6 +1,6 @@
 // Shared setup for the browser tests: a private dev server on a free port and muted headless Chrome
 // (tools/headless.mjs), one per test file. Tests drive the game through window.__game, as the capture tools do.
-//   node --test --test-concurrency=1 'hd2d-mvp/tests/*.test.mjs'   (all)     node --test hd2d-mvp/tests/pace.test.mjs   (one file)
+//   node hd2d-mvp/tools/run_all_tests.mjs   (all, in lanes)     node --test hd2d-mvp/tests/pace.test.mjs   (one file)
 // Needs python3, Playwright (global @playwright/mcp works) and hd2d-mvp/desktop/node_modules (see tools/serve.py).
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';

@@ -13,6 +13,7 @@ import { seeThrough } from '../seethrough.js';
 import { W, H, FOREST, SAND, PLAIN, RIVER, MOUNT, CASTLE } from '../core/field.js';
 import { factionColor } from '../core/game.js';
 import { WATER_Y, PITCH, KIND, PLATE_M, PLATE_PX, DIRS, woodsOf, keySun, phase, WAR_RAIN } from './shared.js';
+import { PLAIN_Y, CASTLE_Y, RIVER_BED_Y, hillTop } from './heights.js';
 
 export function makeBoard(wv) {
   const { ctx, field, T0 } = wv; let tp = T0;
@@ -53,12 +54,11 @@ export function makeBoard(wv) {
   const wx = (x) => x - W / 2 + 0.5, wz = (y) => y - H / 2 + 0.5;
   const terr = (x, y) => map[y][x];
   const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
-  // The board stands in tiers (war-3d Task 8): plain, sand, wood and village ground 0.3, the river bed 0.05 below it, a hill a
-  // flat mesa one step (0.75) above the plain at its rim and a second step above that where all four neighbours are hill too, the
-  // castle on a plinth. The rules never read these heights.
-  const TIER = 0.75, PLAIN_Y = 0.3, CASTLE_Y = 0.8;
+  // The board stands in tiers (war-3d Task 8; ./heights.js): plain, sand, wood and village ground 0.3, the river bed 0.05 below it,
+  // a hill a low flat mesa a step above the plain at its rim and a little higher where all four neighbours are hill too, the castle
+  // on a plinth. The rules never read these heights.
   const hillCell = (x, y) => terr(Math.max(0, Math.min(W - 1, x)), Math.max(0, Math.min(H - 1, y))) === MOUNT; // the range runs on past the board's edge
-  const mountH = (x, y) => PLAIN_Y + TIER * (DIRS.every(([dx, dy]) => hillCell(x + dx, y + dy)) ? 2 : 1);
+  const mountH = (x, y) => hillTop(hillCell, x, y);
   const topY = (x, y) => [PLAIN_Y, PLAIN_Y, PLAIN_Y, WATER_Y, mountH(x, y), CASTLE_Y][terr(x, y)];
 
   // --- Diorama: merged bevelled terrain, then set dressing (src/diorama.js) ---
@@ -81,7 +81,7 @@ export function makeBoard(wv) {
     };
   }
   const boardCell = (x, y) => {
-    const t = terr(x, y), h = t === RIVER ? 0.05 : topY(x, y);
+    const t = terr(x, y), h = t === RIVER ? RIVER_BED_Y : topY(x, y);
     // Hills are rock and moss: snow comes from the month and the battlefield's latitude (seasons.js), so a
     // tropical 交州 range stays bare while the 幽州 hills whiten from 十月.
     // Painted, a hill is a rock mesa (A2): flat tops stepping up toward the middle of a range, cliff faces

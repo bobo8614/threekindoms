@@ -4,6 +4,7 @@
 // which also has 退出游戏: preload.js is what the page may ask of the window.
 //   --smoke=<dir>  load, screenshot, log console errors and missing files to <dir>, then quit (for CI / checks)
 const { app, BrowserWindow, Menu, crashReporter, dialog, ipcMain, net, protocol, screen, shell } = require('electron');
+const { zoomFor, SIZES: UI_SIZES } = require('./uiscale.js');
 const { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -206,6 +207,22 @@ function createWindow() {
     if (input.key === 'F11' || (input.alt && input.key === 'Enter')) { toggleFullscreen(); e.preventDefault(); }
     if (devTools && input.key === 'F12') { wc.toggleDevTools(); e.preventDefault(); }
   });
+  // 系统 → 界面大小: the page zoomed for its screen, as far as the window holds (desktop/uiscale.js), again whenever the window
+  // changes size or screen (maximize, fullscreen, a monitor of another Windows 缩放). The page says which size the player chose (setUiSize),
+  // before its first paint; until then, and for a check (smokeDir: its shots are of the page at 1:1), 标准 / none.
+  let uiSize = 'normal';
+  const applyZoom = () => {
+    if (win.isDestroyed()) return 1;
+    const { width, height } = win.getContentBounds(), { size: sc } = screen.getDisplayMatching(win.getBounds());
+    const k = smokeDir ? 1 : zoomFor(width, height, sc.width, sc.height, uiSize);
+    if (Math.abs(wc.getZoomFactor() - k) > 1e-3) wc.setZoomFactor(k);
+    return k;
+  };
+  for (const ev of ['resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'moved']) win.on(ev, applyZoom);
+  screen.on('display-metrics-changed', applyZoom);
+  win.on('closed', () => screen.off('display-metrics-changed', applyZoom));
+  wc.on('dom-ready', applyZoom);
+  ipcMain.handle('desktop:ui-size', (e, size) => { if (e.sender !== wc) return null; if (Object.hasOwn(UI_SIZES, size)) uiSize = size; return applyZoom(); });
   // Closing the window (✕, Alt+F4, ⌘Q) with a game on asks first: nothing is saved automatically, and players lost
   // hours to a stray click (feedback F03, 2026-11-02). The page says when a game is on (setUnsaved); a page that has
   // gone, or a new one, has nothing to lose. The dialog is the system's, so it also shows over a page that is stuck.

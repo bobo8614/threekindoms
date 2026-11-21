@@ -283,7 +283,8 @@ export function buildTerrain({ W, H, cell, wx, wz, rimDepth = 2.2, textures = di
   const TX = textures;
   const groups = new Map(); // material key → { pos, uv, col, idx }
   const G = (k) => { if (!groups.has(k)) groups.set(k, { pos: [], uv: [], col: [], idx: [], own: [] }); return groups.get(k); };
-  // Which cell each face belongs to (for picking): a wall belongs to the cell on top of it, wherever the wobble bulges it to.
+  // Which cell each face belongs to (for picking): a wall belongs to the cell on top of it, wherever the wobble bulges it to, and so
+  // does the top itself: its bevelled rim bulges out over the lower cell with the wall, and from some angles lies in front of the face.
   const owned = (g, from, cellId) => { for (let f = from / 3; f < g.idx.length / 3; f++) g.own[f] = cellId; };
   const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? null : cell(x, y));
 
@@ -355,7 +356,7 @@ export function buildTerrain({ W, H, cell, wx, wz, rimDepth = 2.2, textures = di
       }
       if (sx ^ sz) g.idx.push(f, f + 1, f + 2, f + 1, f + 3, f + 2); else g.idx.push(f, f + 2, f + 1, f + 1, f + 2, f + 3); // a flipped axis flips the winding
     }
-    owned(g, g.own.length * 3, -1);
+    owned(g, g.own.length * 3, y * W + x);
     // --- sides ---
     // A strip along the edge through the same points as the top's rim, so a rounded bank corner or a hill's
     // sloping edge stays closed.

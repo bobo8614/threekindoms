@@ -36,6 +36,8 @@ import { $, $$, keyName, h, pressable, clear, root, layer, modal, message, toast
 import { MONTH_NAMES, SEASON_OF, WEATHER_OF } from './seasons.js';
 import { ORIGINAL, PACES, paceSpeed, paceLabel, setPace, paced, hold } from './pace.js';
 import { shakeLevel, setShakeLevel, onShake } from './fx.js';
+import { labelSizeText, cycleLabelSize } from './labelsize.js';
+import { uiSizeOn, uiSizeText, cycleUiSize } from './uiscale.js';
 import { RECORD_ACTIONS, recordAction, recordKey, configureRecordButton, resetRecordButtons } from './padrecords.js';
 import { controls, quickSaveKey } from './controls.js';
 import { createPad, sendKey, walk, focusFirst, firstIn, focusables, isControl, shown, glyphOf } from './pad.js';
@@ -935,9 +937,20 @@ renderer.setAnimationLoop((t) => {
   post.render(); labels.render(mode.scene, mode.camera);
 });
 
+// 版本号 for the 说明 (天使之翼723@devblog). A package carries build.json (desktop/build-app.mjs: version and commit);
+// the dev server has none, so the version comes from desktop/package.json and is marked 开发版.
+let versionText;
+function gameVersion() {
+  return (versionText ??= json('build.json').then((b) => `版本 ${b.version ?? '?'}（${b.commit}）`)
+    .catch(() => json('desktop/package.json').then((p) => `版本 ${p.version} 开发版`))
+    .catch(() => ''));
+}
+
 function help() {
   // 关闭 stays at the foot (sticky on a phone): the help fills a phone's screen, with no backdrop left to tap and no Esc (Wrz0903@bilibili).
-  return modal('说明', (close) => [h('div', { class: 'help' },
+  const version = h('span', { class: 'help-version' }); // at the title's right, where it shows without scrolling the help
+  gameVersion().then((t) => { version.textContent = t; });
+  return modal('说明', (close) => [version, h('div', { class: 'help' },
     h('h4', {}, '操作'), controls({ input: pad.active ? 'pad' : PHONE ? 'touch' : 'keys', touch: PHONE, family: pad.family, east: pad.confirm === 'east', label: padKey }),
     h('h4', {}, '战略'), h('p', {}, '一个势力行动一轮为一个月。每月按占城数发放命令书（1–3城3张……28–30城13张），点击己方城市，在下方菜单下令；命令书用完即结束本月。4月收税金，10月收米；统治度低于50易生暴乱；5–6月洪水、8–9月旱灾，防灾可减损。'),
     h('p', {}, '武将到史实卒年后一年比一年易病逝；开局或「☰ 系统」可选「武将不老」，「武将不战死」（体力归零改为被俘，体力回复至30；君主照常阵亡），「三顾模式」（同一位人才在该城至多搜索3次必定出仕），「武将不能读书」（敌我都不能入书馆提高智力），以及「免费记录」（存档不消耗命令书）。进度不会自动保存：城市菜单「城 → 记录」或「☰ 系统 → 记录进度」存入八个记录位置之一（消耗一张命令书，免费记录除外），「☰ 系统 → 读取记录」或标题画面读取。战争中可「☰ 系统 → 中断战斗」回到标题，之后从标题「继续战斗」接着打（不占记录位置，只能继续一次）。'),
@@ -1144,9 +1157,19 @@ function sysButtons() {
       warView.cycle(); syncQualityRows();
       if (inWar() && nextWarLabel() !== warViewLabel()) toast(`本场仍为${warViewLabel()}战场，下一场战争起为${nextWarLabel()}战场`, 4500);
     }, '战场用平面画面还是3D画面　随画质：画质「低」时平面，中、高时3D　平面：始终平面，不能旋转与远近缩放，适合核显　3D：始终为可旋转、缩放的3D战场。开战时决定：战争中更改，从下一场战争起生效'),
-    desk ? (() => { const b = item(fullscreenText, () => desk.toggleFullscreen(), `铺满整个屏幕，再选一次恢复窗口（${fullscreenKeys}）`); b.classList.add('fullscreen-row'); return b; })() : '',
-    item(() => `帧率 ${frameCap.label}`, (b) => { frameCap.toggle(); b.textContent = `帧率 ${frameCap.label}`; },
-      '60：每秒最多绘制60帧，在120Hz等高刷新率屏幕上更省电、风扇更安静　不限：按屏幕刷新率绘制。动作与计时快慢不受影响'),
+    // 界面大小 shares 全屏's row: both are the desktop window's, and a row of its own would run the column past a 1024x600 window.
+    desk ? h('div', { class: 'sysmenu-pair' },
+      (() => { const b = item(fullscreenText, () => desk.toggleFullscreen(), `铺满整个屏幕，再选一次恢复窗口（${fullscreenKeys}）`); b.classList.add('fullscreen-row'); return b; })(),
+      uiSizeOn() ? item(() => `界面大小 ${uiSizeText()}`, (b) => {
+        cycleUiSize().then((k) => { if (k) toast(`界面大小 ${uiSizeText()}：按 ${Math.round(k * 100)}% 显示${k === 1 ? '（窗口不够大，不再放大）' : ''}`, 3000); });
+        b.textContent = `界面大小 ${uiSizeText()}`;
+      }, '整个画面（面板、菜单、文字与地图）按屏幕分辨率放大　标准：1920×1080 的屏幕按 125%、2560×1440 按 175% 显示　大：再大一档　小：再小一档。窗口模式下放大到窗口放得下为止，窗口较小时不放大') : '') : '',
+    // 地图标签 shares 帧率's row: a row of its own ran the column 9px past a 1024x600 window in a war (tests/desktopwindow.test.mjs).
+    h('div', { class: 'sysmenu-pair' },
+      item(() => `地图标签 ${labelSizeText()}`, (b) => { cycleLabelSize(); b.textContent = `地图标签 ${labelSizeText()}`; },
+        '地图上城名、武将名牌、村落与地形牌，以及白兵部队兵力条的大小　小／标准／大。面板和按钮的文字不变'),
+      item(() => `帧率 ${frameCap.label}`, (b) => { frameCap.toggle(); b.textContent = `帧率 ${frameCap.label}`; },
+        '60：每秒最多绘制60帧，在120Hz等高刷新率屏幕上更省电、风扇更安静　不限：按屏幕刷新率绘制。动作与计时快慢不受影响')),
     // Shown once a pad has been used here: which face button confirms (the other cancels).
     pad.seen ? item(confirmText, (b) => { pad.setConfirm(pad.confirm === 'east' ? 'south' : 'east'); b.textContent = confirmText(); },
       '手柄上哪个键确定（另一个取消）　下：Xbox／PlayStation 欧美习惯　右：任天堂与日式习惯。默认按手柄型号', '手柄') : '',
@@ -1177,7 +1200,7 @@ function sysButtons() {
     g ? item(() => `人才寻访 ${g.sangu ? '三顾' : '原版'}`, (b) => { g.sangu = !g.sangu; b.textContent = `人才寻访 ${g.sangu ? '三顾' : '原版'}`; refreshTalentNote(); },
       '原版：人才是否出仕看搜索结果与他心向的君主　三顾：某城的下一位人才可寻访时，在该城第3次搜索他必定出仕，不论他心向哪位君主。只对玩家的搜索有效，随本局记录保存') : '',
     g ? item(() => `电脑进攻 ${g.warlike ? '好战' : '原版'}`, (b) => { g.warlike = !g.warlike; if (!g.warlike) delete g.warlikeFought; b.textContent = `电脑进攻 ${g.warlike ? '好战' : '原版'}`; },
-      '原版：电脑多数回合凑不齐出兵的武将和钱，打不成仗　好战（重制版新增）：电脑按月征兵补兵，内政看城里缺什么做，城的土地和产业、武将和兵都比原版多；钱先用在内政上，初级、中级电脑之间的战争比原版少。难度越高越凶：初级出发城所需武将同原版、搜人稍勤；中级搜人更勤，挑兵少的城打；上级另给电脑资源：金收入多一倍半、米收入多一倍半、每月多一张命令书、打过仗的武将下一回合开头补满、开发更快，新招武将忠诚可到95（更难离间、诱纳不了）。不改变战斗本身的强弱。随本局记录保存') : '',
+      '原版：电脑多数回合凑不齐出阵的武将和钱，打不成仗　好战（重制版新增）：电脑按月征兵补兵，内政看城里缺什么做，城的土地和产业、武将和兵都比原版多；钱先用在内政上，初级、中级电脑之间的战争比原版少。难度越高越凶：初级出发城所需武将同原版、搜人稍勤；中级搜人更勤，挑兵少的城打；上级另给电脑资源：金收入多一倍半、米收入多一倍半、每月多一张命令书、打过仗的武将下一回合开头补满、开发更快，新招武将忠诚可到95（更难离间、诱纳不了）。不改变战斗本身的强弱。随本局记录保存') : '',
     g ? item(() => `武将读书 ${g.noStudy ? '不能' : '原版'}`, (b) => { g.noStudy = !g.noStudy; b.textContent = `武将读书 ${g.noStudy ? '不能' : '原版'}`; markNoStudy(); },
       '原版：智力80以下的武将可在书馆学习，电脑也会让武将学习　不能：敌我武将都不能读书提高智力，城市菜单的「书馆」变灰。随本局记录保存') : '',
     g ? item(() => `记录消耗 ${g.freeSave ? '免费' : '原版'}`, (b) => { g.freeSave = !g.freeSave; b.textContent = `记录消耗 ${g.freeSave ? '免费' : '原版'}`; markFreeSave(); },
@@ -1465,7 +1488,7 @@ async function setup() {
     onclick: () => { sangu = !sangu; pressed(sanguBtn, sangu); } },
     h('i', {}), '三顾模式 · 第3次搜索必定出仕');
   const warlikeBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
-    title: '原版：电脑多数回合凑不齐出兵的武将和钱，打不成仗　好战（重制版新增）：电脑按月征兵补兵，内政看城里缺什么做，城的土地和产业、武将和兵都比原版多；钱先用在内政上，初级、中级电脑之间的战争比原版少。难度越高越凶：初级出发城所需武将同原版、搜人稍勤；中级搜人更勤，挑兵少的城打；上级另给电脑资源：金收入多一倍半、米收入多一倍半、每月多一张命令书、打过仗的武将下一回合开头补满、开发更快，新招武将忠诚可到95（更难离间、诱纳不了）。不改变战斗本身的强弱；游戏中也可在「☰ 系统」切换。',
+    title: '原版：电脑多数回合凑不齐出阵的武将和钱，打不成仗　好战（重制版新增）：电脑按月征兵补兵，内政看城里缺什么做，城的土地和产业、武将和兵都比原版多；钱先用在内政上，初级、中级电脑之间的战争比原版少。难度越高越凶：初级出发城所需武将同原版、搜人稍勤；中级搜人更勤，挑兵少的城打；上级另给电脑资源：金收入多一倍半、米收入多一倍半、每月多一张命令书、打过仗的武将下一回合开头补满、开发更快，新招武将忠诚可到95（更难离间、诱纳不了）。不改变战斗本身的强弱；游戏中也可在「☰ 系统」切换。',
     onclick: () => { warlike = !warlike; pressed(warlikeBtn, warlike); } },
     h('i', {}), '电脑好战 · 难度越高越凶');
   const noStudyBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
@@ -2100,9 +2123,13 @@ let curAct = null;
 // Book-spending commands play the 命令演出 in the middle of the screen before the HUD shows the new
 // numbers; onBook ticks the counter at the halfway beat, as the original does.
 // books: how many the command spends (a run of several 开发 or 防灾 spends one each, and shows one picture).
-function cmdVignette(caption, cid, sub, onShow, part, books = 1) {
+// result: what the command did, told once the picture has played; the caption meanwhile names only the command
+// (大佬会不会看到@devblog #593: told from the first frame, the outcome left the picture nothing to show).
+const DOING = { land: '开发土地', industry: '开发产业', pop: '开发人口' };
+const doing = (act, sub) => `${act === '开发' ? DOING[sub] ?? '开发' : act}……`;
+function cmdVignette(result, cid, sub, onShow, part, books = 1) {
   const text = curAct === '记录' ? recordText(g.year, g.month, name(g.factions[g.player].ruler)) : null;
-  return playVignette({ scene: sceneFor(curAct, sub), caption, audio, text, onShow, part, books, onBook: () => {
+  return playVignette({ scene: sceneFor(curAct, sub), caption: doing(curAct, sub), result, audio, text, onShow, part, books, onBook: () => {
     for (const pip of [...$$('.topbar .books i:not(.used)')].slice(-books)) pip.classList.add('used', 'burn');
     const n = $('.topbar .books + b'); if (n) n.textContent = Math.max(0, g.books - books);
   } });
@@ -2190,26 +2217,39 @@ async function scoutCity(cid) {
 }
 // 诱纳 / 离间: every enemy officer in one tree — faction, then city, then the officers with their numbers —
 // instead of a city list followed by a second list; hovering a city points it out on the map.
+// Cities start folded, one line each, and only one is open at a time, so a city far down is a short scroll; the
+// last target (shared by both commands, as a 离间 is often followed by a 诱纳 of the same man) reopens with his
+// city open and his row in view (试着提交留言@devblog #591). Before, the cities next to ours and every city of a
+// faction with one or two cities opened with their tables, and one far down meant scrolling past them each time.
+let lastMark = null; // { city, id }
 function pickEnemyOfficer(act, from) {
   const near = (cid) => (G.roads(from).includes(cid) ? 0 : 1);
+  const back = lastMark && g.cities[lastMark.city].faction !== g.player && g.cities[lastMark.city].faction !== NONE && g.cities[lastMark.city].officers.length ? lastMark : null;
   return modal(`${act}：选择对象`, (close) => {
     const tree = h('div', { class: 'otree', onfocusin: e => { const city = e.target.closest('.tc'); strategy.highlight(city ? Number(city.dataset.city) : null); } });
+    const fold = (e) => { if (e.target.open) for (const o of tree.querySelectorAll('.tc[open]')) if (o !== e.target) o.open = false; };
+    const pick = (cid) => (id) => { lastMark = { city: cid, id }; close(id); };
     for (const f of g.factions.filter((x) => x.ruler != null && x.id !== g.player)) {
       const cities = G.citiesOf(g, f.id).filter((c) => c.officers.length).sort((a, b) => near(a.id) - near(b.id));
       if (!cities.length) continue;
       const grp = h('details', { class: 'tf', open: true }, h('summary', { tabindex: 0 }, h('i', { class: 'dot', style: { background: colorOf(f.id) } }), factionName(f.id), h('small', {}, `${cities.length}城 ${cities.reduce((a, c) => a + c.officers.length, 0)}将`)));
-      for (const c of cities) grp.append(h('details', { class: 'tc', 'data-city': c.id, open: near(c.id) === 0 || cities.length <= 2, onmouseenter: () => strategy.highlight(c.id), onmouseleave: () => strategy.highlight(null) },
+      for (const c of cities) grp.append(h('details', { class: 'tc', 'data-city': c.id, open: back?.city === c.id, ontoggle: fold, onmouseenter: () => strategy.highlight(c.id), onmouseleave: () => strategy.highlight(null) },
         h('summary', { tabindex: 0 }, cityName(c.id), near(c.id) === 0 ? h('em', {}, '邻接') : null, h('small', {}, `${c.officers.length}将`)),
-        officerTable(g, c.officers, { onPick: (id) => close(id), extra: (id) => (c.officers[0] === id ? '太守' : null), disabled: (id) => (G.isRuler(g, id) ? '君主' : null) })));
+        officerTable(g, c.officers, { onPick: pick(c.id), extra: (id) => [c.officers[0] === id ? '太守' : null, back?.id === id ? '上次' : null].filter(Boolean).join(' ') || null, disabled: (id) => (G.isRuler(g, id) ? '君主' : null) })));
       tree.append(grp);
     }
-    const first = tree.querySelector('.tc:has(summary em) > summary') ?? tree.querySelector('.tc > summary');
+    const first = tree.querySelector('.tc[open] > summary') ?? tree.querySelector('.tc:has(summary em) > summary') ?? tree.querySelector('.tc > summary');
     first?.setAttribute('data-pad-first', '');
-    return [h('p', { class: 'hint' }, `${act === '诱纳' ? '劝诱敌将投奔我军' : '散布流言，降低敌将忠诚'}；忠诚越低越容易成功。`, h('span', { class: 'sort-hint' }, '点表头可排序。')), tree,
+    return [h('p', { class: 'hint' }, `${act === '诱纳' ? '劝诱敌将投奔我军' : '散布流言，降低敌将忠诚'}；忠诚越低越容易成功。点城名展开武将。`, h('span', { class: 'sort-hint' }, '点表头可排序。')), tree,
       h('div', { class: 'foot' },
         h('span', { class: 'hint tree-pad-hint' }, ...padText(k => `↑↓ 移动　←→ 收起／展开　${k('a')} 选择　${k('b')} 取消`)),
         h('button', { class: 'btn', onclick: () => close(null) }, '取消'))];
-  }, { wide: true, light: true }).finally(() => strategy.highlight(null));
+  }, { wide: true, light: true, focus: (box) => {
+    // The last target's row (else his city, else the first city next to ours), scrolled to the middle of the list.
+    const el = (back && box.querySelector(`.tc[open] tr[tabindex][data-id="${back.id}"]`)) ?? box.querySelector('.otree [data-pad-first]');
+    requestAnimationFrame(() => el?.scrollIntoView({ block: 'center' }));
+    return el;
+  } }).finally(() => strategy.highlight(null));
 }
 // The shared 是/否 before a command spends its book (`$D5BD`): 取消 costs nothing.
 const sure = (act, text) => confirmBox(act, `${text}（消耗一张命令书）`);
@@ -2565,7 +2605,7 @@ async function command(cid, act) {
       await spend({ ...res, part: 'attempt' }, cid, undefined, res.quote != null ? null : { title: '同盟', text: `很遗憾，${factionName(target)}拒绝了同盟的请求。`, who: id, mood: 'grief' });
       if (res.quote != null) {
         const pay = await confirmBox('同盟', `${factionName(target)}要求${res.kind === 'gold' ? '金' : '米'} ${res.quote}作为盟约之礼。是否支付？（城中现有${res.kind === 'gold' ? '金' + c.gold : '米' + c.rice}）`);
-        if (pay) { const done = G.payAlliance(g, cid, target, res.kind, res.quote); if (done.ok) await playVignette({ scene: 'ally', caption: done.msg, audio, part: 'after' }); await spend(done, cid, undefined, done.ok ? { title: '同盟', text: `可喜可贺，与${factionName(target)}的同盟已经成立。`, who: id, mood: 'joy' } : null); }
+        if (pay) { const done = G.payAlliance(g, cid, target, res.kind, res.quote); if (done.ok) await playVignette({ scene: 'ally', caption: `与${factionName(target)}缔结同盟……`, audio, part: 'after' }); await spend(done, cid, undefined, done.ok ? { title: '同盟', text: `可喜可贺，与${factionName(target)}的同盟已经成立。`, who: id, mood: 'joy' } : null); } // the picture only names the pact; the window after it tells that it stands (#593)
       }
       return;
     }
@@ -3361,7 +3401,7 @@ async function showEvent(e) {
       if (!mine.length) break;
       const what = e.kind === 'gold' ? '金' : '米';
       const cue = () => { if (!audio.cue('cue-income')) audio.sfx('sfx-income'); };
-      if (!(await playVignette({ scene: e.kind === 'gold' ? 'tax' : 'harvest', caption: `${e.kind === 'gold' ? '四月　征收税金' : '十月　收获米粮'}　我军共得${what} ${total}`, audio, onShow: cue }))) cue();
+      if (!(await playVignette({ scene: e.kind === 'gold' ? 'tax' : 'harvest', caption: `${e.kind === 'gold' ? '四月　征收税金' : '十月　收获米粮'}……`, audio, onShow: cue }))) cue();
       await message(e.kind === 'gold' ? '四月　征收税金' : '十月　收获米粮',
         `${mine.map(([cid, v]) => `${cityName(cid)} ${what}+${v}`).join('　')}<br>我军共得${what} <strong>${total}</strong>`);
       break;
@@ -3429,7 +3469,7 @@ async function showEvent(e) {
       const mine = e.placed.filter((p) => p.city != null && g.cities[p.city].faction === P);
       if (e.defender === P || mine.length) {
         strategy.refresh(g);
-        await message('王莆', `${factionName(e.attacker)}军向地图上没有的「王莆」出兵，战场上只有阿会喃。${e.defender === P ? (e.attWins ? '王莆失守。' : '王莆守住了。') : ''}${mine.length ? `<br>${mine.length}名阿会喃来到${[...new Set(mine.map(where))].join('、')}，加入我军。` : ''}`, 0, 'calm');
+        await message('王莆', `${factionName(e.attacker)}军向地图上没有的「王莆」出阵，战场上只有阿会喃。${e.defender === P ? (e.attWins ? '王莆失守。' : '王莆守住了。') : ''}${mine.length ? `<br>${mine.length}名阿会喃来到${[...new Set(mine.map(where))].join('、')}，加入我军。` : ''}`, 0, 'calm');
       }
       break;
     }
@@ -3469,7 +3509,10 @@ const io = {
     $$('.aiturn').forEach((p) => p.remove()); aiShown = Infinity;
     strategy.refresh(g); strategy.select(w.city); strategy.focusCity(w.city);
     audio.cue('cue-sortie'); // the original plays 出阵's phrase for an AI attack on the player too
-    await message('敌军来袭', `${factionName(w.attacker)}军${w.att.ids.length}将由${name(w.att.ids[0])}统率，自${cityName(w.from)}来攻${cityName(w.city)}！<br>我军由太守${name(w.def.ids[0])}守城。`, w.att.ids[0], 'angry');
+    // The struck city's governor brings the news, as the 旱灾 / 洪水 and 暴乱 windows have it (已试玩中@devblog #592:
+    // the attacker's commander used to speak, though the player is the one attacked). He holds the city (w.def.ids[0]).
+    const gov = w.def.ids[0] ?? null, troops = w.att.ids.reduce((a, id) => a + (g.officers[id].soldiers || 0), 0);
+    await message('敌军来袭', `大事不好！${factionName(w.attacker)}军${w.att.ids.length}将由${name(w.att.ids[0])}统率，合计兵力 ${troops}，自${cityName(w.from)}来攻${cityName(w.city)}！${gov != null ? `<br>${name(gov)}率军守城。` : ''}`, gov, 'grief');
     await fieldWar(w, 'def', { after: { kind: 'def', faction: budget?.faction ?? w.attacker, pts: budget?.pts ?? 0 } });
   },
   async allianceOffer(f, kind, amount) {

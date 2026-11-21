@@ -380,6 +380,8 @@ body.picking #ui > .dock .acts { visibility: hidden; }
 .pick .off.on { border-color: #ffd890; background: linear-gradient(90deg, #ffd89030, #ffd89010); box-shadow: inset 0 0 0 1px #ffd89060; }
 .pick .off.on::after { content: '✓'; position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font: 900 13px/1 var(--serif); color: #1a1009; background: #ffd890; box-shadow: 0 0 0 2px #1a120c; }
 .modal .foot { align-items: center; } .modal .foot .count { font-size: 15px; color: var(--gold); }
+.modal > .help-version { position: absolute; top: 24px; right: 20px; font-size: 13px; color: var(--dim); }
+body.phone .modal > .help-version { top: 14px; right: 14px; }
 .cities { display: flex; gap: 6px; flex-wrap: wrap; }
 .cities .btn.on { border-color: #ffd890; color: #fff4d8; }
 .msg { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); width: min(820px, 94vw); display: grid; grid-template-columns: 120px 1fr; gap: 16px; padding: 14px 18px; z-index: 30; cursor: pointer; animation: rise .25s ease; }
@@ -470,7 +472,7 @@ body.picking #ui > .dock .acts { visibility: hidden; }
 /* War-map tag: a small name plate over one troops bar in the side's colour, edged in that colour. The 体 bar
    and the numbers show only for the selected or hovered general, or while Alt is held, so the tags stay
    lighter than the figures they name and neighbours' tags do not stack into each other (N09, A2). */
-.tag { text-align: center; font-size: 13px; text-shadow: 0 1px 2px #000; min-width: 44px; padding: 0 5px 2px; border-radius: 3px; background: #120c08a8;
+.tag { text-align: center; font-size: calc(13px * var(--label-k, 1)); text-shadow: 0 1px 2px #000; min-width: 44px; padding: 0 5px 2px; border-radius: 3px; background: #120c08a8;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--atk) 55%, transparent); }
 .tag { position: relative; transition: opacity .15s; }
 /* The 3D war map's minimap and the markers for generals outside the picture (src/warnav.js). On <body>, under the dialogs. */
@@ -490,19 +492,19 @@ body.cine .warmini, body.cine .waredges, body.scenic .warmini, body.scenic .ware
 .route-cost { padding: 0 7px 1px; border: 1px solid #c8a45a; border-radius: 3px; background: rgba(24, 16, 8, .88); color: #ffd75a; font: 15px/1.3 "Noto Serif SC", serif; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px #000; }
 .route-cost b { font-weight: 700; }
 .tag.defender { box-shadow: 0 0 0 1px color-mix(in srgb, var(--def) 55%, transparent); }
-.tag b { display: block; font-size: 13px; line-height: 1.2; white-space: nowrap; }
+.tag b { display: block; font-size: calc(13px * var(--label-k, 1)); line-height: 1.2; white-space: nowrap; }
 .tag i, .tag u { display: block; height: 3px; margin: 1px 0 0; border-radius: 2px; box-shadow: 0 0 0 1px #000; background: linear-gradient(90deg, var(--atk) var(--w), rgba(0,0,0,.6) var(--w)); }
 .tag.defender i { background: linear-gradient(90deg, var(--def) var(--w), rgba(0,0,0,.6) var(--w)); }
-.tag em.st { display: block; font-style: normal; font-size: 11px; line-height: 1.25; white-space: nowrap; }
+.tag em.st { display: block; font-style: normal; font-size: calc(11px * var(--label-k, 1)); line-height: 1.25; white-space: nowrap; }
 .tag em.qimen { color: #d9a8ff; }
 .tag em.hold { color: #ffc870; }
 .lossnum { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); font-size: 20px; font-weight: bold; line-height: 1.1; color: #ff6a5a; text-shadow: 0 0 3px #000, 0 1px 2px #000, 0 0 8px #6a1810; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; animation: lossrise .9s ease-out forwards; }
 .lossnum.gain { color: #ffd860; font-size: 18px; letter-spacing: .04em; text-shadow: 0 0 3px #000, 0 1px 2px #000, 0 0 10px #a86a10; } /* 升级: the new level rising in gold (src/warview.js tellLevelUps) */
 @keyframes lossrise { from { margin-top: 22px; opacity: 1; } 55% { opacity: 1; } to { margin-top: 2px; opacity: 0; } }
 .tag u { display: none; background: linear-gradient(90deg, #f6a03c var(--w), rgba(0,0,0,.6) var(--w)); }
-.tag span { display: none; font-size: 13px; opacity: .9; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tag span { display: none; font-size: calc(13px * var(--label-k, 1)); opacity: .9; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .alt-held .tag span, .tag.full u, .alt-held .tag u { display: block; } /* the floating tag of the selected or hovered general keeps its name and bars; the numbers are on his card (Alt shows them) */ .tag.full { position: relative; z-index: 1; padding: 1px 6px 3px; background: #120c08e0; }
-.tag.full b { font-size: 14px; } .tag.full i, .tag.full u { height: 4px; margin-top: 2px; }
+.tag.full b { font-size: calc(14px * var(--label-k, 1)); } .tag.full i, .tag.full u { height: 4px; margin-top: 2px; }
 /* Crowded tags (src/warview.js declutter): one that stepped aside has a 1px leader in its side's colour running back to the
    general's head; a crowd with no room left folds the others into a dot at the head, which unfolds when hovered (.full).
    The folded tag keeps its box (so its size is known to unfold into), draws only the dot, and still carries a loss number. */
@@ -514,14 +516,14 @@ body.cine .warmini, body.cine .waredges, body.scenic .warmini, body.scenic .ware
 .tag.dot::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--atk); box-shadow: 0 0 0 1px #000c; }
 .tag.dot.defender::after { background: var(--def); }
 /* The ground view (T, src/warview.js setTerrainView): a small plaque on each cell a general stands on and the two behind it, edged in the terrain's colour. */
-.gtag { padding: 1px 7px 2px; font-size: 13px; font-weight: 600; letter-spacing: 1px; color: #f8eed6; text-shadow: 0 1px 2px #000; background: #0c0905d6; border: 2px solid #c4a060; border-radius: 3px; white-space: nowrap; pointer-events: none; }
-.gcost { padding: 0 5px 1px; font-size: 12px; font-weight: 600; color: #f8eed6; text-shadow: 0 1px 2px #000; background: #0c0905c8; border: 1px solid #c4a060; border-radius: 3px; opacity: .92; } /* what stepping onto a cell of the reach costs (T, src/war/pick.js) */
+.gtag { padding: 1px 7px 2px; font-size: calc(13px * var(--label-k, 1)); font-weight: 600; letter-spacing: 1px; color: #f8eed6; text-shadow: 0 1px 2px #000; background: #0c0905d6; border: 2px solid #c4a060; border-radius: 3px; white-space: nowrap; pointer-events: none; }
+.gcost { padding: 0 5px 1px; font-size: calc(12px * var(--label-k, 1)); font-weight: 600; color: #f8eed6; text-shadow: 0 1px 2px #000; background: #0c0905c8; border: 1px solid #c4a060; border-radius: 3px; opacity: .92; } /* what stepping onto a cell of the reach costs (T, src/war/pick.js) */
 .wardock .threatbtn { padding: 5px 9px; font-weight: 700; } .wardock .threatbtn[aria-pressed="true"] { color: #ffb0a0; border-color: #ff6a4c; }
 .gtag[data-terrain="林"] { border-color: #5fae4a; } .gtag[data-terrain="沙地"] { border-color: #d8b46a; } .gtag[data-terrain="平地"] { border-color: #b8d878; }
 .gtag[data-terrain="河"] { border-color: #5aa8e8; } .gtag[data-terrain="山"] { border-color: #b08860; } .gtag[data-terrain="城"] { border-color: #b8b0c0; }
 .gtag[data-terrain^="村落"] { border-color: #e8a040; }
 /* The villages' signs: a small wooden plaque with nail heads and a post, hung over the roof (war-3d Task 9). */
-.vtag { position: relative; box-sizing: border-box; min-width: 26px; padding: 1px 5px 2px; text-align: center; font-size: 16px; font-weight: 700; line-height: 1.15; color: #f6e2b0; text-shadow: 0 1px 1px #2a1606;
+.vtag { position: relative; box-sizing: border-box; min-width: 26px; padding: 1px 5px 2px; text-align: center; font-size: calc(16px * var(--label-k, 1)); font-weight: 700; line-height: 1.15; color: #f6e2b0; text-shadow: 0 1px 1px #2a1606;
   background: repeating-linear-gradient(176deg, #0000 0 3px, #2a16062e 3px 4px), linear-gradient(180deg, #8c6234, #6a4521 60%, #5a3a1a);
   border: 1px solid #2e1c0a; border-radius: 3px; box-shadow: inset 0 1px 0 #c79a5c80, inset 0 -1px 0 #2a160680, 0 2px 3px #0008; transition: opacity .15s; pointer-events: none; }
 .vtag::before { content: ''; position: absolute; left: 2px; top: 2px; width: 2px; height: 2px; border-radius: 50%; background: #d9b878; box-shadow: 20px 0 0 #d9b878; }
@@ -841,7 +843,9 @@ body:has(.tq) #ui-top:has(> .shade) { z-index: 15; }
 
 /* battlefield labels */
 .tk { pointer-events: none; text-align: center; transform: translateY(-2px); }
-.tk .sb { position: relative; display: block; width: 44px; height: 6px; margin: 0 auto; transform: translateY(17px); border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.8), 0 1px 3px rgba(0,0,0,.6); }
+/* 系统 → 地图标签 (src/labelsize.js) scales the bar with all that hangs on it (the kind glyph, the effect badges, the numbers) about its own middle:
+   CSS2DRenderer owns .tk's transform, and these all sit inside .sb. */
+.tk .sb { position: relative; display: block; width: 44px; height: 6px; margin: 0 auto; transform: translateY(17px) scale(var(--label-k, 1)); border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.8), 0 1px 3px rgba(0,0,0,.6); }
 /* The bar is the squad's strength out of 100, in ten segments of ten men (N09). */
 .tk.attacker .sb { background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(0,0,0,.5) calc(10% - 1px) 10%), linear-gradient(90deg, #7cc2ff var(--w), rgba(0,0,0,.6) var(--w)); }
 .tk.defender .sb { background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(0,0,0,.5) calc(10% - 1px) 10%), linear-gradient(90deg, #ff8a70 var(--w), rgba(0,0,0,.6) var(--w)); }

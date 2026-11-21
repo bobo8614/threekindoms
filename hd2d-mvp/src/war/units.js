@@ -8,6 +8,7 @@ import { litSprite, shadowCaster, sunYaw, silhouetteNormals } from '../sprite3d.
 import { xraySprite } from '../seethrough.js';
 import { name, data } from '../core/game.js';
 import { markFigure, tween } from './shared.js';
+import { labelK } from '../labelsize.js';
 
 export function makeUnits(wv) {
   const { field, human, sprites, scene, camera, sun, wx, wz, topY, r, vsigns, LANDMARK_KEEP } = wv;
@@ -187,7 +188,7 @@ export function makeUnits(wv) {
     // the layout per frame: sizes are measured once (again after a resize), then positions are worked out and the styles written.
     // A sign over a cell on the screen never hangs off its edge (nudged in, by margins as the tags are); one hanging over a general's
     // picture thins to the share the village houses keep (0.45) so he reads through it.
-    if (wv.vsignW !== host.clientWidth) { wv.vsignW = host.clientWidth; for (const v of vsigns) v.w = 0; }
+    if (wv.vsignW !== host.clientWidth || wv.vsignK !== labelK()) { wv.vsignW = host.clientWidth; wv.vsignK = labelK(); for (const v of vsigns) v.w = 0; } // 系统 → 地图标签 resizes them too
     for (const v of vsigns) if (!v.w) { v.w = v.el.offsetWidth; v.h = v.el.offsetHeight; }
     for (const v of vsigns) {
       if (!v.w) continue;

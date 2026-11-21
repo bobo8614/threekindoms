@@ -82,8 +82,10 @@ body.phone .dock .acts::after { display: none; }
 body.phone .cmd { --cmd-h: var(--hit); font-size: 17px; grid-template-columns: 3.4em 1fr auto; gap: 8px; padding: 0 10px; }
 body.phone .cmd small { font-size: 12.5px; }
 body.phone .endturn { right: var(--gr); bottom: var(--gb); min-height: var(--hit); }
-body.phone .ctag { padding: 5px 8px; }
-body.phone .ctag::before { content: ''; position: absolute; inset: -8px -6px; } /* a wider target than the label */
+/* The tag itself stays as slim as the desktop's, a little wider: on a phone's small map a padded one hid the town it names (2026-11-20). The finger's
+   target is the unseen box around it, and that keeps its size on screen whatever the tag's scale (--s: the zoom and 系统 → 地图标签). */
+body.phone .ctag { padding: 2px 6px; }
+body.phone .ctag::before { content: ''; position: absolute; inset: calc(-10px / var(--s, 1)) calc(-6px / var(--s, 1)); }
 body.phone .ctag.news::before { inset: auto; }
 
 /* ---------- 战场 ---------- */
@@ -321,7 +323,7 @@ body.phone .tt-foot .free { font-size: 11px; } body.phone .tt-foot .maker { font
 body.phone .tt-press { font-size: 14px; }
 /* 白兵: the squads' tags were drawn at desktop size over men a phone shows much smaller, and hid them. Smaller tags, see-through. */
 body.phone .tk { opacity: .85; }
-body.phone .tk .sb { width: 28px; height: 4px; transform: translateY(12px); }
+body.phone .tk .sb { width: 28px; height: 4px; transform: translateY(12px) scale(var(--label-k, 1)); }
 body.phone .tk .sb::before { width: 12px; height: 12px; font-size: 9px; line-height: 12px; border-radius: 3px; right: calc(100% + 2px); }
 /* the corner plates are thin glass over the field's edges: a unit that strays under one still shows through */
 body.phone .tq-orders, body.phone .tq-tactics { background: rgba(18, 12, 8, .36); border-color: rgba(120, 96, 60, .5); }

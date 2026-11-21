@@ -16,6 +16,10 @@ const short = Math.min(globalThis.screen?.width ?? 9999, globalThis.screen?.heig
 const touchSeen = touchOnly || mobileTouch;
 export const PHONE = q.has('phone') ? q.get('phone') !== '0' : touchSeen && short < 600;
 export const TOUCH = PHONE || (q.has('touch') ? q.get('touch') !== '0' : touchSeen);
+// The flat maps' canvas pixels per CSS px (src/warmap2d.js, src/strategyflat.js). 2 on a touch screen: a 3× phone at 3 cost frames
+// for nothing seen at arm's length. 3 on a desktop, where 系统 → 界面大小 zooms a 3840x2160 window to 2.5 (desktop/uiscale.js)
+// and 2 drew the maps soft.
+export const FLAT_DPR = TOUCH ? 2 : 3;
 
 // The safe area (notch, home bar) in CSS px, measured from env(safe-area-inset-*); index.html asks for viewport-fit=cover.
 // ?safe=l,r,t,b stands in for a phone's in a desktop browser.
@@ -56,7 +60,7 @@ if (PHONE && globalThis.document) {
   // The phone's stylesheet is fetched here, on a phone only. A desktop window never loads it: its rules would match nothing there,
   // but its :has() selectors still cost the browser a little on every redraw of the HUD (a frame late in tests/strategyflat's
   // title-to-record ease, 2026-11-14).
-  document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: new URL('./phone.css?v=6', import.meta.url).href }));
+  document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: new URL('./phone.css?v=8', import.meta.url).href }));
   applyMargins();
   for (const t of ['resize', 'orientationchange']) addEventListener(t, () => { applyMargins(); setTimeout(applyMargins, 300); });
   // (Double-tap zoom is turned off in src/phone.css with touch-action, which leaves a quick second tap its click.)

@@ -1,7 +1,7 @@
 // 战略地图 at the low picture quality: a pre-rendered board per season (tools/bake_strategy_flat.mjs) on a 2D canvas, the same
 // api as createStrategy, no 3D frame and none of the sand table's downloads. The DOM city tags stay as they are on the 3D map.
 // Input comes through the WebGL canvas underneath (app.js), as for the flat war map: this layer takes no pointer events, only its tags do.
-import { PHONE } from './phone.js';
+import { PHONE, FLAT_DPR } from './phone.js';
 import * as THREE from 'three';
 import { createSeasons, SEASON_TABLE, U } from './seasons.js';
 import { colorOf, paintBanner, surnameOf } from './strategy.js';
@@ -11,6 +11,7 @@ import { regionHeights } from './regionseam.js';
 import { territoryHex, nearestSeat, TERRITORY_PALETTE, TERRITORY_FILL, TERRITORY_MID_BOOST, TERRITORY_BAND_WORLD, TERRITORY_BORDER_HALF_PX, TERRITORY_NEUTRAL_BORDER, TERRITORY_FOCUS_SCALE } from './sandtable.js';
 import { createSky2d } from './skyfx2d.js';
 import { layoutTags, measureTags, tagHtml, tagInk } from './citytags.js';
+import { labelK } from './labelsize.js';
 import { NONE, cityName, factionName } from './core/game.js';
 
 const DIR = 'assets/ai/sandtable/flat';
@@ -158,7 +159,7 @@ export async function createStrategyFlat(ctx) {
   const zHome = () => (PHONE ? clamp(Math.max(vw / (B.x1 - B.x0), vh / (B.y1 - B.y0)) / kMin, 1, Z_MAX) : 1);
   function layout() {
     if (asleep) return; // ready() lays it out for the window as it then is
-    dpr = Math.min(2, devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
+    dpr = Math.min(FLAT_DPR, devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
     cv.width = vw * dpr; cv.height = vh * dpr; cv.style.width = `${vw}px`; cv.style.height = `${vh}px`;
     kMin = Math.min(vw / (B.x1 - B.x0), vh / (B.y1 - B.y0));
     if (PHONE && !homed) { homed = true; view.z = goal.z = zHome(); }
@@ -883,7 +884,7 @@ export async function createStrategyFlat(ctx) {
     measured = false;
   }
   // The tags thin to names at the whole board, as the 3D map's do pulled back, and grow with the zoom.
-  const FULL_FORM_Z = 1.4, tagScale = () => clamp(0.82 + (view.z - 1) * 0.24, 0.72, 1.06);
+  const FULL_FORM_Z = 1.4, tagScale = () => clamp(0.82 + (view.z - 1) * 0.24, 0.72, 1.06) * labelK(); // 系统 → 地图标签
   function placeTags(dt) {
     if (!measured) measured = measureTags(marks);
     const { k, x, y } = viewState(), s = tagScale(), entries = [];

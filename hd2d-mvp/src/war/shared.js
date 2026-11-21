@@ -17,7 +17,7 @@ export const KIND = ['forest', 'sand', 'grass', 'river', 'hill', 'castle'], PLAT
 // canopy, the odd conifer; the row in front of the castle low; the odd lone tree on open ground; two
 // to a cell in the country around, dimmed with its ground.
 // A crown is a picture stood up on its foot, so it must not reach north (away from the camera) past half the next cell: a hill
-// there stands 0.75 above the ground and the crown would pierce its face. size is clamped to what that allows.
+// there stands a low mesa (0.35 above the ground at its rim, 0.6 in a range's core: ./heights.js) and the crown would pierce its face. size is clamped to what that allows.
 export const NORTH_REACH = 0.5;
 // A general's picture and base mark this stencil bit, so a range cell's see-through rim (markGhost) is never drawn over him.
 export const FIGURE_STENCIL = 2;

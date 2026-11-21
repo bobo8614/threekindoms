@@ -6,7 +6,7 @@
 // random number. The 3D camera keeps the targets right of the panel and moves only when it must or is asked to.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startGame, newCampaign, closeMessages, CARD_ACTS } from './game.mjs';
+import { startGame, newCampaign, closeMessages, warRest, CARD_ACTS } from './game.mjs';
 
 let game;
 before(async () => { game = await startGame({ width: 1280, height: 720 }); });
@@ -23,7 +23,7 @@ const padBtn = (page, k, on) => page.evaluate(([i, on]) => window.__fakePad.set(
 // A war on the player's turn, his best mind selected with 30 mobility and three enemies in 火计's reach on plain ground; every
 // call to the field's random numbers is counted (window.__rolls), and the cast itself is stubbed to count casts (window.__casts).
 async function setup(query = '', opts = {}) {
-  const page = await game.open(query, opts);
+  const page = await game.open(query, { clock: true, ...opts });
   await page.evaluate(async () => { (await import('./src/pace.js')).setPace(4); (await import('./src/vignette.js')).setVignettes(false); });
   await newCampaign(page);
   await page.evaluate(() => {
@@ -282,7 +282,7 @@ test('U01 / U02 / U07: the panel keeps one place through the steps and the camer
 test('camera: a pointer sweeping the list does not move it; a row walked to with the keys brings its target in; 定位目标 centres it (3D)', async () => {
   const page = await setup('');
   await toTargets(page);
-  await page.waitForTimeout(1200);
+  await warRest(page, { jump: true });
   const pose = () => page.evaluate(() => { const v = window.__game.war.probe().view; return { t: v.target.map((x) => +x.toFixed(2)), dist: +v.dist.toFixed(2) }; });
   const clear = (i) => page.evaluate((i) => { const w = window.__game.war, e = window.__k.foes[i], c = w.screenOf(e.x, e.y), l = document.querySelector('.actpanel').getBoundingClientRect().right; return c.x - c.cw / 2 > l && c.x < innerWidth - 10 && c.y > 60 && c.y < innerHeight - 10; }, i);
   for (let i = 0; i < 3; i++) assert.ok(await clear(i), `target ${i} is in the clear right of the panel`);
@@ -293,20 +293,20 @@ test('camera: a pointer sweeping the list does not move it; a row walked to with
   await page.waitForTimeout(800);
   assert.deepEqual(await pose(), p0, 'the camera did not follow the pointer down the list');
   // Slide the targets off the screen; walking to one with the keys brings it back into the clear.
-  await page.evaluate(() => { const w = window.__game.war, y = w.viewState().yaw; w.pan(Math.cos(y) * 25, Math.sin(y) * 25); }); await page.waitForTimeout(1400);
+  await page.evaluate(() => { const w = window.__game.war, y = w.viewState().yaw; w.pan(Math.cos(y) * 25, Math.sin(y) * 25); }); await warRest(page, { jump: true });
   assert.ok(!(await clear(0)), 'the first target is off the screen');
   await page.evaluate(() => { document.body.dataset.input = 'key'; document.querySelector('.actpanel [data-target]').blur(); });
   const id0 = await page.evaluate(() => window.__k.foes[0].id);
-  await page.locator(`.actpanel [data-target="${id0}"]`).focus(); await page.waitForTimeout(1600);
+  await page.locator(`.actpanel [data-target="${id0}"]`).focus(); await warRest(page, { jump: true });
   assert.ok(await clear(0), 'walked to with the keys, he is in the clear again');
   // 定位目标 (L) centres him at 中.
-  await page.evaluate(() => { const w = window.__game.war, y = w.viewState().yaw; w.pan(Math.cos(y) * -25, Math.sin(y) * -25); }); await page.waitForTimeout(1200);
-  await page.keyboard.press('l'); await page.waitForTimeout(1600);
+  await page.evaluate(() => { const w = window.__game.war, y = w.viewState().yaw; w.pan(Math.cos(y) * -25, Math.sin(y) * -25); }); await warRest(page, { jump: true });
+  await page.keyboard.press('l'); await warRest(page, { jump: true });
   const mid = await page.evaluate((id) => { const w = window.__game.war, e = w.field.alive.find((u) => u.id === id), c = w.screenOf(e.x, e.y), l = document.querySelector('.actpanel').getBoundingClientRect().right; return { dx: Math.abs(c.x - (l + innerWidth) / 2), zoom: w.viewState().zoom }; }, id0);
   assert.ok(mid.dx < 90 && ['mid', 'near'].includes(mid.zoom), `定位目标 centred him: ${JSON.stringify(mid)}`);
   // Leaving the choice gives the view back.
   for (let i = 0; i < 3; i++) await page.keyboard.press('Escape');
-  await page.waitForTimeout(1500);
+  await warRest(page, { jump: true });
   assert.deepEqual(page.errors, []);
   await page.context().close();
 });
@@ -357,7 +357,7 @@ test('U04: targets packed together are told apart by the list; a hovered one lig
     w.cancel(); w.clickCell(me.x, me.y);
   });
   await toTargets(page);
-  await page.waitForTimeout(1200);
+  await warRest(page, { jump: true });
   const ids = await page.evaluate(() => window.__k.foes.filter((e) => window.__game.war.field.legal(window.__k.me, 0, e)).map((e) => e.id));
   assert.ok(ids.length >= 2, `packed targets in reach: ${ids}`);
   const pose = () => page.evaluate(() => { const v = window.__game.war.probe().view; return JSON.stringify([v.target.map((x) => +x.toFixed(2)), +v.dist.toFixed(2)]); });

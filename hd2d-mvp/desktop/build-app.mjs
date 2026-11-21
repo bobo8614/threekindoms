@@ -244,7 +244,9 @@ writeFileSync(join(out, 'vendor/fonts/fonts.css'), css);
 const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: game, encoding: 'utf8' }).trim();
 // Dirty means a change in what the package is made of (the KEEP paths above), not notes or captures under docs/.
 const dirty = execFileSync('git', ['status', '--porcelain', '--', 'index.html', 'save-editor.html', 'src', 'data', 'mods', 'assets'], { cwd: game, encoding: 'utf8' }).trim() ? '+dirty' : '';
-writeFileSync(join(out, 'build.json'), JSON.stringify({ commit: commit + dirty, built: new Date().toISOString(), ...(MOBILE ? { profile: 'mobile' } : {}), music }, null, 1));
+// version: the 说明 shows it (src/app.js gameVersion), from the same package.json the release bumps (天使之翼723@devblog).
+const version = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version;
+writeFileSync(join(out, 'build.json'), JSON.stringify({ version, commit: commit + dirty, built: new Date().toISOString(), ...(MOBILE ? { profile: 'mobile' } : {}), music }, null, 1));
 const mb = (n) => `${(n / 2 ** 20).toFixed(1)} MB`;
 for (const [label, s] of Object.entries(slim)) console.log(`  --mobile ${label}: ${s.files} files, ${mb(s.was)} → ${mb(s.now)}`);
 if (MOBILE) console.log(`  --mobile total: ${mb(walk(out).reduce((n, f) => n + statSync(f).size, 0))}`);

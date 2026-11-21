@@ -56,7 +56,7 @@ test('离间: the envoy, 喜 when it takes and 忧 when it fails', async () => {
   for (const [loyalty, mood, said] of [[20, 'joy', /呵呵呵/], [98, 'grief', /策略失败/]]) {
     const { me, mark } = await stock();
     await page.evaluate(({ me, mark, loyalty }) => { const { g } = window.__game; Object.assign(g.officers[me], { int: 100, virtue: 100 }); g.officers[mark].loyalty = loyalty; }, { me, mark, loyalty });
-    await dock('谋', '离间'); await page.locator(`.shade tr[data-id="${mark}"]`).first().click({ force: true });
+    await dock('谋', '离间'); await page.locator(`.shade .tc:has(tr[data-id="${mark}"])`).evaluate((d) => { d.open = true; }); await page.locator(`.shade tr[data-id="${mark}"]`).first().click(); // cities start folded
     await pick(me); await yes();
     const w = await nextWindow();
     assert.deepEqual([w.who, w.mood], [me, mood]); assert.match(w.text, said);
@@ -68,7 +68,7 @@ test('离间: the envoy, 喜 when it takes and 忧 when it fails', async () => {
 test('a failed 离间 stops the picture before the rumour takes', async () => {
   const { me, mark } = await stock();
   await page.evaluate(({ me, mark }) => { const { g } = window.__game; Object.assign(g.officers[me], { int: 0, virtue: 0 }); g.officers[mark].loyalty = 100; }, { me, mark });
-  await dock('谋', '离间'); await page.locator(`.shade tr[data-id="${mark}"]`).first().click({ force: true });
+  await dock('谋', '离间'); await page.locator(`.shade .tc:has(tr[data-id="${mark}"])`).evaluate((d) => { d.open = true; }); await page.locator(`.shade tr[data-id="${mark}"]`).first().click(); // cities start folded
   await pick(me); await yes();
   await page.waitForSelector('.vig .vig-more', { state: 'attached', timeout: 15000 }); // 原版: the picture has played and waits for a key
   const off = await page.evaluate(async () => {

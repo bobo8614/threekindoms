@@ -619,6 +619,9 @@ test('the 布阵完成 box clears the card at each size, and the card row is gon
   const p = await game.open();
   try {
     await toWar(p, { stopAtDeploy: true });
+    // The box rises 10 px into place over 0.3 s (ui.css @keyframes lift) when the opening ends; on a busy machine the
+    // opening can run past toWar's 2.5 s, and measured mid-rise the box sat 3 px into the dock (2026-11-21 full run).
+    await p.waitForFunction(() => { const e = document.querySelector('.deploybtn'); return e && !e.getAnimations().some((a) => a.playState === 'running'); }, null, { timeout: 30000 });
     for (const [W, H] of [[1440, 900], [1280, 800], [1024, 640]]) {
       await p.setViewportSize({ width: W, height: H }); await p.mouse.move(W * 0.55, H * 0.3);
       await p.evaluate(() => { const w = window.__game.war, u = w.field.side(w.field.human)[0]; w.clickCell(u.x, u.y); });
@@ -1365,7 +1368,7 @@ async function ghostOf(p, hidden, cover, { x, y, ox = 0, oz = 0 }) {
     return { n, tint: n ? red / n : 0, ghosts: ghosts.length }; // pixels the ghost changed, and how far toward red (+) or blue (−) it moved them
   }, { hidden });
 }
-test('a general one step behind another shows through him as a ghost in his side colour; one with nothing in front, or on a cliff top, shows none', async () => {
+test('a general one step behind another shows through him as a ghost in his side colour; one with nothing in front, on a mesa or behind one, shows none', async () => {
   const p = await threeD();
   await p.evaluate(PUT);
   try {
@@ -1378,7 +1381,7 @@ test('a general one step behind another shows through him as a ghost in his side
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (f.map[y + dy][x + dx] !== 2 || top(x + dx, y + dy) !== top(x, y)) ok = false;
         if (ok && (!plain || Math.hypot(x - 16, y - 9) < Math.hypot(plain[0] - 16, plain[1] - 9))) plain = [x, y];
       } if (plain) break; }
-      const peak = cells.find(([x, y]) => x > 2 && y > 2 && x < 29 && y < 16 && top(x, y) >= 1 && [[fx, fy], [fx, 0], [0, fy], [fx * 2, fy * 2], [fx * 2, 0], [0, fy * 2], [fx * 2, fy]].every(([dx, dy]) => top(x + dx, y + dy) <= top(x, y)));
+      const peak = cells.find(([x, y]) => x > 2 && y > 2 && x < 29 && y < 16 && f.map[y][x] === 4 && [[fx, fy], [fx, 0], [0, fy], [fx * 2, fy * 2], [fx * 2, 0], [0, fy * 2], [fx * 2, fy]].every(([dx, dy]) => top(x + dx, y + dy) <= top(x, y)));
       return { plain, peak, fx, fy, foe: f.alive.filter((u) => u.side !== f.human).map((u) => u.id), mine: f.alive.filter((u) => u.side === f.human).map((u) => u.id) };
     });
     assert.ok(spot.plain && spot.peak, `this field has open plain and a cliff top: ${JSON.stringify(spot)}`);
@@ -1394,9 +1397,12 @@ test('a general one step behind another shows through him as a ghost in his side
     // nothing in front of him: no ghost, however his tier is edged
     const lone = await ghostOf(p, spot.foe[1] ?? spot.foe[0], null, { x, y }); assert.ok(lone.n < 12, `nothing in front: ${lone.n} pixels`);
     const cliff = await ghostOf(p, spot.foe[1] ?? spot.foe[0], null, { x: spot.peak[0], y: spot.peak[1] }); assert.ok(cliff.n < 12, `a general on a cliff top, hidden by nothing but his own tier: ${cliff.n} pixels`);
-    // and the cliff's own face is something between him and the camera: lower than it, behind it, he shows through
-    const behind = await p.evaluate(({ x, y, fx, fy }) => { const w = window.__game.war; for (let k = 1; k <= 2; k++) { const bx = x - fx * k, by = y - fy * k; if (w.field.inside(bx, by) && w.probe().top(bx, by) < w.probe().top(x, y) - 0.4) return [bx, by]; } return null; }, { x: spot.peak[0], y: spot.peak[1], fx: spot.fx, fy: spot.fy });
-    if (behind) { const wall = await ghostOf(p, spot.foe[1] ?? spot.foe[0], null, { x: behind[0], y: behind[1] }); assert.ok(wall.n > 20, `a general behind a cliff shows through it: ${wall.n} pixels`); }
+    // Behind a mesa he stands clear: the mesas are low enough (src/war/heights.js, tests/warocclusion.test.mjs) that the line over
+    // one lands past his feet, so nothing hides him and no ghost is drawn. (The ground would still count if it did stand between him
+    // and the eye; the castle does not: it is dressing, cut away over him, not ghosted. The ghost itself is the general's, above.)
+    const mesa = await p.evaluate(({ x, y, fx, fy }) => { const w = window.__game.war, f = w.field; for (let k = 1; k <= 3; k++) { const bx = x - fx * k, by = y - fy * k; if (f.inside(bx, by) && ![3, 4, 5].includes(f.map[by][bx])) return [bx, by]; } return null; }, { x: spot.peak[0], y: spot.peak[1], fx: spot.fx, fy: spot.fy });
+    assert.ok(mesa, `there is open ground behind the mesa at ${spot.peak}`);
+    const clear = await ghostOf(p, spot.foe[1] ?? spot.foe[0], null, { x: mesa[0], y: mesa[1] }); assert.ok(clear.n < 12, `a general behind a mesa is not hidden by it: ${clear.n} pixels`);
   } finally { await p.evaluate(() => { const w = window.__game.war; w.cancel(); w.overview(); }); }
   assert.deepEqual(p.errors, []);
 });
@@ -1460,9 +1466,10 @@ test('a tag that was bumped aside or up goes back to its own place over the head
   assert.deepEqual(p.errors, []);
 });
 
-// war-3d Task 8: the board in tiers. Plain 0.3, a hill's rim 1.05 and its core 1.8 (flat tops, vertical faces between), the castle
-// on a 0.5 plinth at 0.8, the river bed below the plain. Terrain codes: 0 forest, 1 sand, 2 plain, 3 river, 4 hill, 5 castle.
-test('the board stands in tiers: plain 0.3, hill rim 1.05, hill core 1.8, castle 0.8, river below the plain', async () => {
+// war-3d Task 8: the board in tiers. Plain 0.3, a hill a low mesa: its rim 0.65 and its core 0.9 (flat tops, vertical faces between;
+// src/war/heights.js, low so a general behind one is not hidden: tests/warocclusion.test.mjs), the castle on a 0.5 plinth at 0.8, the
+// river bed below the plain. Terrain codes: 0 forest, 1 sand, 2 plain, 3 river, 4 hill, 5 castle.
+test('the board stands in tiers: plain 0.3, hill rim 0.65, hill core 0.9, castle 0.8, river below the plain', async () => {
   const p = await threeD();
   const r = await p.evaluate(() => {
     const w = window.__game.war, f = w.field, top = (x, y) => w.probe().top(x, y), at = (x, y) => (f.inside(x, y) ? f.map[y][x] : null);
@@ -1477,7 +1484,7 @@ test('the board stands in tiers: plain 0.3, hill rim 1.05, hill core 1.8, castle
   });
   assert.ok(r.n.plain && r.n.rim && r.n.core && r.n.castle && r.n.river, `this field has one of each: ${JSON.stringify(r.n)}`);
   assert.deepEqual(r.vals.plain, [0.3]); assert.deepEqual(r.vals.forest, [0.3]); if (r.n.sand) assert.deepEqual(r.vals.sand, [0.3]);
-  assert.deepEqual(r.vals.rim, [1.05]); assert.deepEqual(r.vals.core, [1.8]); assert.deepEqual(r.vals.castle, [0.8]);
+  assert.deepEqual(r.vals.rim, [0.65]); assert.deepEqual(r.vals.core, [0.9]); assert.deepEqual(r.vals.castle, [0.8]);
   assert.ok(r.vals.river.every((v) => v < 0.3), `the river bed lies below the plain: ${r.vals.river}`);
 });
 
@@ -1486,7 +1493,9 @@ for (const step of ['whole', 'far']) test(`a click on a cliff face picks the cel
   await p.evaluate(PUT);
   await p.evaluate((step) => { const w = window.__game.war; w.cancel(); w.cancel(); w.overview(); if (step === 'far') setTimeout(() => w.zoom(-150), 400); }, step);
   await p.waitForTimeout(1800);
-  try {
+  // From each of the four corners, whichever the tests before left the camera on: the top's bulged rim hides part of the face from some
+  // and not from others (2026-11-21: right from 225°, the plain in front from 315°). Four quarter turns end on the first again.
+  try { for (let turn = 0; turn < 4; turn++) {
     const hit = await p.evaluate(() => {
       const w = window.__game.war, f = w.field, [fx, fy] = window.__front(), top = (x, y) => w.probe().top(x, y), at = (x, y) => (f.inside(x, y) ? f.map[y][x] : null);
       // a hill cell with plain ground for two cells toward the camera on one of its two camera-facing sides (the camera looks along a
@@ -1494,21 +1503,30 @@ for (const step of ['whole', 'far']) test(`a click on a cliff face picks the cel
       const low = (x, y) => f.inside(x, y) && top(x, y) <= 0.31 && at(x, y) !== 3;
       const ahead = (x, y) => [[fx, 0], [0, fy]].filter(([dx, dy]) => dx || dy).find(([dx, dy]) => low(x + dx, y + dy) && [0, 1, 2].every((i) => [0, 1, 2].every((j) => (!i && !j) || low(x + fx * i, y + fy * j))));
       let side = null;
-      const spot = [...Array(19).keys()].flatMap((y) => [...Array(32).keys()].map((x) => [x, y])).find(([x, y]) => at(x, y) === 4 && top(x, y) > 0.9 && x > 1 && y > 1 && x < 30 && y < 17
+      const spot = [...Array(19).keys()].flatMap((y) => [...Array(32).keys()].map((x) => [x, y])).find(([x, y]) => at(x, y) === 4 && top(x, y) > 0.6 && x > 1 && y > 1 && x < 30 && y < 17
         && (side = ahead(x, y)) && f.alive.every((u) => Math.max(Math.abs(u.x - x), Math.abs(u.y - y)) > 3));
       if (!spot) return null;
       const [x, y] = spot, t = top(x, y), res = [], [dx, dy] = side;
-      // three points down the face (0.3, 0.45 and 0.6 below the top edge), spread along it
-      for (const [drop, along] of [[0.3, 0], [0.45, 0.2], [0.6, -0.2]]) {
-        const pt = new w.camera.position.constructor(x - 16 + 0.5 + dx * 0.5 + (dx ? 0 : along), t - drop, y - 9.5 + 0.5 + dy * 0.5 + (dy ? 0 : along)).project(w.camera);
-        const c = w.hover({ x: pt.x, y: pt.y }); res.push(c ? { x: c.x, y: c.y } : null);
-      }
+      // Three points on the face itself (a mesa's face is low and its wobble and bevelled lip move it off the cell's edge, so a point
+      // on the edge's plane may be the plain in front): the centres of its triangles that face this side, at its top, middle and foot.
+      const V = w.camera.position.constructor, own = (y + 14) * 60 + (x + 14), pts = []; // the board's apron (APRON 14, GW = W + 28)
+      w.scene.traverse((m) => { const o = m.geometry?.userData?.owner; if (!m.isMesh || !o) return;
+        const P = m.geometry.attributes.position, I = m.geometry.index.array;
+        for (let f = 0; f < I.length; f += 3) { if (o[f / 3] !== own) continue;
+          const [a, b, c] = [0, 1, 2].map((i) => new V().fromBufferAttribute(P, I[f + i])), n = new V().subVectors(c, b).cross(new V().subVectors(a, b)).normalize();
+          if (n.x * dx + n.z * dy > 0.7) pts.push(a.add(b).add(c).divideScalar(3)); } });
+      pts.sort((p, q) => q.y - p.y);
+      for (const pt of pts.length ? [pts[0], pts[pts.length >> 1], pts.at(-1)] : []) { const s = pt.clone().project(w.camera), c = w.hover({ x: s.x, y: s.y }); res.push(c ? { x: c.x, y: c.y } : null); }
       w.hoverCell(null);
-      return { cell: [x, y], res };
+      return { cell: [x, y], res, side, t, yaw: Math.round(w.probe().view.yaw * 180 / Math.PI) };
     });
     assert.ok(hit, 'this field has a hill face toward the camera with open ground in front of it');
-    for (const c of hit.res) assert.deepEqual(c && [c.x, c.y], hit.cell, `a click on the face of ${hit.cell} picked ${JSON.stringify(c)}`);
-  } finally { await p.evaluate(() => { const w = window.__game.war; w.hoverCell(null); }); }
+    assert.equal(hit.res.length, 3, `the face of ${hit.cell} was found: ${JSON.stringify(hit)}`);
+    for (const c of hit.res) assert.deepEqual(c && [c.x, c.y], hit.cell, `a click on the face of ${hit.cell} picked ${JSON.stringify(c)}: ${JSON.stringify(hit)}`);
+    await p.evaluate(() => window.__game.war.rotate(1));
+    await p.waitForFunction(() => { const v = window.__game.war.probe().view; return Math.abs(v.yaw - v.yawGoal) < 1e-4; }, null, { timeout: 10000 });
+    await warRest(p);
+  } } finally { await p.evaluate(() => { const w = window.__game.war; w.hoverCell(null); }); }
   assert.deepEqual(p.errors, []);
 });
 

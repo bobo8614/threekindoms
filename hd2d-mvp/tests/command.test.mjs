@@ -83,6 +83,52 @@ test('at 最快 the beats are a quarter as long and the picture closes by itself
   assert.ok(closed != null && near(closed, (2130 + 4240) / 4, 0.2), `closed at ${closed && Math.round(closed)} ms`);
 });
 
+// The outcome is told only once the picture has played (大佬会不会看到@devblog #593): meanwhile the caption names the
+// command alone. At 原版 it then waits for a key; a key during the picture shows the outcome whole, not past it.
+const DOING = '开发土地……', RESULT = '土地 +15';
+async function playResult(speed, lastMs, { key = null } = {}) {
+  return page.evaluate(async ({ speed, lastMs, key, DOING, RESULT }) => {
+    const P = await import('./src/pace.js'), V = await import('./src/vignette.js'); P.setPace(speed);
+    const tl = [], t0 = performance.now(); let closed = null, open = null;
+    const rec = setInterval(() => { const v = document.querySelector('.vig'); if (v && open == null) open = performance.now() - t0; tl.push({ t: performance.now() - t0, vig: !!v, cap: v?.querySelector('.vig-cap')?.textContent ?? null, more: !!v?.querySelector('.vig-more') }); }, 20);
+    V.playVignette({ scene: 'land', caption: DOING, result: RESULT, onBook: () => {} }).then(() => (closed = performance.now() - t0));
+    if (key != null) { while (open == null || performance.now() - t0 < open + key) await new Promise((r) => setTimeout(r, 10)); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); }
+    while (closed == null && performance.now() - t0 < lastMs) await new Promise((r) => setTimeout(r, 20));
+    clearInterval(rec); P.setPace(1);
+    return { tl, open, closed };
+  }, { speed, lastMs, key, DOING, RESULT });
+}
+
+test('at 原版 the outcome is typed only after the 4.24 s picture, then waits for a key', async () => {
+  const { tl, open, closed } = await playResult(1, 9000);
+  const during = tl.filter((s) => s.vig && s.t < open + 4100);
+  assert.ok(during.length > 50 && during.every((s) => !s.cap?.includes('+')), `the outcome showed during the picture: ${JSON.stringify(during.find((s) => s.cap?.includes('+')))}`);
+  assert.ok(during.some((s) => s.cap === DOING), 'the caption names the command meanwhile');
+  const told = first(tl, (s) => s.cap === RESULT), prompt = first(tl, (s) => s.more);
+  assert.ok(told != null && near(told - open, 4240 + (RESULT.length - 1) * 66.6, 0.1), `outcome told ${told && Math.round(told - open)} ms into the picture`);
+  assert.ok(prompt >= told - 25, 'the key mark comes with the whole outcome');
+  assert.equal(closed, null, 'it waits for a key');
+  assert.equal(tl.at(-1).cap, RESULT, 'the outcome stays up while it waits');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.querySelector('.vig'), null, { timeout: 2000 });
+});
+
+test('a key during the picture jumps to the whole outcome, and a second key closes it', async () => {
+  const { tl, open, closed } = await playResult(1, 4000, { key: 600 });
+  const told = first(tl, (s) => s.cap === RESULT);
+  assert.ok(told != null && told - open < 600 + 200, `outcome at ${told && Math.round(told - open)} ms`);
+  assert.ok(tl.at(-1).more && closed == null, 'the first key does not close it');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.querySelector('.vig'), null, { timeout: 2000 });
+});
+
+test('at 最快 the outcome comes after the quartered picture and stays up to be read before it closes', async () => {
+  const { tl, open, closed } = await playResult(4, 6000);
+  const told = first(tl, (s) => s.cap === RESULT);
+  assert.ok(told != null && told - open >= 4240 / 4 - 30, `outcome at ${told && Math.round(told - open)} ms of a ${4240 / 4} ms picture`);
+  assert.ok(closed != null && closed - told >= 800, `closed ${closed && Math.round(closed - told)} ms after the outcome`);
+});
+
 // The command's phrase starts on the picture's first frame, not before the book's blink (playtest of 2026-10-31,
 // F07), and nothing else sounds as the picture opens or closes (F06: the select blip at both ends).
 test('the phrase starts with the picture, and no select blip opens or closes it', async () => {

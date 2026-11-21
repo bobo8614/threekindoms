@@ -1,7 +1,8 @@
 // 命令演出: the little picture the original plays when a 命令书 is spent (FC confirm routine $D5BD,
 // 128 frames: the book counter blinks and drops halfway; then the left stats window wipes into a framed,
 // looping pixel vignette for that command, 255 frames, while the result types out a character every 4 frames,
-// and the result then waits for A / B). src/pace.js ORIGINAL holds the lengths.
+// and the result then waits for A / B). src/pace.js ORIGINAL holds the lengths. Here the result is typed only after
+// the picture's 255 frames, the caption saying meanwhile what is being done (#593, see playVignette).
 // Here the frame opens large in the middle of the screen. Each scene is one painted shot told in nine frames
 // (tools/storyboard_prompts.mjs → gen_storyboard_api.py → build_storyboards.py). A scene without published art falls
 // back to the plain result toast. Click / Enter / Space skips. Presentation only: the command has already been applied
@@ -11,6 +12,9 @@ import { pacer } from './framecap.js';
 import { keyTaken, paced, paceSpeed, ORIGINAL } from './pace.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// How long an outcome told after the picture stays up when the show closes by itself (快速 / 最快; 原版 waits for a key).
+// Not the original's: it typed the result during the picture (#593).
+const RESULT_HOLD = 2000;
 let enabled = true;
 try { enabled = localStorage.getItem('hd2d-vignettes') !== 'off'; } catch {}
 export const vignettesOn = () => enabled;
@@ -55,15 +59,24 @@ function paint(c, S, t, st) {
 // 计略 or mission that fails; 'after' plays the rest; a number stops on that frame. The last one shown is held longest.
 // Each frame eases in over the one before for `blend` seconds, or for at most two fifths of its own time when the show
 // runs fast: at 4× a frame has about 65 ms, and a fixed 120 ms never let any frame stand whole (D36, 2026-11-10).
-export function storyAt(story, t, span, part) {
-  const { attempt = 8, blend = 0 } = story, n = story.hold.length;
+// The frames `part` plays: the first one's index and each one's hold, the last one held 1.6.
+function framesOf(story, part) {
+  const { attempt = 8 } = story, n = story.hold.length;
   const from = part === 'after' ? attempt + 1 : 0, to = part === 'attempt' ? attempt : typeof part === 'number' ? part : n - 1;
-  const hold = story.hold.slice(from, to + 1).map((h, i, a) => (i === a.length - 1 ? 1.6 : h));
+  return { from, hold: story.hold.slice(from, to + 1).map((h, i, a) => (i === a.length - 1 ? 1.6 : h)) };
+}
+export function storyAt(story, t, span, part) {
+  const { blend = 0 } = story, { from, hold } = framesOf(story, part);
   const unit = span / hold.reduce((a, b) => a + b, 0);
   let k = Math.max(0, t) / unit, i = 0;
   while (i < hold.length - 1 && k >= hold[i]) k -= hold[i++];
   const into = k * unit, fade = Math.min(blend, hold[i] * unit * 0.4);
   return { frame: from + i, alpha: i && into < fade ? into / fade : 1 };
+}
+// When (ms into a show of span ms) the last frame storyAt plays has eased in whole and rests.
+export function restAt(story, span, part) {
+  const { blend = 0 } = story, { hold } = framesOf(story, part), unit = span / hold.reduce((a, b) => a + b, 0);
+  return (hold.reduce((a, b) => a + b, 0) - 1.6) * unit + Math.min(blend * 1000, 1.6 * unit * 0.4);
 }
 function story(c, S, t, span, part) {
   const { cols } = S.story, { frame, alpha } = storyAt(S.story, t, span, part);
@@ -111,8 +124,9 @@ export const showSpan = (duration) => duration - 320 * Math.min(1, duration / 32
 // show jumps to that end. At 快速 / 最快 the beats divide and it closes by itself.
 // Without onBook (war-map 计略, tax, AI war) the picture opens at once.
 // Resolves false (without showing anything) when vignettes are off or the scene has no art yet.
-// result, when given (war-map 计略), is typed onto the caption only after the scene has played a while,
-// so the outcome is told after the performance rather than before it.
+// result, when given, takes the caption's place once the scene has played (all its frames told, the last one resting),
+// so the outcome is told after the performance rather than before it; caption then says only what is being done.
+// A key during the picture jumps to the result, told whole. Shows that close by themselves then hold it RESULT_HOLD.
 // duration (ms), when given, is the whole show's length from the first frame to the end of the wipe, so a
 // presentation can be timed to the original's (src/pace.js); without it the show keeps its own length.
 // force plays even with vignettes switched off (a picture that stands in for an original screen, not a 命令演出).
@@ -169,21 +183,30 @@ export async function playVignette({ scene, caption, onBook, books = 1, onShow, 
   const chars = caption.match(/[^\u2060]\u2060*/gu) ?? [];
   for (let i = 1; i <= chars.length && !skip; i++) { cap.textContent = chars.slice(0, i).join(''); await sleep(typing); }
   cap.textContent = caption;
-  if (result) {
-    // with a set duration the outcome lands just past the middle of the show, as the original's second beat
-    await wait(duration ? Math.max(0, duration * 0.45 - (performance.now() - start)) : 1100);
-    const more = [...result];
-    for (let i = 1; i <= more.length && !skip; i++) { cap.textContent = caption + more.slice(0, i).join(''); await sleep(typing); }
-    cap.textContent = caption + result;
-  }
+  // The outcome is told once the picture has played: its frames are all shown and the last one rests. The caption
+  // meanwhile says only what is being done. A key during the picture jumps to the outcome, told whole, never past it.
+  // (The original types its result while the picture plays; told before the picture shows it, the report after it
+  // said nothing new: 大佬会不会看到@devblog #593.)
+  const tell = async () => {
+    const whole = skip; skip = false;
+    box.setAttribute('aria-label', result.replace(/\u2060/g, '')); box.classList.add('told');
+    if (!whole) { const more = result.match(/[^\u2060]\u2060*/gu) ?? []; for (let i = 1; i <= more.length && !skip; i++) { cap.textContent = more.slice(0, i).join(''); await sleep(typing); } }
+    cap.textContent = result; skip = false;
+  };
   if (cmd) {
     await wait(Math.max(0, paced(ORIGINAL.commandScene) - (performance.now() - t0)));
-    cap.textContent = caption;
+    if (result) await tell();
     if (paceSpeed() === 1) { // the original leaves the result up until A / B
       skip = false; box.append(h('span', { class: 'vig-more', 'aria-hidden': 'true' }, '▼'));
       while (!skip) await sleep(30);
-    }
-  } else await wait(duration ? Math.max(0, duration - out - (performance.now() - start)) : Math.max(900, 2300 - chars.length * 45));
+    } else if (result) await wait(Math.max(800, paced(RESULT_HOLD))); // closing by itself, it still leaves the outcome up to be read
+  } else {
+    // A timed show keeps its length (an AI war's 7.09 s): its outcome comes as the last frame comes to rest, the
+    // longest-held one, and stays up to the end. Untimed, it holds RESULT_HOLD after that.
+    if (result) { await wait(Math.max(0, restAt(S.story, st.span * 1000, part) - (performance.now() - t0))); await tell(); }
+    if (duration || !result) await wait(duration ? Math.max(0, duration - out - (performance.now() - start)) : Math.max(900, 2300 - chars.length * 45));
+    else await wait(Math.max(800, paced(RESULT_HOLD)));
+  }
   const wipe = skip ? Math.min(120, out) : out;
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) { box.style.animationDuration = `${wipe}ms`; dim.style.transitionDuration = `${wipe}ms`; } // the wipe runs as long as it is given
   box.classList.add('out'); dim.classList.remove('in'); await sleep(wipe);

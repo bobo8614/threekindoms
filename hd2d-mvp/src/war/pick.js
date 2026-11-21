@@ -149,7 +149,8 @@ export function makePick(wv) {
       if (best < Infinity) {
         // As the mesh pick did: step just inside the face that was hit and read the cell from the position.
         r.at(best, vp).addScaledVector(vn, -0.01);
-        // A wall is the cell on top of it (however far the wobble bulges the face over the lower ground); anything else is the cell it lies in.
+        // A face is its cell's (diorama.js owner): a wall is the cell on top of it, and a top's rim is that cell's too, however far the
+        // wobble bulges either over the lower ground. A mesh without owners is read from the position.
         const x = owner >= 0 ? (owner % GW) - APRON : Math.floor(vp.x + W / 2), y = owner >= 0 ? Math.floor(owner / GW) - APRON : Math.floor(vp.z + H / 2);
         return { t: best, cell: inside(x, y) ? { x, y } : null, wall: vn.y < 0.5 }; // wall: a cliff's face, not the top of a cell
       }

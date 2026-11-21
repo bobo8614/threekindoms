@@ -132,7 +132,7 @@ test('赈济 three times, 离间 three times, 搜索 three times: three books ea
   const mark = await page.evaluate(() => { const { g, G } = window.__game; return g.cities.filter((x) => x.faction !== g.player && x.faction !== G.NONE).flatMap((x) => x.officers).find((id) => !G.isRuler(g, id)); });
   was = await books();
   await cmd(page, '谋', '离间');
-  await page.locator(`.shade tr[data-id="${mark}"]`).first().click({ force: true });
+  await page.locator(`.shade .tc:has(tr[data-id="${mark}"])`).evaluate((d) => { d.open = true; }); await page.locator(`.shade tr[data-id="${mark}"]`).first().click(); // cities start folded
   await page.locator('.modal tr[data-id]').first().click();
   await page.locator('.modal .runtimes .btn[aria-label="多一次"]').click(); await page.locator('.modal .runtimes .btn[aria-label="多一次"]').click();
   assert.match(await page.locator('.modal p').first().textContent(), /连续 3 次/);
@@ -198,7 +198,7 @@ test('诱纳 until he comes over: the books stop at the one that took', async ()
   });
   const was = await books();
   await cmd(page, '谋', '诱纳');
-  await page.locator(`.shade tr[data-id="${mark}"]`).first().click({ force: true });
+  await page.locator(`.shade .tc:has(tr[data-id="${mark}"])`).evaluate((d) => { d.open = true; }); await page.locator(`.shade tr[data-id="${mark}"]`).first().click(); // cities start folded
   await page.locator(`.modal tr[data-id="${me}"]`).click();
   await page.locator('.modal .runtimes .btn.ghost').click(); // 最多
   assert.match(await page.locator('.modal p').first().textContent(), /直到成功为止，最多 \d+ 次/);

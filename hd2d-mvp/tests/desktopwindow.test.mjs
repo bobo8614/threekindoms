@@ -14,7 +14,8 @@ const shell = (ctx) => ctx.addInitScript(() => {
   window.desktop = { mac: false,
     toggleFullscreen() { d.calls.push('fullscreen'); d.on = !d.on; d.tell?.(d.on); },
     isFullscreen: async () => d.on, onFullscreen(f) { d.tell = f; },
-    setUnsaved(on) { d.calls.push(`unsaved:${on}`); }, quit() { d.calls.push('quit'); } };
+    setUnsaved(on) { d.calls.push(`unsaved:${on}`); }, quit() { d.calls.push('quit'); },
+    setUiSize: async (size) => { d.firstUi ??= size; d.calls.push(`ui:${size}`); return size === 'small' ? 1 : 1.25; } };
   sessionStorage.setItem('hd2d-title-seen', '1');
   // A pad, untouched until the war below: once one has been used the menu's left column has two more rows (小地图, 确定键).
   const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, mapping: 'standard', connected: true, timestamp: 0, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
@@ -81,6 +82,25 @@ test('the title\'s 系统 menu has 全屏 and 退出游戏, all rows in the wind
   assert.equal(await row('退出游戏').count(), 1);
   await closeMenu();
   await menuFits('title');
+});
+
+test('系统 → 界面大小 sits beside 全屏 and cycles 标准 → 大 → 小, told to the shell and remembered', async () => {
+  // The page told the shell its size as it loaded, before the first paint (src/uiscale.js).
+  assert.equal(await page.evaluate(() => window.__desk.firstUi), 'normal');
+  await calls();
+  await openMenu();
+  const [fs, ui] = await Promise.all([row('全屏 关').boundingBox(), row('界面大小 标准').boundingBox()]);
+  assert.ok(Math.abs(fs.y - ui.y) < 1 && ui.x > fs.x, 'one row');
+  await row('界面大小 标准').click();
+  assert.equal(await row('界面大小 大').count(), 1);
+  await page.locator('.toast', { hasText: '按 125% 显示' }).waitFor();
+  await row('界面大小 大').click();
+  await page.locator('.toast', { hasText: '不再放大' }).waitFor(); // the stand-in shell answers 1 for 小
+  assert.deepEqual(await calls(), ['ui:large', 'ui:small']);
+  assert.equal(await page.evaluate(() => localStorage.getItem('hd2d-ui-size')), 'small');
+  await row('界面大小 小').click();
+  assert.deepEqual(await calls(), ['ui:normal']);
+  await closeMenu();
 });
 
 test('the 操作 page names the window\'s keys', async () => {
