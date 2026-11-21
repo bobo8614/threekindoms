@@ -140,6 +140,8 @@ test(`the field 病院 of ${clinic.name} heals a wounded general; at full HP it 
     }, id);
     const wounded = await read();
     assert.deepEqual([wounded.text, wounded.disabled], ['治疗 50金', false], 'a wounded general is offered treatment');
+    // the ROM's 病院 is read as 医馆, as in the city's menu (2026-11-20)
+    assert.match(await page.locator('.unitpanel:not(.compare)').first().textContent(), /所在：医馆/);
     await page.locator('.unitacts button, .unitpanel:not(.compare) button', { hasText: '治疗 50金' }).click();
     const healed = await read();
     assert.equal(healed.hp, healed.max, 'healed up to his own maximum');

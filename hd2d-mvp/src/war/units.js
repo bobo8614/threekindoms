@@ -101,10 +101,25 @@ export function makeUnits(wv) {
     body.userData.unit = u;
     views.set(u, { size, top, quad: { w: bh * aspect, h: bh, ob }, opa: 1, ring: [base, disc], g, bill, body, caster, shadow, xray, el, label, bob: r(600) / 100, face: lk === 'defender' ? -1 : 1, flip: lk === 'defender' ? -1 : 1, moving: false, walk: false,
       heading: new THREE.Vector3(lk === 'defender' ? -1 : 1, 0, 0), stride: 0, tex, ntex, frames, frame: -1 });
-    place(u); tag(u);
+    place(u); faceFoes(u); tag(u);
     if (wv.tacticalOn) roundelShow(u, views.get(u), true);
   }
   function place(u) { views.get(u).g.position.set(wx(u.x), topY(u.x, u.y), wz(u.y)); }
+  // Standing, a general faces the enemy: toward the middle of the other army, along whichever board axis is nearer that way.
+  // His heading is in the board's own frame (play.js pose() reads it against the camera each frame). It once was a fixed +x
+  // for the attacker and −x for the defender, which at two of the four opening angles (pickYaw) turned both armies'
+  // backs to each other. On a grid axis he is always in profile under the 45° camera, and the axis never puts him on the
+  // other side of the screen from the enemy: |dx| > |dz| keeps the sign of dx − dz, and of dx + dz, and the same for dz.
+  // A tenth of the other axis is kept: on the flat map (board unturned) an enemy mostly up or down the screen shows the
+  // three-quarter back or front, and that much (past pose()'s 0.08) still leans it his way. Under the 45° camera it moves
+  // the heading 6° (39° from the eye, still in profile; a fifth put it at 34°, the front view's edge).
+  function faceFoes(u) {
+    const v = views.get(u), foes = field.units.filter((e) => !e.gone && e.side !== u.side); if (!v || !foes.length) return;
+    let dx = 0, dz = 0; for (const e of foes) { dx += e.x - u.x; dz += e.y - u.y; }
+    if (Math.abs(dx) < 1e-6 && Math.abs(dz) < 1e-6) return;
+    if (Math.abs(dx) >= Math.abs(dz)) v.heading.set(Math.sign(dx), 0, 0.1 * Math.sign(dz)); else v.heading.set(0.1 * Math.sign(dx), 0, Math.sign(dz));
+    v.heading.normalize();
+  }
   // 奇门遁甲's day count under the name; with 诸葛亮 off the field the stones no longer take soldiers, and it says so.
   const qimenNote = (u) => (field.kongmingOn() ? `奇门 ${u.qimen}日` : '困·孔明不在');
   // 虚兵 / 连环 hold a general in place for days (feedback F10a, 2026-11-02): his tag says which and for how long, as 奇门 does.
@@ -295,5 +310,5 @@ export function makeUnits(wv) {
   // Only those still on the field: a resumed war keeps in field.units the generals who fell, were taken
   // or withdrew, for the settlement and the ambush's index, and they have no figure or name tag (D39, 2026-11-10).
   { const t = performance.now(); for (const u of field.units) if (!u.gone) addUnit(u); performance.measure('war:units', { start: t }); }
-  return { views, look, addUnit, place, tag, qimenNote, holdNote, figureBox, declutter, drop, removeGone, roundelOf, roundelShow, showRoundels, FIGURE, BASE_GEO, FILL, disposeUnits };
+  return { views, look, addUnit, place, faceFoes, tag, qimenNote, holdNote, figureBox, declutter, drop, removeGone, roundelOf, roundelShow, showRoundels, FIGURE, BASE_GEO, FILL, disposeUnits };
 }

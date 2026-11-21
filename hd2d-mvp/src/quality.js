@@ -10,7 +10,7 @@
 // When the 战略地图 or the war map runs slowly the game offers the next preset down once, in a corner notice the player can
 // take or ignore; it never switches by itself.
 import { h } from './ui.js';
-import { PHONE } from './phone.js';
+import { TOUCH } from './phone.js';
 
 const HIGH_PIXELS = 3.7e6, MEDIUM_PIXELS = 2.3e6; // 2560×1440 and about 2020×1140: on an M4 a frame is about 4 ms + 4.9 ms per million pixels
 export const PRESETS = {
@@ -18,8 +18,8 @@ export const PRESETS = {
   medium: { label: '中', ratio: 1.5, pixels: MEDIUM_PIXELS, ao: 'half', msaa: true, shadowCap: Infinity },
   // A phone's 低 keeps the flat maps and the cheap passes but not the pixel ratio of 1: on a 3× screen the 3D scenes that are left (the
   // 白兵, the 单挑, the title) came out a third of the screen's sharpness and read as blurred (iPhone 16 Pro, 2026-11-14). Twice, within
-  // a budget a little under 中's.
-  low: { label: '低', ratio: PHONE ? 2 : 1, ...(PHONE ? { pixels: 1.7e6 } : {}), ao: 'off', msaa: false, shadowCap: 2048 },
+  // a budget a little under 中's. A tablet's 低 is the phone's (TOUCH): its screen is as dense, and 1 read as blurred the same way.
+  low: { label: '低', ratio: TOUCH ? 2 : 1, ...(TOUCH ? { pixels: 1.7e6 } : {}), ao: 'off', msaa: false, shadowCap: 2048 },
 };
 const ORDER = ['high', 'medium', 'low'];
 // The 3D canvas's pixel ratio for a preset in a w×h (CSS pixels) window on a screen of ratio dpr.
@@ -31,8 +31,9 @@ const KEY = 'hd2d-quality', ASKED = 'hd2d-quality-asked';
 const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
 
 // The preset stored from last time, for what must be decided before the renderer's settings (which 战略地图 to build).
-// A phone starts on 低 (the flat 战略地图 and war map: an iPhone 16 Pro only just holds 60 fps on 高, 2026-11-14) until the player picks.
-export const savedQuality = () => (PRESETS[store(KEY)] ? store(KEY) : PHONE ? 'low' : 'high');
+// A phone starts on 低 (the flat 战略地图 and war map: an iPhone 16 Pro only just holds 60 fps on 高, 2026-11-14) until the player picks,
+// and so does a tablet (TOUCH): on 高 an Android tablet's GPU drew the 3D maps far below a phone's flat ones (2026-11-20).
+export const savedQuality = () => (PRESETS[store(KEY)] ? store(KEY) : TOUCH ? 'low' : 'high');
 
 // 系统 → 战场: which war map a battle opens on, decided as it opens. 随画质 follows the preset (低 → the flat painted map, else
 // 3D); 平面 and 3D hold whatever the 画质, so a 3D 战略地图 can go with the flat war map and the other way round

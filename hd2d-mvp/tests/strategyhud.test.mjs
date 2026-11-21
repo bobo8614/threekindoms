@@ -100,3 +100,32 @@ test('出阵 picks on the map without a list for the mouse; the keys bring the l
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('.mappick'));
 });
+
+// 调遣 (once 移动, 2026-11-20) picks as 出阵 does: no list for the mouse; a city already at 10 does not glow, and the room the
+// one picked has left is told when the officers are chosen. Last here: it fills a neighbour and empties another.
+test('调遣 picks on the map without a list; a full city does not glow; the officer picker tells the room left', async () => {
+  const [own, full, open] = await page.evaluate(() => {
+    const { g, G } = window.__game, own = g.factions[g.player].city, [a, b] = G.roads(own);
+    const spare = g.cities.filter((c) => c.id !== own && c.id !== a && c.id !== b).flatMap((c) => c.officers).slice(0, 10);
+    Object.assign(g.cities[a], { faction: g.player, officers: spare }); Object.assign(g.cities[b], { faction: G.NONE, officers: [] });
+    window.__game.strategy.refresh(g); return [own, a, b];
+  });
+  await clickCity(own);
+  await page.mouse.move(700, 500); await page.mouse.move(710, 505);
+  await cmd(page, '军', '调遣');
+  await page.waitForSelector('.mappick.nolist');
+  assert.match(await page.locator('.mappick h4').textContent(), /调遣到哪座城池？/);
+  assert.match(await page.locator('.mappick').textContent(), /点选地图上发光的城市/);
+  const glow = await page.evaluate(() => [...document.querySelectorAll('.ctag.cand')].map((e) => e.firstChild.textContent));
+  const nameOf = (id) => page.evaluate((id) => window.__game.G.cityName(id), id);
+  assert.ok(glow.includes(await nameOf(open)), glow.join(' | '));
+  assert.ok(!glow.includes(await nameOf(full)), `${await nameOf(full)} has 10 and must not glow`);
+  await page.keyboard.press('Tab'); // the keys bring the list back, with the count
+  const chip = page.locator('.mappick .chips .btn', { hasText: await nameOf(open) });
+  assert.match(await chip.textContent(), /0\/10/);
+  await chip.focus(); await page.keyboard.press('Enter'); // a keys player's pick (a mouse click would hide the list again)
+  await page.waitForSelector('.modal');
+  assert.match(await page.locator('.modal').first().textContent(), new RegExp(`选择调往${await nameOf(open)}的武将（还可进 10 人）`));
+  await page.keyboard.press('Escape');
+  assert.deepEqual(page.errors, []);
+});

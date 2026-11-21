@@ -24,9 +24,8 @@ for (const [command, family, ok] of [['离间', XBOX, 'a'], ['诱纳', NINTENDO,
     const press = k => padTap(p, k, { wait: 220 });
     await press(ok);
     await press(ok);
-    await walkTo(p, 'down', /外交/);
-    await press(ok);
-    await walkTo(p, 'right', new RegExp(command));
+    await press('lb'); // 城 → 谋, the focus on its first row
+    await walkTo(p, 'down', new RegExp(command));
     await press(ok);
     assert.ok(await p.locator('.tc > summary:focus').count(), 'opens on a city');
     // Open a city reached below the initial viewport, including a closed branch.
@@ -207,7 +206,7 @@ test('bound keys on the strategy HUD and in the map city picker follow the displ
       }), 'shortcut legend fits below the buttons and clear of System');
       await shot(p, 'map-shortcuts-' + width);
     }
-    await cmd(p, '军', '移动');
+    await cmd(p, '军', '调遣');
     await p.locator('.mappick').waitFor();
     await padTap(p, 'home');
     const roads = await p.locator('.roadsbtn').getAttribute('aria-pressed');
@@ -219,7 +218,7 @@ test('bound keys on the strategy HUD and in the map city picker follow the displ
     await padTap(p, 'b');
     await p.locator('.mappick').waitFor({ state: 'detached' });
     for (const action of ['诱纳', '离间']) {
-      await cmd(p, '城', '外交', action);
+      await cmd(p, '谋', action);
       await padTap(p, 'home');
       await padTap(p, 'x'); await padTap(p, 'view');
       assert.ok(await p.locator('.otree :focus').count());

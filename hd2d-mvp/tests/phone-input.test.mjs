@@ -62,3 +62,21 @@ for (const [label, profile, query, expected] of [
   try { assert.equal(await page.evaluate(() => document.body.classList.contains('phone')), expected); }
   finally { await page.context().close(); }
 });
+
+// Touch handling (body.touch: the maps' touch-action none, the flat maps' pinch and slide, 低 to start) goes with a finger, not
+// with the phone's layout: an Android tablet, short side 800, kept the desktop layout and lost the touch handling with it (2026-11-20).
+const tablet = { width: 1280, height: 800, primary: true, anyTouch: true, anyFine: false, ua: 'Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/131 Safari/537.36' };
+for (const [label, profile, query, want] of [
+  ['an Android tablet is touch with the desktop layout, on 低', tablet, '', { touch: true, phone: false, canvas: 'none', quality: 'low' }],
+  ['an Android tablet that also reports a mouse is still touch', { ...tablet, anyFine: true }, '', { touch: true, phone: false, canvas: 'none', quality: 'low' }],
+  ['a phone is touch too', phoneWithMouse, '', { touch: true, phone: true, canvas: 'none', quality: 'low' }],
+  ['a Windows touch PC stays a desktop, on 高', { width: 960, height: 540, primary: true, anyTouch: true, anyFine: true, ua: windows }, '', { touch: false, phone: false, canvas: 'auto', quality: 'high' }],
+  ['touch=0 turns it off on a tablet', tablet, '&touch=0', { touch: false, phone: false, canvas: 'auto', quality: 'high' }],
+]) test(label, async () => {
+  const page = await open(profile, query);
+  try {
+    await page.waitForFunction(() => window.__game?.debug?.quality, null, { timeout: 30000 });
+    assert.deepEqual(await page.evaluate(() => ({ touch: document.body.classList.contains('touch'), phone: document.body.classList.contains('phone'),
+      canvas: getComputedStyle(document.querySelector('#stage canvas')).touchAction, quality: window.__game.debug.quality.level })), want);
+  } finally { await page.context().close(); }
+});

@@ -217,7 +217,10 @@ export class Field {
     for (const [u, info] of [[a, res.a], [d, res.d]]) {
       const o = this.O(u.id);
       o.soldiers = info.soldiers; o.hp = info.hp;
-      if (info.fate === 'dead') { o.status = DEAD; u.gone = true; u.fate = 'dead'; }
+      // A general slain in the 白兵 or its 单挑 pays the one who faced him floor((武力 + 智力) / 2), whatever experience he had
+      // (bank13 $C766 → $C799 → bank14 $A009 → bank15 $D8B0 → $D7FB, which halves its input; fanxibaby@devblog). One taken
+      // alive pays nothing. tests/killexp.test.mjs.
+      if (info.fate === 'dead') { o.status = DEAD; u.gone = true; u.fate = 'dead'; addExp(this.g, (u === a ? d : a).id, Math.floor((o.war + o.int) / 2)); }
       if (info.fate === 'captured') { u.gone = true; u.fate = 'captured'; u.capturedBy = u.side === 'att' ? 'def' : 'att'; }
       if (info.fate === 'defected') this.defect(u, u.side === 'att' ? 'def' : 'att');
     }

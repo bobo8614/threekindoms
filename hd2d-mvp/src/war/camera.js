@@ -6,6 +6,8 @@ import { blurWeight } from '../post.js';
 import { W, H } from '../core/field.js';
 import { YAWS, PITCH, TOP_PITCH, TURN_MS, EDGE, tween } from './shared.js';
 
+const PINCH_STEP = Math.round(Math.log(1.5) * 1000); // two fingers' span 1.5× wider or narrower is one zoom step (zoom below)
+
 export function makeCamera(wv) {
   const { field, human, camera, flat, wx, wz, topY, S, showRoundels } = wv;
   // --- Camera ---
@@ -316,11 +318,13 @@ export function makeCamera(wv) {
     // The board is read from one fixed angle (A2): a drag slides the map instead of turning or tilting it.
     orbit(dx, dy) { const k = view.dist * 0.0021; this.pan(-dx * k, -dy * k / Math.sin(view.pitch)); },
     // The wheel steps 全景 → far → mid → near: every 100 of wheel turned (wheel down pulls back) is one step, and the ends stop.
-    zoom(d, at = null) { // at: where the pointer is (the wheel's own event); the pad and the keys give none
+    // Two fingers (pinch, from app.js: d is -1000 × the log of how much the span grew) step once for each 1.5× they open or close:
+    // at 100 a pinch was a step for every 10% and ran from end to end in one small gesture (Android tablet, 2026-11-20).
+    zoom(d, at = null, { pinch = false } = {}) { // at: where the pointer is (the wheel's own event); the pad and the keys give none
       if (view.tactical) return;
       const now = performance.now(); if (now - view.zoomAt > 600) view.zoomAcc = 0; view.zoomAt = now;
       view.zoomAcc += d;
-      if (Math.abs(view.zoomAcc) < 100) return;
+      if (Math.abs(view.zoomAcc) < (pinch ? PINCH_STEP : 100)) return;
       castMoved();
       const out = view.zoomAcc > 0, to = Math.min(STEPS.length - 1, Math.max(0, STEPS.indexOf(view.zoom) + (out ? -1 : 1))); view.zoomAcc = 0;
       // Pulling back at 全景 with the camera moved off it goes back to the overview.

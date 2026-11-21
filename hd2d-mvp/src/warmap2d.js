@@ -10,7 +10,7 @@ import { W, H, FOREST, RIVER, MOUNT, CASTLE } from './core/field.js';
 import { name, data } from './core/game.js';
 import { createSky2d } from './skyfx2d.js';
 import { rng } from './pixel.js';
-import { PHONE, margins } from './phone.js';
+import { PHONE, TOUCH, margins } from './phone.js';
 
 const KIND = ['forest', 'sand', 'grass', 'river', 'hill', 'castle'];
 // px kept for the HUD strips (ui.css body.flat2d). Under 1200 px the foe's card stacks as a strip above ours (ui.css .unitpanel.compare), so the bottom strip is that much taller.
@@ -175,7 +175,7 @@ export function flatten(war, G, blankScene) {
     view.x = Math.max(-mx, Math.min(mx, view.x)); view.y = Math.max(-my, Math.min(my, view.y));
     box = { k, cw: (B.w * k) / W, ch: (B.h * k) / H, x: (vw - B.w * k) / 2 + view.x, y: FLAT_INSET.top + (band - B.h * k) / 2 + view.y, dpr };
   }
-  // Phone only: one finger slides the board, two fingers zoom it about the point between them (app.js).
+  // A touch device (phone or tablet) only: one finger slides the board, two fingers zoom it about the point between them (app.js).
   const slide = (dx, dy) => { goal = null; view.x += dx; view.y += dy; place(); };
   const zoomAt = (deltaY, ndc) => {
     const z = Math.max(1, Math.min(2.4, view.z * Math.exp(-deltaY * 0.001))); if (z === view.z) return;
@@ -185,18 +185,22 @@ export function flatten(war, G, blankScene) {
   };
   // Bring a cell to where the HUD leaves the board clear (the middle of the screen, a little above centre).
   const centreOn = (x, y) => { view.x += innerWidth / 2 - (box.x + (x + 0.5) * box.cw); view.y += innerHeight * 0.45 - (box.y + (y + 0.5) * box.ch); place(); };
-  // The phone's camera follows the play (a mouse sees the whole board at once; a zoomed or slid phone board does not): the
+  // A touch device's camera follows the play (a mouse sees the whole board at once; a zoomed or slid board does not): the
   // general just selected, the enemy asked about, a unit that has just moved in the enemy's turn. A cell already in the clear
   // middle of the screen moves nothing; otherwise the board eases until it stands there. A drag of the player's ends the ease.
   let goal = null, lastSel = null, lastAsk = null, opened = false; const stood = new Map();
+  // A tablet keeps the desktop HUD in strips above and below the board, so a cell anywhere between them is in the clear: the
+  // board the battle opens on, whole, moves for nothing; one zoomed or slid moves only for a cell gone under a strip or off the side.
+  const clear = (px, py, vw, vh) => (PHONE ? px > vw * 0.24 && px < vw * 0.76 && py > 52 && py < vh - 112
+    : px > FLAT_INSET.side + box.cw * 0.5 && px < vw - FLAT_INSET.side - box.cw * 0.5 && py > FLAT_INSET.top + box.ch * 0.5 && py < vh - FLAT_INSET.bottom - box.ch * 0.5);
   const ensure = (x, y) => {
     const px = box.x + (x + 0.5) * box.cw, py = box.y + (y + 0.5) * box.ch, vw = innerWidth, vh = innerHeight;
-    if (px > vw * 0.24 && px < vw * 0.76 && py > 52 && py < vh - 112) return;
+    if (clear(px, py, vw, vh)) return;
     goal = { x: view.x + vw / 2 - px, y: view.y + vh * 0.45 - py };
   };
   function follow(dt) {
     const st = war.st, f = field, mine = f.units.filter((u) => u.side === f.human && !u.gone);
-    if (!opened && mine.length) { opened = true; const cx = mine.reduce((a, u) => a + u.x, 0) / mine.length, cy = mine.reduce((a, u) => a + u.y, 0) / mine.length; centreOn(cx - 0.5, cy - 0.5); }
+    if (PHONE && !opened && mine.length) { opened = true; const cx = mine.reduce((a, u) => a + u.x, 0) / mine.length, cy = mine.reduce((a, u) => a + u.y, 0) / mine.length; centreOn(cx - 0.5, cy - 0.5); }
     if (st.sel !== lastSel) { lastSel = st.sel; if (st.sel && !st.sel.gone) ensure(st.sel.x, st.sel.y); }
     const ask = st.confirm?.t ?? st.strike?.t ?? st.ask ?? null;
     if (ask !== lastAsk) { lastAsk = ask; if (ask && !ask.gone) ensure(ask.x, ask.y); }
@@ -569,14 +573,14 @@ export function flatten(war, G, blankScene) {
     // For the tests: how often the board under the generals was painted (paintBase) against frames drawn.
     flatDebug: () => ({ basePaints, frames, base: [base.width, base.height], canvas: [cv.width, cv.height], country: pic.country }),
     // A hidden window still moves the war on (app.js runs it 30 times a second) but paints nothing, as the 3D views.
-    update(dt) { time += dt; war.update(dt); if (PHONE) follow(dt); if (!document.hidden) draw(); },
+    update(dt) { time += dt; war.update(dt); if (TOUCH) follow(dt); if (!document.hidden) draw(); },
     hover(ndc) { return war.hoverCell(cellAt(ndc)); },
     click(ndc, e) { const c = cellAt(ndc); if (c) war.clickCell(c.x, c.y, e); }, // the event goes on: src/commitguard.js judges the click by it
     // A cell's centre on screen, in CSS px (tools click the map as a player would).
     screenOf: (x, y) => ({ x: box.x + (x + 0.5) * box.cw, y: box.y + (y + 0.5) * box.ch, cw: box.cw, ch: box.ch }),
     screenAxes: () => ({ x: [box.cw, 0], y: [0, box.ch] }), // one grid step on screen (the gamepad's cursor, app.js)
-    orbit() {}, zoom(d, ndc) { if (PHONE) zoomAt(d, ndc); }, pan() {}, resetView() { if (PHONE) { view.z = 1; view.x = view.y = 0; place(); } }, frame() {}, overview() { war.overview(); },
-    ...(PHONE ? { slide, centreOn } : {}),
+    orbit() {}, zoom(d, ndc) { if (TOUCH) zoomAt(d, ndc); }, pan() {}, resetView() { if (TOUCH) { view.z = 1; view.x = view.y = 0; place(); } }, frame() {}, overview() { war.overview(); },
+    ...(TOUCH ? { slide, centreOn } : {}),
     rotate: undefined, turn: undefined, turnEnd: undefined, tactical: undefined, viewState: undefined, dof: undefined, setTerrainView: undefined, // the flat map has no turn, zoom step or overview of its own
     setInsets() {},
   });

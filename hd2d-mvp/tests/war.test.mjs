@@ -1169,6 +1169,61 @@ test('at each of the four angles a figure faces the way he moves: side view mirr
   assert.deepEqual(p.errors, []);
 });
 
+// Measured on screen, not through pose()'s own formula: the heading once was a fixed +x / −x by side, and at two of the four
+// opening angles both armies stood with their backs to each other (2026-11-20).
+test('deploying, every general faces the enemy on screen at each of the four angles, and a placing ride ends facing them again', async () => {
+  const p = await game.open('', { clock: true });
+  try {
+    await toWar(p, { stopAtDeploy: true });
+    const look = () => p.evaluate(() => {
+      const w = window.__game.war, f = w.field, sx = (u) => { const q = w.spriteOf(u).position.clone(); q.project(w.camera); return q.x; };
+      return f.alive.map((u) => {
+        const foes = f.alive.filter((e) => e.side !== u.side), dx = foes.reduce((a, e) => a + sx(e), 0) / foes.length - sx(u);
+        return { id: u.id, dx, ...w.facing(u) };
+      });
+    });
+    for (let i = 0; i < 4; i++) {
+      for (const o of await look()) {
+        assert.ok(o.row?.startsWith('side'), `angle ${i}: ${o.id} stands in ${o.row}`);
+        if (Math.abs(o.dx) > 0.02) assert.equal(o.flip, Math.sign(o.dx), `angle ${i}: ${o.id} has his back to the enemy`);
+      }
+      await p.keyboard.press('q'); await p.waitForTimeout(500);
+    }
+    // Ride one of them to the cell of the deploy area farthest from the enemy: he turns back to face them as he reins in.
+    const moved = await p.evaluate(async () => {
+      const w = window.__game.war, f = w.field, u = f.side(f.human)[0], foes = f.alive.filter((e) => e.side !== u.side);
+      const fx = foes.reduce((a, e) => a + e.x, 0) / foes.length - u.x, fz = foes.reduce((a, e) => a + e.y, 0) / foes.length - u.y;
+      let best = null;
+      for (let y = 0; y < 19; y++) for (let x = 0; x < 32; x++) {
+        if (!f.inside(x, y) || f.unitAt(x, y)) continue;
+        const away = -(fx * (x - u.x) + fz * (y - u.y));
+        if (away > 0 && (!best || away > best.away)) best = { x, y, away };
+      }
+      if (!best) return null;
+      w.clickCell(u.x, u.y); w.clickCell(best.x, best.y);
+      if (u.x !== best.x || u.y !== best.y) return null; // outside the deploy area
+      await new Promise((r) => setTimeout(r, 1500));
+      return u.id;
+    });
+    if (moved != null) { const o = (await look()).find((x) => x.id === moved); if (Math.abs(o.dx) > 0.02) assert.equal(o.flip, Math.sign(o.dx), 'after the placing ride he faces the enemy'); }
+    assert.deepEqual(p.errors, []);
+  } finally { await p.context().close(); }
+});
+
+test('flat map: a figure faces the way he goes on the unturned board, whatever angle the 3D view had', async () => {
+  const r = await page.evaluate(async () => {
+    const w = window.__game.war, f = w.field, u = f.side(f.human)[0], out = [];
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { w.faceToward(u, dx, dz); await new Promise((r) => setTimeout(r, 120)); out.push({ dx, dz, ...w.facing(u) }); }
+    return out;
+  });
+  const [east, west, south, north] = r;
+  assert.ok(east.row.startsWith('side') && east.flip === 1, `east: ${east.row} ${east.flip}`);
+  assert.ok(west.row.startsWith('side') && west.flip === -1, `west: ${west.row} ${west.flip}`);
+  assert.ok(south.row.startsWith('front'), `down the screen: ${south.row}`);
+  assert.ok(north.row.startsWith('back'), `up the screen: ${north.row}`);
+  assert.deepEqual(page.errors, []);
+});
+
 // war-3d Task 7: occlusion. Name tags step aside or fold, hovering fades whoever covers a cell, a general behind another still reads.
 // Moves a general to a cell on the board (the rules' cell and his figure), as a march would leave him.
 const PUT = () => {

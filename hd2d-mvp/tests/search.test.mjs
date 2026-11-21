@@ -88,3 +88,16 @@ test('三顾: a full city does not count a visit', () => {
   const { g, out, xu } = visits({ full: true });
   assert.ok(out.every((r) => r.joined == null)); assert.equal(g.visits?.[xu], undefined);
 });
+
+// The 16 (officer, faction) pairs of the original's preference table, file 0x33A60 (research/player-search-evidence.md
+// §3). 0.3.x had 曹操's list one short: 程昱 (161) was dropped when the table was copied out, so he joined 曹操 at the
+// stranger's odds.
+test('search_preference holds the original table, 程昱 with 曹操 among them', () => {
+  const rom = [[109, 4], [112, 4], [86, 2], [55, 4], [183, 4], [99, 2], [107, 3], [47, 3], [161, 2], [234, 3], [235, 3],
+    [213, 3], [144, 4], [57, 2], [165, 2], [156, 2]];
+  const got = Object.entries(D.rules.search_preference).flatMap(([f, ids]) => ids.map((i) => [i, Number(f)]));
+  const key = ([i, f]) => `${i}:${f}`;
+  assert.deepEqual(got.map(key).sort(), rom.map(key).sort());
+  assert.ok(D.rules.search_preference['2'].includes(id('程昱')));
+  assert.ok(!D.rules.search_preference['2'].includes(id('郭嘉')));
+});

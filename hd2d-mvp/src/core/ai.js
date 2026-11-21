@@ -5,6 +5,7 @@ import { data, rng, NONE, SERVING, UNAPPEARED, RONIN, roads, citiesOf, troopsOf,
 import { tier, warlikePrelude, searchOdds, sourceExtra, giveDrop, keepDrop, extraPoints, devK, aiRecruitLoyalty, pickDomestic, adjustWeights, pickTarget, strongEnough } from './warlike.js';
 import { setupWar, occupyEmpty, autoBattle } from './warcore.js';
 import { phantomWar } from './ahuinan.js';
+import { tableDraws } from './origrng.js';
 
 const KEEP = [[30, 60, 90], [20, 50, 80], [10, 40, 70]]; // cumulative cut-offs for keeping 4/3/2 (else 1)
 const REAR = [2, 3, 3, 2, 3, 3, 2], FRONT = [4, 5, 4, 3, 4, 5, 4]; // A303 thresholds by faction
@@ -27,9 +28,13 @@ export async function aiTurn(g, f, io) {
   if (pts <= 0 || g.over) return;
   // A19C dispatches once. Every path enters BEC7, which stays in domestic work; a war gets there through
   // A8D7/CA19 once settled. D4AD masks to 0–15 even when the nominal weight sum exceeds 16.
-  const x = r(Math.min(16, w[0] + w[1] + w[2]));
+  // A19C's D4AD and A1C5's D4BB(100) read the AI table (cursor $52) back to back, so they are taken as the ROM
+  // takes them (core/origrng.js): the vacant gate then passes ~1.3× as often as two independent draws give
+  // (weights 15/5/6, gate 20: 24.6% of turns, not 18.8%), and the remake took fewer empty cities than the
+  // original (docs/dev/pitfalls/rules.md, 123@devblog).
+  const td = tableDraws(r), x = td(Math.min(16, w[0] + w[1] + w[2]), 15);
   if (x < w[0]) {
-    await attackBranch(g, f, r, io, spend);
+    await attackBranch(g, f, r, io, spend, td(100));
   } else if (x < w[0] + w[1]) {
     // B49C/B5FC: 10 of 50 → diplomacy, otherwise B4AC → BD7A; both then enter BEC7.
     if (r(50) < 10) {
@@ -244,8 +249,8 @@ function marchers(g, src, n) {
     .slice(0, n).map((p) => p.id);
 }
 
-async function attackBranch(g, f, r, io, spend) {
-  if (r(100) < (g.level === 2 ? 30 : 20)) return vacant(g, f, r, spend);
+async function attackBranch(g, f, r, io, spend, gate) {
+  if (gate < (g.level === 2 ? 30 : 20)) return vacant(g, f, r, spend); // A1C5, drawn with the dispatch above
   const open = g.level === 2 || g.year >= 190 || (g.level === 1 && g.month >= 6);
   if (!open) return false;
   // A240: target with the fewest officers among non-allied enemy neighbours. 电脑好战 中级/上级 rank the same

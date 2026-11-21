@@ -16,18 +16,17 @@ try { enabled = localStorage.getItem('hd2d-vignettes') !== 'off'; } catch {}
 export const vignettesOn = () => enabled;
 export function setVignettes(on) { enabled = on; try { localStorage.setItem('hd2d-vignettes', on ? 'on' : 'off'); } catch {} }
 
-// Command → scene, with the 开发 field picking land / industry / pop. 移动, 侦察 and 施舍 have their own (feedback T12, 2026-10-30).
-const SCENE_OF = { 防灾: 'disaster', 记录: 'record', 征兵: 'conscript', 移动: 'march', 运输: 'move', 搜索: 'search', 侦察: 'scout', 赏赐: 'reward', 施舍: 'alms',
-  买米: 'rice-buy', 卖米: 'rice-sell', 卖宝: 'treasure', 病院: 'hospital', 书馆: 'school', 铁铺: 'weapons', 同盟: 'ally', 诱纳: 'poach', 离间: 'discord' };
+// Command → scene, with the 开发 field picking land / industry / pop. 调遣 (once 移动), 侦察 and 赈济 (once 施舍) have their own (feedback T12, 2026-10-30).
+const SCENE_OF = { 防灾: 'disaster', 记录: 'record', 征兵: 'conscript', 调遣: 'march', 运输: 'move', 搜索: 'search', 侦察: 'scout', 赏赐: 'reward', 赈济: 'alms',
+  买米: 'rice-buy', 卖米: 'rice-sell', 卖宝: 'treasure', 医馆: 'hospital', 书馆: 'school', 铁铺: 'weapons', 同盟: 'ally', 诱纳: 'poach', 离间: 'discord' };
 // The phrase each command plays (the original's $04D6 writes, research/music-cues-evidence.md §5, and
 // research/music-cues.csv; assets/audio/*/cue-*.mp3 from tools/original_audio_placeholders.py). 侦察, 任命 and 分兵
 // have none in the original.
-const CUE_OF = { 防灾: 'cue-land', 赏赐: 'cue-industry', 施舍: 'cue-industry', 买米: 'cue-town', 卖米: 'cue-town', 卖宝: 'cue-town',
-  移动: 'cue-move', 搜索: 'cue-move', 运输: 'cue-move', 同盟: 'cue-envoy', 诱纳: 'cue-envoy', 离间: 'cue-envoy', 记录: 'cue-record',
-  征兵: 'cue-conscript', 铁铺: 'cue-conscript', 病院: 'cue-study', 书馆: 'cue-study' };
-// 外交 (a row of 城 that opens 同盟 / 诱纳 / 离间): the one picked, or last picked; 同盟's before any.
-export const cueFor = (act, sub) => (act === '开发' ? { land: 'cue-land', industry: 'cue-industry', pop: 'cue-town' }[sub] || 'cue-land' : act === '外交' ? CUE_OF[sub] || CUE_OF.同盟 : CUE_OF[act]);
-export const sceneFor = (act, sub) => (act === '开发' ? { land: 'land', industry: 'industry', pop: 'pop' }[sub] || 'land' : act === '外交' ? SCENE_OF[sub] || SCENE_OF.同盟 : SCENE_OF[act]);
+const CUE_OF = { 防灾: 'cue-land', 赏赐: 'cue-industry', 赈济: 'cue-industry', 买米: 'cue-town', 卖米: 'cue-town', 卖宝: 'cue-town',
+  调遣: 'cue-move', 搜索: 'cue-move', 运输: 'cue-move', 同盟: 'cue-envoy', 诱纳: 'cue-envoy', 离间: 'cue-envoy', 记录: 'cue-record',
+  征兵: 'cue-conscript', 铁铺: 'cue-conscript', 医馆: 'cue-study', 书馆: 'cue-study' };
+export const cueFor = (act, sub) => (act === '开发' ? { land: 'cue-land', industry: 'cue-industry', pop: 'cue-town' }[sub] || 'cue-land' : CUE_OF[act]);
+export const sceneFor = (act, sub) => (act === '开发' ? { land: 'land', industry: 'industry', pop: 'pop' }[sub] || 'land' : SCENE_OF[act]);
 
 // ---------- assets ----------
 let index = null;

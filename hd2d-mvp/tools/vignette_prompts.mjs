@@ -81,13 +81,13 @@ ${CUT('magenta')}` },
     'actor-0': pose0('a young Han-dynasty recruit in a red tunic with a leather lamellar vest, red headscarf, leg wraps; holding a long spear with both hands; facing right.', 'on guard, spear held level at waist height, weight on the back foot'),
     'actor-1': pose1('a lunging thrust, front knee bent, spear driven forward at full reach'),
   } },
-  // 运输 (a supply cart on the road between castles); 移动 has its own (march).
+  // 运输 (a supply cart on the road between castles); 调遣 (once 移动) has its own (march).
   move: { loop: loop([0.32, 0.32]), layers: {
     bg: plate('officers or supplies to travel to another castle', 'A dirt road winding through green farmland and willow trees toward the walls of a distant castle on the horizon; soft afternoon light; the road crosses the foreground from left to right.', 'Leave the middle of the road in the foreground clear: an ox cart will be composited travelling along it. NO people, animals or carts in the picture.'),
     'actor-0': pose0('a two-wheeled wooden Han-dynasty ox cart loaded with rice sacks and a bound chest, pulled by a brown ox and driven by a carter in a straw hat walking beside the ox with a switch; the whole cart travelling to the RIGHT, seen from the side.', 'mid-stride: the ox with its near foreleg forward, the carter with his near leg forward'),
     'actor-1': pose1('the next step: the ox with its near foreleg back and far foreleg forward, the carter with his other leg forward, the cart wheel turned slightly'),
   } },
-  // 移动 (an officer rides to his new post, his standard-bearer on foot beside him); playtest of 2026-10-30, T12.
+  // 调遣, once 移动 (an officer rides to his new post, his standard-bearer on foot beside him); playtest of 2026-10-30, T12.
   march: { loop: loop([0.3, 0.3]), layers: {
     bg: plate('an officer to move to another castle', 'A broad stone-paved post road between poplar trees running from the left foreground toward a great walled castle with a three-storey gate tower on the right horizon; a wooden waystation pavilion with a red pennant by the road; fresh spring morning light, a few soft clouds.', 'Leave the road in the middle of the picture clear: a rider will be composited travelling along it. NO people, animals or carts in the picture.'),
     'actor-0': pose0('a Han-dynasty officer in a dark red robe over lamellar armour and a black official cap, riding a chestnut horse at a walk to the RIGHT, seen from the side; beside the horse on the far side walks a standard-bearer in a grey tunic carrying a tall pole with a rectangular red war banner (the banner and pole inside the canvas). Horse, rider and bearer together are one subject.', 'the horse mid-stride with its near foreleg raised, the bearer with his near leg forward, the banner streaming back'),
@@ -105,7 +105,7 @@ ${CUT('magenta')}` },
     'actor-0': pose0('a lean Han-dynasty scout in a dark brown hooded short coat, leg wraps and straw sandals, a short sword at his hip and a coil of rope on his shoulder; crouching low on one knee, seen from the side facing RIGHT.', 'crouched low, shading his eyes with his right hand, peering into the distance'),
     'actor-1': pose1('still crouched in the same place, now writing quickly on a small bamboo slip held in his left hand with a brush in his right, glancing up'),
   } },
-  // 施舍 (rice gruel ladled out to the people at the city gate); 赏赐 has its own (reward). Playtest of 2026-10-30, T12.
+  // 赈济, once 施舍 (rice gruel ladled out to the people at the city gate); 赏赐 has its own (reward). Playtest of 2026-10-30, T12.
   alms: { loop: loop([0.5, 0.4]), layers: {
     bg: plate('relief to be given to the people', 'Outside the gate of a Han-dynasty county town in early winter: the grey brick city gate and wall behind, a simple relief shelter of bamboo poles and straw matting, a few empty clay bowls stacked on a low wooden bench, sacks of rice piled against the wall, thin smoke, pale overcast light with a touch of warm sun.', OPEN),
     'actor-0': pose0('a kindly Han-dynasty official in a dark blue robe with the sleeves tied back and a black official cap, standing behind a large round black iron cauldron of steaming white rice gruel on a stone-ringed fire (include the cauldron, fire and steam in the cut-out, in front of him); a long wooden ladle in his right hand; facing the viewer three-quarters to the right.', 'dipping the ladle into the gruel, looking down into the cauldron'),
@@ -135,7 +135,7 @@ ${CUT('magenta')}` },
     'actor-0': pose0('a Han-dynasty farmer in a faded indigo short jacket and rolled trousers, a conical straw hat, a bronze sickle in his right hand; standing in the rice facing right.', 'bent forward, the left hand gathering a bunch of rice stalks, the sickle drawn back ready to cut'),
     'actor-1': pose1('the cut — the sickle swept through the stalks, the cut sheaf lifted in his left hand'),
   } },
-  // 病院 (a physician grinds herbs; a pot steams on the brazier).
+  // 医馆, once 病院 (a physician grinds herbs; a pot steams on the brazier).
   hospital: { loop: loop([0.4, 0.35]), layers: {
     bg: plate('treatment at the physician\'s house', 'Inside a Han-dynasty physician\'s house: a tall wooden cabinet of many small herb drawers, bundles of dried herbs hanging from the beams, a clay pot steaming on a charcoal brazier at the right, a low table with bowls; warm window light.', OPEN),
     'actor-0': pose0('an elderly Han-dynasty physician with a long white beard in a light grey robe and a black cap, standing at a waist-high stone mortar, a pestle in both hands; facing right.', 'the pestle raised above the mortar'),

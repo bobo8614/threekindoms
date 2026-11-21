@@ -136,12 +136,14 @@ export const troopsOf = (g, c) => c.officers.reduce((a, id) => a + g.officers[id
 export const books = (g, f) => D.rules.books[Math.min(citiesOf(g, f).length, D.rules.books.length - 1)];
 
 // ---------- Income (5.2): every city, ID 29→0, regardless of owner ----------
+// Empty cities too: the original's loop (bank25 $A429 / $A5EE) has no owner test, so an empty city's gold and rice grow
+// every year, and the AI's vacant expansion subtracts them from what it must bring (B1FD). Skipping them made the AI
+// take far fewer empty cities (docs/dev/pitfalls/rules.md, 123@devblog).
 const GOV_C = (t) => (t <= 50 ? 50 : t <= 70 ? 60 : t <= 80 ? 70 : t <= 90 ? 80 : t <= 99 ? 90 : 100);
 export function income(g, kind) {
   const [A, B] = D.rules.income_ab[g.level];
   const out = [];
   for (const c of [...g.cities].reverse()) {
-    if (c.faction === NONE) continue;
     const Dv = kind === 'gold' ? c.industry : c.land, N = kind === 'gold' ? 80 : 60;
     const q = Math.floor((c.pop * (Math.floor(Dv / A) + B)) / N);
     const inc = aiIncome(g, c, kind, Math.floor((q * GOV_C(c.gov)) / 100)); // 电脑好战 上级 bonus (off: unchanged)
@@ -540,7 +542,7 @@ export function study(g, cid, id) {
 }
 export function heal(g, cid, id) {
   const c = g.cities[cid], o = g.officers[id], r = rng(g), max = maxHp(o);
-  if (!D.cities[cid].facilities.hospital) return { ok: false, msg: '此城没有病院' };
+  if (!D.cities[cid].facilities.hospital) return { ok: false, msg: '此城没有医馆' };
   if (o.hp >= max) return { ok: false, msg: '体力已满' };
   if (c.gold < 50) return { ok: false, msg: '金不足' };
   c.gold -= 50; const before = o.hp; o.hp = Math.min(max, o.hp + 35 + r(11));
@@ -572,8 +574,8 @@ export function assignTroops(g, cid, id, delta) {
 }
 export function moveOfficers(g, from, to, ids) {
   const a = g.cities[from], b = g.cities[to];
-  if (!roads(from).includes(to)) return { ok: false, msg: '只能移往道路相连的城' };
-  if (b.faction !== a.faction && b.faction !== NONE) return { ok: false, msg: '只能移往己方或无主城' };
+  if (!roads(from).includes(to)) return { ok: false, msg: '只能调往道路相连的城' };
+  if (b.faction !== a.faction && b.faction !== NONE) return { ok: false, msg: '只能调往己方或无主城' };
   if (b.officers.length + ids.length > 10) return { ok: false, msg: '目标城武将已满10人' };
   const f = a.faction, ruler = g.factions[f].ruler;
   a.officers = a.officers.filter((x) => !ids.includes(x));
@@ -581,7 +583,7 @@ export function moveOfficers(g, from, to, ids) {
   if (ids.includes(ruler)) { b.officers = [ruler, ...b.officers.filter((x) => x !== ruler)]; g.factions[f].city = to; }
   if (!a.officers.length) a.faction = NONE;
   b.faction = f;
-  return { ok: true, msg: `${ids.map(name).join('、')} 移往${cityName(to)}` };
+  return { ok: true, msg: `${ids.map(name).join('、')} 调往${cityName(to)}` };
 }
 export function transport(g, from, to, gold, rice, treasure) {
   const a = g.cities[from], b = g.cities[to];

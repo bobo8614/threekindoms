@@ -19,7 +19,7 @@ const toggle = async () => {
 };
 // 城 → 记录 from the dock, into the slot named, up to the end of the command.
 const save = async (slot) => {
-  await cmd(page, '录');
+  await cmd(page, '城', '记录');
   await page.locator('.shade .slot', { hasText: `记录${slot}` }).click();
   await page.waitForFunction(() => !document.querySelector('.shade'));
 };
@@ -46,7 +46,8 @@ test('switched on, a record costs nothing and the dock says so', async () => {
   await toggle();
   const { books, free } = await state();
   assert.equal(free, true);
-  assert.ok(await page.locator('.dock .tabs .btn.free[data-tab="录"]').count(), '录 marked 免');
+  await openCmds(page, '城');
+  assert.ok(await cmdRow(page, '记录').locator('em.free').count(), '记录 marked 免');
   await save('二'); await page.waitForTimeout(800);
   assert.equal((await state()).books, books);
   assert.equal(await record(2), books);
@@ -66,7 +67,8 @@ test('switched off again it costs one, and a record from before the option reads
   await toggle();
   const { books, free } = await state();
   assert.ok(!free);
-  assert.equal(await page.locator('.dock .tabs .btn.free[data-tab="录"]').count(), 0);
+  await openCmds(page, '城');
+  assert.equal(await cmdRow(page, '记录').locator('em.free').count(), 0);
   await save('四'); await settle(books - 1);
   assert.equal(await record(4), books - 1);
   assert.ok(!(await page.evaluate(() => JSON.parse(localStorage.getItem('haou-hd2d-save:1')).freeSave)));

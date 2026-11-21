@@ -32,9 +32,12 @@ export function makePlay(wv) {
   // Pick the facing (and walk frame) from the heading in camera space: within ~35° of the camera is the
   // three-quarter front, within ~35° of straight away the three-quarter back, otherwise the side profile;
   // leftward headings mirror the sprite. v.face is ±1 only in profile (it drives the sideways lean).
+  // The flat map (src/warmap2d.js) draws the board unturned, +x to the right and +z down toward the eye, whatever
+  // angle the 3D view would have had: with that angle's axes a march east was mirrored on it at two of the four.
   const toCam = new THREE.Vector3();
   function pose(v) {
-    right.set(Math.cos(view.yaw), 0, -Math.sin(view.yaw)); toCam.set(Math.sin(view.yaw), 0, Math.cos(view.yaw));
+    if (wv.flat) { right.set(1, 0, 0); toCam.set(0, 0, 1); }
+    else { right.set(Math.cos(view.yaw), 0, -Math.sin(view.yaw)); toCam.set(Math.sin(view.yaw), 0, Math.cos(view.yaw)); }
     const hx = v.heading.dot(right), hz = v.heading.dot(toCam), ang = Math.atan2(Math.abs(hx), hz);
     if (Math.abs(hx) > 0.08) v.flip = Math.sign(hx);
     if (!v.frames) { v.face = v.flip; v.body.scale.x = v.flip; return; }
@@ -47,8 +50,9 @@ export function makePlay(wv) {
     if (f !== v.frame) { v.frame = f; v.tex.offset.x = f / v.frames.length; v.ntex.offset.x = v.tex.offset.x; }
   }
   // perCell given: exactly that long per cell (the enemy's march keeps its own timeline). Left out: PACE per
-  // cell, the cells past the fourth at 0.7 of it so a long ride doesn't drag.
-  async function moveAlong(u, path, { perCell = null, follow = true, sound = true, minMs = 260, settleMs = 180 } = {}) {
+  // cell, the cells past the fourth at 0.7 of it so a long ride doesn't drag. He ends facing the way he rode; `face`, when
+  // given, turns him as he reins in ('foes': toward the enemy, as deploying does; a vector: that heading, as undo does).
+  async function moveAlong(u, path, { perCell = null, follow = true, sound = true, minMs = 260, settleMs = 180, face = null } = {}) {
     const v = views.get(u);
     if (!path.length) return place(u);
     const pts = [v.g.position.clone()];
@@ -89,6 +93,7 @@ export function makePlay(wv) {
     const [ex, ey] = path[path.length - 1]; v.g.position.set(wx(ex), topY(ex, ey), wz(ey));
     // Settle: he reins in, the standing frame, one small sink onto the hooves.
     v.walk = false; v.bill.position.y = 0;
+    if (face === 'foes') wv.faceFoes(u); else if (face) v.heading.copy(face);
     await tween(settleMs, (k) => { v.body.scale.y = 1 - 0.022 * Math.sin(k * Math.PI); });
     v.body.scale.y = 1; v.moving = false;
   }
@@ -344,6 +349,7 @@ export function makePlay(wv) {
       showDeploy();
       await new Promise((res) => (wv.endDeploy = res));
       ui.deploy?.(false);
+      for (const u of field.alive) wv.faceFoes(u); // both armies as they now stand (a placing ride may still be settling)
     }
     while (!field.over) {
       if (field.turn === human) {

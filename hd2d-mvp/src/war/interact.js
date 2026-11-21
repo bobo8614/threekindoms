@@ -137,7 +137,7 @@ export function makeInteract(wv) {
   function deployClick(x, y) {
     const u = field.unitAt(x, y);
     if (u && u.side === human) { st.sel = u; return showDeploy(); }
-    if (!u && st.sel && inRect(x, y)) { const s = st.sel; s.x = x; s.y = y; audio.sfx('sfx-step'); showDeploy(); wv.moveAlong(s, [[x, y]], { perCell: 240, follow: false }); }
+    if (!u && st.sel && inRect(x, y)) { const s = st.sel; s.x = x; s.y = y; audio.sfx('sfx-step'); showDeploy(); wv.moveAlong(s, [[x, y]], { perCell: 240, follow: false, face: 'foes' }); }
   }
   wv.endDeploy = undefined;
   function finishDeploy() { if (!st.deploying) return; st.deploying = false; clearMarks(); st.sel = null; wv.endDeploy?.(); }
@@ -206,7 +206,7 @@ export function makeInteract(wv) {
     // the same cell again, or 确认移动 on his card, moves him. Another gold cell asks about that one instead.
     if (PHONE && !(asked && asked.x === x && asked.y === y)) { st.moveAsk = { x, y, spent }; st.hoverCell = { x, y }; st.through = null; hot(st.hoverCell); showOptions(); return; }
     wv.lock(); for (const [px, py] of path) mark(px, py, 'path');
-    st.last = { u: s, x: s.x, y: s.y, spent, path };
+    st.last = { u: s, x: s.x, y: s.y, spent, path, heading: views.get(s).heading.clone() };
     field.move(s, x, y, spent); hud();
     await wv.moveAlong(s, path);
     if (field.lastAmbush) { const amb = field.lastAmbush; ui.log(`<em>中了${name(amb.by.id)}的十面埋伏！损兵 ${amb.damage}</em>`); audio.sfx('sfx-clash'); STRATEGY_FX.encircle(scene, views.get(s).g.position.clone().setY(1)); wv.tag(s); field.lastAmbush = null; await ui.stratResult?.('十面埋伏', `遭到敌方伏兵奇袭，士兵减少了 ${amb.damage} 人。`, s.id, 'grief'); await wv.tellLevelUps(); }
@@ -296,13 +296,13 @@ export function makeInteract(wv) {
     wv.castOn(c.u, c.id, c.t, Math.min(c.n ?? 1, runMax(c.id)));
     return true;
   }
-  // Undo rides back along the same route, a little quicker than the way out.
+  // Undo rides back along the same route, a little quicker than the way out, facing the way he rides, and stands as he stood before.
   async function undo() {
     const l = st.last; if (!l || st.busy || st.confirm || st.strike || field.turn !== human) return;
     l.u.x = l.x; l.u.y = l.y; field.pool[human] += l.spent; st.last = null;
     ui.log(`撤销 ${name(l.u.id)} 的移动，退还机动力 ${l.spent}`); hud();
     wv.lock();
-    await wv.moveAlong(l.u, [...l.path.slice(0, -1).reverse(), [l.x, l.y]], { perCell: 100 });
+    await wv.moveAlong(l.u, [...l.path.slice(0, -1).reverse(), [l.x, l.y]], { perCell: 100, face: l.heading });
     st.busy = false; select(l.u);
   }
   // The 退却 dialog holds the field (hold) while it asks for the city on the strategy map, then passes the

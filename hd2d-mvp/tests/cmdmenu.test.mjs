@@ -38,7 +38,7 @@ test('each row says what it does, or why it cannot be done', async () => {
   await openCmds(page, '町');
   assert.deepEqual((await rows()).map((r) => [r.name, r.note, r.off]), [
     ['买米', '在市集用金买米', false], ['卖米', '在市集卖米换金', false], ['卖宝', '没有宝物', true],
-    ['病院', '没有负伤的武将', true], ['书馆', '此城没有书馆', true], ['铁铺', '为武将购买武器与防具', false]]);
+    ['医馆', '没有负伤的武将', true], ['书馆', '此城没有书馆', true], ['铁铺', '为武将购买武器与防具', false]]);
   await openCmds(page, '军');
   assert.deepEqual((await rows()).filter((r) => r.free).map((r) => r.name), ['分兵', '任命']);
   await tabBtn('军').click();
@@ -52,31 +52,25 @@ test('no row\'s note is cut short, in any group', async () => {
   await tabBtn('町').click();
 });
 
-// The menu as 阿拉神丁@qq laid it out (2026-11-18): one character for a group, two for a command; 外交 under 城 opens its
-// three as 开发 opens its fields, 移动 is under 军, and 录 is 记录 pressed straight from the dock.
+// The menu as 阿拉神丁@qq laid it out (2026-11-18): one character for a group, two for a command; since 2026-11-20 the five
+// groups are 原版's five: 记录 back in 城, 原版's 外交 as 谋 with its three commands straight in the list.
 test('the groups and their commands', async () => {
-  assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.dock .tabs .btn')].map((b) => b.textContent)), ['城', '军', '仓', '町', '录']);
+  assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.dock .tabs .btn')].map((b) => b.textContent)), ['城', '军', '仓', '町', '谋']);
   const lists = {};
-  for (const t of ['城', '军', '仓', '町']) { await openCmds(page, t); lists[t] = (await rows()).map((r) => r.name); }
-  assert.deepEqual(lists, { 城: ['开发', '防灾', '搜索', '外交'], 军: ['出阵', '移动', '征兵', '分兵', '侦察', '任命'], 仓: ['运输', '赏赐', '施舍'], 町: ['买米', '卖米', '卖宝', '病院', '书馆', '铁铺'] });
+  for (const t of ['城', '军', '仓', '町', '谋']) { await openCmds(page, t); lists[t] = (await rows()).map((r) => r.name); }
+  assert.deepEqual(lists, { 城: ['开发', '防灾', '搜索', '记录'], 军: ['出阵', '调遣', '征兵', '分兵', '侦察', '任命'], 仓: ['运输', '赏赐', '赈济'], 町: ['买米', '卖米', '卖宝', '医馆', '书馆', '铁铺'], 谋: ['同盟', '诱纳', '离间'] });
   assert.ok(Object.values(lists).flat().every((a) => a.length === 2), 'every command two characters');
-  await tabBtn('町').click();
-  await cmd(page, '城', '外交'); await page.waitForSelector('.shade .cities');
-  assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.shade .cities .btn')].map((b) => b.dataset.k)), ['同盟', '诱纳', '离间']);
-  await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.shade'));
-  assert.equal(await tabOn(), '城', 'put off: the list is as it was');
-  await page.keyboard.press('Escape');
+  await tabBtn('谋').click();
 });
 
-test('录 opens the record slots at once, by a click or the key 5; LB / RB pass it over', async () => {
-  await tabBtn('录').click(); await page.waitForSelector('.modal');
-  assert.match(await page.locator('.modal').first().textContent(), /记录/); assert.equal(await shown(), false, 'no list');
+test('the key 5 opens 谋, and LB / RB go round all five', async () => {
+  await page.keyboard.press('5'); assert.equal(await tabOn(), '谋');
+  await page.evaluate(() => window.__game.debug.cycleDock(1)); assert.equal(await tabOn(), '城', 'RB from 谋 goes round to 城');
+  await page.evaluate(() => window.__game.debug.cycleDock(-1)); assert.equal(await tabOn(), '谋', 'and LB back');
+  await page.evaluate(() => window.__game.debug.cycleDock(-1)); assert.equal(await tabOn(), '町');
+  await cmd(page, '城', '记录'); await page.waitForSelector('.modal');
+  assert.match(await page.locator('.modal').first().textContent(), /记录/);
   await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.modal'));
-  await page.keyboard.press('5'); await page.waitForSelector('.modal');
-  await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.modal'));
-  await page.keyboard.press('4'); assert.equal(await tabOn(), '町');
-  await page.evaluate(() => window.__game.debug.cycleDock(1)); assert.equal(await tabOn(), '城', 'RB from 町 goes round to 城');
-  await page.evaluate(() => window.__game.debug.cycleDock(-1)); assert.equal(await tabOn(), '町', 'and LB back');
   await page.keyboard.press('Escape');
 });
 
@@ -154,7 +148,7 @@ test('opened by the mouse, ↑ or ↓ on the group goes into its list', async ()
 
 // A map pick and the 系统 menu are not dialogs with a shade: the group keys must not work under them either (review, 2026-11-14).
 test('1–5 do nothing while a command picks a city on the map, or under the 系统 menu', async () => {
-  await cmd(page, '军', '移动'); await page.waitForSelector('.mappick');
+  await cmd(page, '军', '调遣'); await page.waitForSelector('.mappick');
   await page.keyboard.press('1');
   assert.equal(await tabOn(), '军', 'the list stays as it was'); assert.equal(await focus(), null, 'and the keys stay with the picker');
   await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.mappick'));

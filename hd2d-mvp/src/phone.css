@@ -15,7 +15,7 @@ body.phone .btn { min-height: 36px; }
 /* Held upright: the game is laid out for landscape only. */
 .turn-phone { display: none; }
 @media (orientation: portrait) {
-  body.phone::after { content: '请把手机横过来游玩'; position: fixed; inset: 0; z-index: 999; display: grid; place-items: center; background: #0c0907f2; color: #fff3d6; font: 22px var(--brush); letter-spacing: 4px; }
+  body.phone:not([data-screen="startup-error"])::after { content: '请把手机横过来游玩'; position: fixed; inset: 0; z-index: 999; display: grid; place-items: center; background: #0c0907f2; color: #fff3d6; font: 22px var(--brush); letter-spacing: 4px; }
 }
 
 /* ---------- ☰ 系统 ---------- */
@@ -63,14 +63,15 @@ body.phone .topbar .tbtns { gap: 4px; column-gap: 4px; }
 body.phone .topbar .tbtns .btn { min-height: 28px; padding: 0 8px; font-size: 13px; }
 body.phone .rightcol { display: none; }
 
-body.phone .citypanel { top: auto; bottom: var(--gb); left: var(--g); width: 250px; max-height: 118px; overflow: hidden; }
+body.phone .citypanel { top: auto; bottom: var(--gb); left: var(--g); width: 250px; max-height: calc(var(--vh) - var(--gt) - 40px - var(--gb)); overflow: hidden; }
+body.phone:not(.city-open) .citypanel > :is(.facs, .searchnote, .talentnote, .roster) { display: none; }
 body.phone .citypanel header { padding: 4px 10px 2px; gap: 8px; }
 body.phone .citypanel header h2 { font-size: 21px; letter-spacing: 1px; }
 /* 地名 考据: the original name beside the city's has no room in this header (陈留 原版 兖州 曹操 君主所在 详情 wrapped every word);
    the 说明 lists the pairs. */
 body.phone .citypanel header .origname { display: none; }
 body.phone .citypanel header::after { content: '详情 ▴'; margin-left: auto; font-size: 12px; color: var(--dim); }
-body.phone.city-open .citypanel { max-height: calc(var(--vh) - var(--gt) - 40px - var(--gb)); overflow-y: auto; overscroll-behavior: contain; width: min(340px, 46vw); z-index: 5; }
+body.phone.city-open .citypanel { overflow-y: auto; overscroll-behavior: contain; width: min(340px, 46vw); z-index: 5; }
 body.phone.city-open .citypanel header::after { content: '收起 ▾'; }
 
 body.phone .dock { position: fixed; top: calc(var(--gt) + 40px); bottom: calc(var(--gb) + var(--hit) + 8px); left: auto !important; right: var(--gr); transform: none; width: auto; max-width: none; padding: 4px; }

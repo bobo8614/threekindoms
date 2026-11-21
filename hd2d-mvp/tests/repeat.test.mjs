@@ -110,8 +110,8 @@ test('防灾 can be run several times too, and stops at what the gold surely cov
 });
 
 // A war on the player's turn, the enemy in a knot the player's best mind can 火计 (as tests/casttarget.test.mjs).
-async function knot() {
-  const page = await game.open();
+async function knot(query = '') {
+  const page = await game.open(query);
   await quick(page);
   await newCampaign(page);
   await page.evaluate(() => {
@@ -139,8 +139,10 @@ async function knot() {
     }
     if (!cells) return false;
     foes.slice(0, cells.length).forEach((e, i) => { [e.x, e.y] = cells[i]; });
-    const top = w.probe().top;
-    for (const u of f.alive) w.spriteOf(u)?.position.set(u.x - F.W / 2 + 0.5, top(u.x, u.y), u.y - F.H / 2 + 0.5);
+    if (!w.flat) {
+      const top = w.probe().top;
+      for (const u of f.alive) w.spriteOf(u)?.position.set(u.x - F.W / 2 + 0.5, top(u.x, u.y), u.y - F.H / 2 + 0.5);
+    }
     f.pool[f.human] = 30; w.clickCell(me.x, me.y);
     window.__k = { me };
     return true;
@@ -232,6 +234,65 @@ test('再施: after a cast he is back on the targets of the same 计略, the one
 const view = (page) => page.evaluate(() => { const v = window.__game.war.viewState(); return { yaw: v.yaw, dist: v.dist, zoom: v.zoom }; });
 const run = (page) => page.evaluate(() => { const r = document.querySelector('.actpanel .ap-run'); return r ? { label: r.querySelector('.ap-runlabel').textContent, n: Number(r.querySelector('.ap-runn').textContent), sum: document.querySelector('.actpanel .ap-foot').textContent } : null; });
 const still = (page) => page.waitForFunction(() => window.__game.war.viewState().still, null, { timeout: 20000 });
+
+for (const query of ['', '&flat']) test(`Enter casts the count just set with the mouse (#527, ${query ? 'flat' : '3D'})`, async () => {
+  const page = await knot(query);
+  const stop = closeMessages(page);
+  try {
+    const read = () => page.evaluate(() => {
+      const w = window.__game.war, f = w.field;
+      return { pool: f.pool[f.human], day: f.day, stage: w.st.stage, focus: document.activeElement.dataset.run };
+    });
+    await page.evaluate((flat) => {
+      const w = window.__game.war;
+      if (!!w.flat !== flat) throw new Error('unexpected war map view');
+      w.field.pool[w.field.human] = 36;
+    }, !!query);
+    const { day } = await read();
+    await page.keyboard.press('f');
+    await page.locator('.actpanel.strats [data-sid="0"]').click();
+    const rows = page.locator('.actpanel.targets [data-target]');
+    await rows.first().waitFor();
+    const targets = await rows.evaluateAll((buttons) => buttons.map((b) => b.dataset.target));
+    assert.ok(targets.length >= 3, 'three different 火计 targets');
+    const count = (key) => page.locator(`.actpanel.confirm [data-run="${key}"]`);
+    const choose = async (id) => {
+      await page.locator(`.actpanel.targets [data-target="${id}"]`).click();
+      await page.locator('.actpanel.confirm .ap-go:not(.arming)').waitFor();
+    };
+
+    await choose(targets[0]);
+    await page.locator('.actpanel.confirm .ap-back').focus();
+    await page.keyboard.press('Enter');
+    assert.deepEqual(await read(), { pool: 36, day, stage: 'targets', focus: undefined }, 'Enter on 返回 just backs out');
+
+    for (const [i, key] of ['less', 'more', 'max'].entries()) {
+      await choose(targets[i]);
+      if (key === 'less') {
+        await count('more').click();
+        await page.keyboard.press('Space');
+        assert.equal((await run(page)).n, 3, 'Space still adjusts the focused count button');
+      }
+      await count(key).click();
+      assert.equal((await run(page)).n, 2, `selected two casts with ${key}`);
+      assert.equal((await read()).focus, key, 'focus is still on the clicked count button');
+      const remaining = 36 - (i + 1) * 12;
+      await page.keyboard.down('Enter');
+      try {
+        const after = await read();
+        assert.equal(after.pool, remaining, `Enter on ${key} spent exactly two casts`);
+        assert.equal(after.stage, 'busy', 'the cast has started');
+        await castDone(page);
+        await page.keyboard.down('Enter'); // a repeat from the same press, now on the next step
+        const repeated = await read();
+        assert.equal(repeated.pool, remaining, 'the held key did not spend more mobility');
+        assert.equal(repeated.day, day, 'the held key did not end the day');
+        assert.equal(repeated.stage, remaining ? 'targets' : 'cmds', 'the held key did not pick another target');
+      } finally { await page.keyboard.up('Enter'); }
+    }
+    assert.deepEqual(page.errors, []);
+  } finally { stop(); await page.context().close(); }
+});
 
 test('连续 N 次: 1 to pool ÷ cost, a run of 3 is three casts in one window, the camera holds between casts and comes back on Esc', async () => {
   const page = await knot();

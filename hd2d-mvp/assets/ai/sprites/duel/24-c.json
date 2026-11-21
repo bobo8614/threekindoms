@@ -18,15 +18,15 @@
   "triumph"
  ],
  "cell": [
-  139,
-  119
+  170,
+  114
  ],
- "anchor": 70,
+ "anchor": 81,
  "figH": 112,
  "base": {
-  "idle_ref": 1,
+  "idle_ref": 0,
   "allin_charge_1": 1,
-  "allin_charge_2": 2,
+  "allin_charge_2": 0,
   "allin_leap": 0,
   "allin_smear": 0,
   "allin_impact": 0,
@@ -35,39 +35,39 @@
   "slump": 0,
   "man_fly": 0,
   "man_hit": 1,
-  "man_struggle": 1,
+  "man_struggle": 2,
   "horse_rear": 0,
   "weapon": 0,
-  "man_kneel": 1,
+  "man_kneel": 0,
   "triumph": 0
  },
  "tips": {
   "allin_charge_1": [
-   61,
-   52
+   73,
+   54
   ],
   "allin_charge_2": [
-   59,
-   52
+   67,
+   56
   ],
   "allin_leap": [
-   57,
-   48
+   60,
+   45
   ],
   "allin_smear": [
-   65,
-   80
+   78,
+   45
   ],
   "allin_impact": [
-   65,
-   48
+   86,
+   34
   ],
   "allin_land": [
-   62,
+   69,
    55
   ],
   "triumph": [
-   60,
+   53,
    54
   ]
  },

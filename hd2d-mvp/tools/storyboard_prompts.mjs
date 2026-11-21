@@ -287,7 +287,7 @@ export const SCENES = {
       'The dyke stands higher along its length, faced with stakes. The foreman walks along it, checking with his staff.',
       'A wave from the river breaks against the new dyke and falls back. The fields behind it stay dry.',
       'The rain has stopped and a break of light falls on the dyke. The labourers rest on it with hats off, the river running high beside it and the fields green behind it.']) },
-  // 移动: 把武将调往相邻的己方城或空城 (the officer rides to his new post).
+  // 调遣 (once 移动): 把武将调往相邻的己方城或空城 (the officer rides to his new post).
   march: { old: 'march', prompt: sheet(
     'A broad flat post road crosses the whole frame in the lower third, straight from the left edge to the right edge, then a branch climbs at the far right to a walled castle with a three-storey gate tower at the right horizon. Poplars stand behind the road. A wooden waystation pavilion stands just behind the road at the centre. Nothing stands in front of the road: only short grass, with no rocks, bushes or flower beds in the foreground. Fresh spring morning light with soft muted greens and earth tones; quiet, restrained colour, not saturated, no bright yellow flower fields.',
     'An officer in a dark red robe over lamellar armour and a black official cap on a chestnut horse, a standard-bearer in grey on foot beside him with a tall rectangular red banner. The figures are about a third of the panel height. They travel from left to right through the nine frames, in step, always on the road surface with hooves and feet fully visible on it, never leaving the road and never on rocks or grass. Horse legs must differ in each frame like a walk cycle.',
@@ -341,7 +341,7 @@ export const SCENES = {
       // not "only his hooded head showing behind the boulder": the head was painted lying on the flat rock top with no edge in
       // front of it, a man sunk into the stone (D37, 2026-11-10; this frame repainted alone, docs/review-assets/2026-11-10/devblog-213-219-fix/scout)
       'He creeps away low across the top of the ledge toward the pines at the left, on hands and knees, his whole body in view on the rock, the bright castle in the valley unaware.']) },
-  // 施舍: 向百姓施舍金米，提高统治度.
+  // 赈济 (once 施舍): 以金米赈济百姓，提高统治度.
   alms: { old: 'alms', prompt: sheet(
     'Outside the gate of a Han-dynasty county town in early winter: grey brick wall and gate behind, a relief shelter of bamboo and straw matting at the left, sacks of rice piled against the wall, snow patches on the ground, pale overcast light with a touch of warm sun.',
     'A kindly official in a dark blue robe with sleeves tied back and a black official cap, standing behind a large round black iron cauldron on a stone-ringed fire at the centre, with a long wooden ladle. Thin townsfolk in patched grey clothes with clay bowls, including an old man and a little girl.',
@@ -406,7 +406,7 @@ export const SCENES = {
       'He opens the strongbox and sets rows of gold ingots on the counter.',
       'The steward gathers the gold into his bag, and glances once at the jade.',
       'The steward leaves through the bright doorway with his heavy bag. The jade disc sits on its stand on the shelf, shining, and the dealer bows after him.']) },
-  // 病院: 花50金为武将治伤.
+  // 医馆 (once 病院): 花50金为武将治伤.
   hospital: { old: 'hospital', prompt: sheet(
     'Inside a Han-dynasty physician\'s house: a tall cabinet of many small herb drawers at the back left, an open doorway at the far left of the back wall, present and unchanged in all nine panels, bundles of dried herbs hanging from the beams, a clay pot steaming on a charcoal brazier at the right, a low couch at the centre, and a small work table with a stone mortar at the left beside the cabinet, at the same depth as the couch. All furniture is present from frame 1 and stays the same size and in the same place in all nine panels: nothing appears, moves or disappears, and nothing large stands in the foreground. Warm window light in restrained colour, not heavily orange.',
     'One single elderly physician with a long white beard, in a light grey robe and black cap, the same size in every panel. There is never a second physician: he appears exactly once in each panel, either by the couch or at the cabinet, never in both places. A wounded general wearing the same plain off-white under-robe and dark trousers in all nine panels, never bare-chested and never in other clothes. His left arm and shoulder are in a bloodied bandage until frame 6, and a clean white bandage from frame 7 on.',

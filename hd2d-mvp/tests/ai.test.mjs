@@ -263,3 +263,53 @@ test('上级 attacks when strong enough', async () => {
   }
   assert.ok(wars > 20, `most seeds march (30% draw the empty-city branch), got ${wars}`);
 });
+
+// ---- Empty cities and the AI's vacant expansion (123@devblog, 0.3.7: 辽东、西安阳 and others stayed empty for years) ----
+// The original collects tax and rice in every city, owner or not (bank25 $A429 / $A5EE); B1FD then takes the empty
+// city's gold off what the expedition must bring. Gold of the empty cities at 189-04, from the original's idle-player
+// run analysis/runtime/year-run/years-5p-snapshots.json (months 3 → 4).
+test('empty cities collect tax like any other, as the original', () => {
+  G.setData(original);
+  const g = G.newGame(4, 0, 1), got = new Map(G.income(g, 'gold'));
+  const want = { 辽东: 104, 西安阳: 65, 徐州: 183, 新野: 125, 交州: 72, 郁林: 65, 荆州: 205, 衡阳: 121, 长沙: 132, 零陵: 112, 永昌: 99 };
+  for (const [n, v] of Object.entries(want)) {
+    const cid = original.cities.findIndex((c) => c.name === n);
+    assert.equal(g.cities[cid].faction, G.NONE, `${n} starts empty`);
+    assert.equal(got.get(cid), v, `${n} tax`);
+  }
+});
+
+// Five idle-player years of the seven original runs (analysis/pacing-original.json, tools/pace_rules.mjs): the median
+// number of empty cities the AI takes over 10 seeds stays within two of the original's. Before the fix (no income in
+// empty cities, independent dispatch draws) 袁绍's run took 4 against 9, the two 刘备 level-2 runs 5 against 8 and 9.
+test('the AI takes about as many empty cities as the original in five years', async () => {
+  G.setData(original);
+  // The seven runs' empty cities taken (空城占领 in analysis/pacing-original.json's rules), copied here because the
+  // research folder is not part of the open-source mirror.
+  const runs = [['years-5p-cao', 2, 2, 9], ['years-5p-dong', 0, 0, 10], ['years-5p-g1', 4, 1, 8], ['years-5p-g4', 4, 1, 9],
+    ['years-5p-liuzhang', 5, 2, 7], ['years-5p', 4, 0, 10], ['years-5p-yuan', 1, 1, 9]]
+    .map(([run, player, level, n]) => ({ run, player, level, changes: { 空城占领: n } }));
+  const { resolveWar } = await import('../src/core/warcore.js'), { Field } = await import('../src/core/field.js');
+  for (const o of runs) {
+    const taken = [];
+    for (let seed = 1; seed <= 10; seed++) {
+      const g = G.newGame(o.player, o.level, seed);
+      let n = 0, prev = null;
+      const io = {
+        async event() {}, async aiTurn(f) { await aiTurn(g, f, io); },
+        async war(w) { const fd = new Field(g, w, 'def'); let k = 0; while (!fd.over && k++ < 100) { if (fd.turn === 'att') for (const a of fd.aiActions('att')) if (a.res?.pending) a.res.auto(); fd.endTurn(); } resolveWar(g, w, fd.result()); await G.checkFactions(g, io); },
+        async afterWar() { await G.checkFactions(g, io); }, async allianceOffer() { return false; }, async chooseHeir(f) { return G.autoHeir(g, f); },
+        async playerTurn() {
+          const now = g.cities.map((c) => c.faction);
+          if (prev) now.forEach((x, i) => { if (prev[i] === G.NONE && x !== G.NONE) n++; });
+          prev = now;
+          if (g.year >= 194) g.over = { type: 'stop' }; else g.endTurn = true;
+        },
+      };
+      await G.run(g, io); taken.push(n);
+    }
+    taken.sort((a, b) => a - b);
+    const med = taken[5], want = o.changes.空城占领;
+    assert.ok(med >= want - 2, `${o.run}: AI took ${med} empty cities (median of 10), the original ${want}`);
+  }
+});

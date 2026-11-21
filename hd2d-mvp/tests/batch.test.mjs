@@ -87,7 +87,7 @@ test('a run the books cut short says so; one that ends with the last book on the
   assert.doesNotMatch(B.healRun(h.g, h.cid, h.ids.slice(0, 1), { until: true, books: 1 }).msg, /命令书已用完/);
 });
 
-test('施舍 several times stops at 统治度 100', () => {
+test('赈济 several times stops at 统治度 100', () => {
   const { g, cid, c } = setup();
   c.gov = 95;
   const res = B.charityRun(g, cid, 100, 100, 5);
