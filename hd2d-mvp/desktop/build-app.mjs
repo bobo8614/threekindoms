@@ -10,10 +10,22 @@
 // vendors three.js (with only the addons the game imports) and the two web fonts into vendor/, where index.html
 // already loads them from (tools/serve.py serves the same layout in development). Needs cwebp (brew install webp).
 // The game sources are only read, never changed.
+//
+// --mobile (the Android APK, apk/package.json; with --out ../apk/app): the same content, cut to what a phone or tablet
+// screen shows (apk/README.md「体积」). Nothing is left out, only the precision a handheld screen never shows:
+// - the free-pose portraits (officer card, at most ~580 device px wide on a phone) at 640 px wide; the expression busts
+//   (dialog and roster, at most 120 CSS px × the screen ratio) at 288 px; both lossy again at q78;
+// - the waist-up figures keep their 768 px (the ending's frame shows them that wide on a tablet), lossy at q75;
+// - the painted war maps (the 低 preset's flat war map, a phone's and a tablet's default) keep their size, lossy at q72;
+// - the remix BGM / cue phrases at 128 kbps MP3, the original-game ones at 96 kbps (FC chiptune); SFX as they are.
+//   Same MP3 encoder family: Chrome decodes them sample for sample at the same length, so loops.json still holds;
+// - three.js minified, the fonts cut to the characters the shipped text uses (pyftsubset: `pip install fonttools brotli`,
+//   or set PYFTSUBSET to its path; a character typed in that is not in the game falls back to the system font).
+// Needs ffmpeg as well. Encodings are cached by content in desktop/.mobile-cache.
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -21,7 +33,9 @@ const run = promisify(execFile);
 
 const here = dirname(fileURLToPath(import.meta.url));
 const game = join(here, '..');
-const out = join(here, 'app');
+const argOf = (name) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : null; };
+const out = argOf('--out') ? resolve(argOf('--out')) : join(here, 'app');
+const MOBILE = process.argv.includes('--mobile');
 const mods = join(here, 'node_modules');
 
 // Generator inputs and editor-only material that the game never loads, and the dropped generated score (新编, assets/audio/bgm-*).
@@ -116,11 +130,46 @@ for (const { dir, ref: [from, to], in: file } of WEBP) {
   writeFileSync(join(out, file), src.replaceAll(from, to));
 }
 
+// --mobile: re-encode in place under the same names (see the header). Each output is cached by its input and
+// settings; an encoding that comes out larger than its source keeps the source.
+const mobileCache = join(here, '.mobile-cache');
+const lanes = (items, fn) => Promise.all(Array.from({ length: 8 }, async (_, lane) => { for (let i = lane; i < items.length; i += 8) await fn(items[i]); }));
+const slim = {};
+async function recode(rows, ext, encode) {
+  mkdirSync(mobileCache, { recursive: true });
+  await lanes(rows, async ({ file, label, args }) => {
+    const hit = join(mobileCache, createHash('sha1').update(readFileSync(file)).update(args.join(' ')).digest('hex') + ext);
+    if (!existsSync(hit)) await encode(file, hit + '.tmp', args).then(() => renameSync(hit + '.tmp', hit));
+    const was = statSync(file).size, now = statSync(hit).size;
+    if (now < was) cpSync(hit, file);
+    const s = (slim[label] ||= { files: 0, was: 0, now: 0 });
+    s.files++; s.was += was; s.now += Math.min(now, was);
+  });
+}
+const listIn = (dir, re) => (existsSync(join(out, dir)) ? readdirSync(join(out, dir)).filter((f) => re.test(f)).map((f) => join(out, dir, f)) : []);
+if (MOBILE) {
+  const SETS = [
+    { dir: 'assets/ai/portraits', args: ['-resize', '640', '0', '-q', '78'] },
+    { dir: 'assets/ai/faces', args: ['-resize', '288', '0', '-q', '78'] },
+    { dir: 'assets/ai/halfbody', args: ['-q', '75'] },
+    { dir: 'assets/ai/warground/maps', args: ['-q', '72'] },
+  ];
+  const rows = SETS.flatMap(({ dir, args }) => listIn(dir, /\.webp$/).map((file) => ({ file, label: dir, args: [...args, '-alpha_q', '100', '-sharp_yuv', '-metadata', 'none'] })));
+  await recode(rows, '.webp', (src, dst, args) => run('cwebp', ['-quiet', ...args, src, '-o', dst]))
+    .catch((e) => { throw new Error(`cwebp failed (brew install webp): ${e.message}`); });
+  // BGM and cue phrases; the SFX (short, some placed to the frame) stay as they are.
+  const AUDIO = [{ dir: 'assets/audio/remix', kbps: 128 }, { dir: 'assets/audio/original', kbps: 96 }];
+  const tracks = AUDIO.flatMap(({ dir, kbps }) => listIn(dir, /^(bgm|cue)-.*\.mp3$/).map((file) => ({ file, label: dir, args: ['-b:a', `${kbps}k`] })));
+  await recode(tracks, '.mp3', (src, dst, args) => run('ffmpeg', ['-v', 'error', '-y', '-i', src, '-map', '0:a', '-c:a', 'libmp3lame', ...args, '-f', 'mp3', dst]))
+    .catch((e) => { throw new Error(`ffmpeg failed (brew install ffmpeg): ${e.message}`); });
+}
+
 // three.js: the build plus the addons the game imports and what they import in turn (found by following
 // the import statements), so a newly used addon is picked up by the next snapshot.
 const three = join(mods, 'three');
 const threeVersion = JSON.parse(readFileSync(join(three, 'package.json'), 'utf8')).version;
-cpSync(join(three, 'build/three.module.js'), join(out, 'vendor/three/build/three.module.js'));
+// --mobile: the minified build under the name index.html's import map asks for.
+cpSync(join(three, MOBILE ? 'build/three.module.min.js' : 'build/three.module.js'), join(out, 'vendor/three/build/three.module.js'));
 const jsm = join(three, 'examples/jsm');
 const addons = new Set();
 const gameJs = listed.filter((f) => /^src\/.*\.js$/.test(f) && existsSync(join(game, f)));
@@ -140,20 +189,6 @@ while (queue.length) {
 }
 for (const rel of addons) cpSync(join(jsm, rel), join(out, 'vendor/three/examples/jsm', rel));
 
-// Fonts: the same families and weights index.html asks Google Fonts for, woff2 only.
-const faces = [['noto-serif-sc', [400, 600, 900]], ['ma-shan-zheng', [400]]];
-let css = '';
-for (const [pkg, weights] of faces) for (const w of weights) {
-  const dir = join(mods, '@fontsource', pkg);
-  css += readFileSync(join(dir, `${w}.css`), 'utf8')
-    .replace(/,\s*url\([^)]*\.woff\) format\('woff'\)/g, '')
-    .replace(/url\(\.\/files\/([^)]+\.woff2)\)/g, (_, name) => {
-      cpSync(join(dir, 'files', name), join(out, 'vendor/fonts/files', name));
-      return `url(./files/${name})`;
-    }) + '\n';
-}
-writeFileSync(join(out, 'vendor/fonts/fonts.css'), css);
-
 // index.html already loads three.js and the fonts from vendor/; fail loudly if that moved or it reaches out.
 const html = readFileSync(join(game, 'index.html'), 'utf8');
 for (const ref of ['vendor/fonts/fonts.css', './vendor/three/build/three.module.js', './vendor/three/examples/jsm/'])
@@ -161,8 +196,56 @@ for (const ref of ['vendor/fonts/fonts.css', './vendor/three/build/three.module.
 if (/https?:\/\//.test(html.replace(/<!--[\s\S]*?-->/g, ''))) throw new Error('index.html still references the network');
 writeFileSync(join(out, 'index.html'), html);
 
+// Fonts: the same families and weights index.html asks Google Fonts for, woff2 only. --mobile: every character of
+// the shipped text (code, data, markup, the 鸣谢 list) plus printable ASCII; each fontsource slice is cut to the characters
+// of its unicode-range that occur, and a slice with none is left out (as toy/build-toy.mjs on the Toy branch).
+const faces = [['noto-serif-sc', [400, 600, 900]], ['ma-shan-zheng', [400]]];
+const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+const used = new Set();
+if (MOBILE) {
+  for (const f of walk(out)) if (/\.(html|js|json|css|txt)$/.test(f) && !f.includes('/vendor/')) for (const c of readFileSync(f, 'utf8')) used.add(c.codePointAt(0));
+  for (let c = 0x20; c < 0x7f; c++) used.add(c);
+}
+const parseRange = (s) => s.split(',').map((r) => r.trim().replace(/^U\+/i, '')).map((r) => r.includes('?')
+  ? [parseInt(r.replace(/\?/g, '0'), 16), parseInt(r.replace(/\?/g, 'f'), 16)]
+  : r.split('-').map((x) => parseInt(x, 16))).map(([a, b = a]) => [a, b]);
+const pyftsubset = process.env.PYFTSUBSET || 'pyftsubset';
+const fontJobs = [];
+let css = '';
+mkdirSync(join(out, 'vendor/fonts/files'), { recursive: true });
+for (const [pkg, weights] of faces) for (const w of weights) {
+  const dir = join(mods, '@fontsource', pkg);
+  for (const block of readFileSync(join(dir, `${w}.css`), 'utf8').split(/(?=@font-face)/)) {
+    if (!block.startsWith('@font-face')) { css += block; continue; }
+    const name = block.match(/url\(\.\/files\/([^)]+\.woff2)\)/)[1];
+    if (MOBILE) {
+      const range = block.match(/unicode-range:\s*([^;]+);/);
+      const chars = range ? [...used].filter((c) => parseRange(range[1]).some(([a, b]) => c >= a && c <= b)) : [...used];
+      if (!chars.length) continue;
+      fontJobs.push({ file: join(dir, 'files', name), dst: join(out, 'vendor/fonts/files', name), chars });
+    } else cpSync(join(dir, 'files', name), join(out, 'vendor/fonts/files', name));
+    css += block.replace(/,\s*url\([^)]*\.woff\) format\('woff'\)/g, '').trimEnd() + '\n';
+  }
+  css += '\n';
+}
+if (fontJobs.length) {
+  mkdirSync(mobileCache, { recursive: true });
+  await lanes(fontJobs, async ({ file, dst, chars }) => {
+    const unicodes = chars.sort((a, b) => a - b).map((c) => c.toString(16)).join(',');
+    const hit = join(mobileCache, createHash('sha1').update(readFileSync(file)).update(unicodes).digest('hex') + '.woff2');
+    if (!existsSync(hit)) await run(pyftsubset, [file, `--unicodes=${unicodes}`, '--flavor=woff2', '--layout-features=*', '--no-hinting', `--output-file=${hit}.tmp`]).then(() => renameSync(hit + '.tmp', hit));
+    cpSync(hit, dst);
+    const s = (slim['vendor/fonts'] ||= { files: 0, was: 0, now: 0 });
+    s.files++; s.was += statSync(file).size; s.now += statSync(dst).size;
+  }).catch((e) => { throw new Error(`pyftsubset failed (pip install fonttools brotli, or set PYFTSUBSET): ${e.message}`); });
+}
+writeFileSync(join(out, 'vendor/fonts/fonts.css'), css);
+
 const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: game, encoding: 'utf8' }).trim();
 // Dirty means a change in what the package is made of (the KEEP paths above), not notes or captures under docs/.
 const dirty = execFileSync('git', ['status', '--porcelain', '--', 'index.html', 'save-editor.html', 'src', 'data', 'mods', 'assets'], { cwd: game, encoding: 'utf8' }).trim() ? '+dirty' : '';
-writeFileSync(join(out, 'build.json'), JSON.stringify({ commit: commit + dirty, built: new Date().toISOString(), music }, null, 1));
+writeFileSync(join(out, 'build.json'), JSON.stringify({ commit: commit + dirty, built: new Date().toISOString(), ...(MOBILE ? { profile: 'mobile' } : {}), music }, null, 1));
+const mb = (n) => `${(n / 2 ** 20).toFixed(1)} MB`;
+for (const [label, s] of Object.entries(slim)) console.log(`  --mobile ${label}: ${s.files} files, ${mb(s.was)} → ${mb(s.now)}`);
+if (MOBILE) console.log(`  --mobile total: ${mb(walk(out).reduce((n, f) => n + statSync(f).size, 0))}`);
 console.log(`${relative(process.cwd(), out) || out}: ${files} game files, ${(bytes / 2 ** 20).toFixed(1)} MB (${(webpSaved / 2 ** 20).toFixed(1)} MB less as WebP) + vendor (three ${threeVersion} with ${addons.size} addon files, fonts) @ ${commit}${dirty}; local audio: ${Object.entries(music).map(([k, fs]) => `${k}=${fs.map((f) => f.split('/').at(-2)).join('+')}`).join(' ') || 'none'}`);
