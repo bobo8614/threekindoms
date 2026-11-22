@@ -31,6 +31,13 @@ const serveJapan = async (ctx) => {
   await ctx.route(/\/assets\/ai\/sandtable\/regions\/index\.json$/, (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify(JAPAN) }));
 };
 
+// The sea's materials (sandtable.js waterMat): which map their depth reads, 'joint' (the boards' maps joined, sandregions.js
+// jointShelf) or 'own' (the board's sea.png), and the joint map's uuid. A far line down the Yellow Sea where each board read its own.
+const seaShelves = (page) => page.evaluate(() => {
+  const out = new Map(); window.__game.strategy.scene.traverse((o) => { const m = o.material; if (m?.userData?.shelf) out.set(m.uuid, [m.userData.shelf, m.userData.shelfMap ?? null]); });
+  return [...out.values()];
+});
+
 let game;
 before(async () => { game = await startGame(); });
 after(() => game?.close());
@@ -53,6 +60,7 @@ test('without a pack, nothing of any region is fetched, in 3D or 2D', async () =
     await newCampaign(page, '刘备');
     assert.deepEqual(seen, [], q);
     assert.equal(await page.evaluate(() => window.__game.strategy.world?.boards ?? null), null, q);
+    if (!q.includes('flat')) { const sh = await seaShelves(page); assert.ok(sh.length >= 1 && sh.every(([k, map]) => k === 'own' && map === null), JSON.stringify(sh)); }
     assert.deepEqual(page.errors, []);
   }
 });
@@ -121,6 +129,9 @@ test('3D japan: two boards join the original in one rectangle, every town stands
   // One rectangle: the west and south sides run on from the original's own; north and east are the new boards'.
   assert.equal(r.frame, 4, JSON.stringify(r)); assert.equal(r.mainRuns, 2, JSON.stringify(r));
   assert.ok(r.worst < 1e-3 && r.cross < 1e-3, JSON.stringify(r));
+  // Every board's sea reads its depth from the one joint map (docs/战略地图海面拼缝_修复指南_2026-11-21.md).
+  const sh = await seaShelves(page);
+  assert.ok(sh.length >= 3 && sh.every(([k]) => k === 'joint') && new Set(sh.map(([, map]) => map)).size === 1 && sh[0][1], JSON.stringify(sh));
   // east lies inside japan's box: a pack naming japan loads north and japan and never east.
   assert.ok(['north', 'japan'].every((b) => ['board.json', 'albedo.webp', 'light.webp', 'height.bin'].every((f) => seen.includes(`${b}/${f}`))), seen.join(' '));
   assert.ok(!seen.some((f) => f.startsWith('east/')), seen.join(' '));

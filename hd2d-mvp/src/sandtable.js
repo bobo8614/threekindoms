@@ -279,19 +279,27 @@ export function buildSandtable(scene, S, opts = {}) {
   const flowing = [];
   // 'gap': the open sea between this board and another (seaPatch), its shallows map blended from this board's to the other's
   // (`other`) across the strait, so neither board's edge shows as a step in the sea's colour.
+  // opts.shelf (sandregions.js, with extension regions): the boards' shallows maps joined in one picture over the joint box `box`,
+  // a quarter of their size. The sea's depth reads its coarse mip levels from that (two levels fewer, the picture being halved twice), so
+  // they run on across a board's edge; without regions each board's own map, as before.
+  const shelf = opts.shelf;
   const waterMat = (kind, other) => {
     const gap = kind === 'gap'; if (gap) kind = 'sea';
+    const joint = !!shelf && kind === 'sea';
     const fetch = (b) => (gap ? `mix(texture2D(uSeaMap, vRU${b}), texture2D(uSeaMap2, vRU2${b}), vGW)` : `texture2D(uSeaMap, vRU${b})`);
     const m = new THREE.MeshStandardMaterial({ roughness: 0.22, metalness: 0, transparent: true, depthWrite: false });
     const uTimeW = { value: 0 }; flowing.push(uTimeW);
-    m.customProgramCacheKey = () => `sandWater${kind}${gap ? 'gap' : ''}`;
+    m.customProgramCacheKey = () => `sandWater${kind}${gap ? 'gap' : ''}${joint ? 'joint' : ''}`;
+    if (kind === 'sea') m.userData.shelf = joint ? 'joint' : 'own';
+    if (joint) m.userData.shelfMap = shelf.map.uuid;
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uTimeW = uTimeW; sh.uniforms.uSeaMap = { value: S.sea }; sh.uniforms.uDetailFade = uDetailFade;
       if (gap) sh.uniforms.uSeaMap2 = { value: other };
+      if (joint) { sh.uniforms.uShelfMap = { value: shelf.map }; sh.uniforms.uShelfBox = { value: new THREE.Vector4(...shelf.box) }; }
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 ruv; varying vec3 vWW; varying vec2 vRU;' + (gap ? ' attribute vec2 ruv2; attribute float gw; varying vec2 vRU2; varying float vGW;' : ''))
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.)).xyz; vRU = ruv;' + (gap ? ' vRU2 = ruv2; vGW = gw;' : ''));
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        uniform float uTimeW, uDetailFade; uniform sampler2D uSeaMap; varying vec3 vWW; varying vec2 vRU;${gap ? ' uniform sampler2D uSeaMap2; varying vec2 vRU2; varying float vGW;' : ''}
+        uniform float uTimeW, uDetailFade; uniform sampler2D uSeaMap; varying vec3 vWW; varying vec2 vRU;${gap ? ' uniform sampler2D uSeaMap2; varying vec2 vRU2; varying float vGW;' : ''}${joint ? ' uniform sampler2D uShelfMap; uniform vec4 uShelfBox;' : ''}
         float w_h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float w_n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(w_h(i), w_h(i + vec2(1, 0)), f.x), mix(w_h(i + vec2(0, 1)), w_h(i + vec2(1, 1)), f.x), f.y); }`)
         .replace('#include <map_fragment>', `
@@ -307,8 +315,10 @@ export function buildSandtable(scene, S, opts = {}) {
           vec3 c = mix(vec3(${kind === 'sea' ? '.012, .07, .2' : '.015, .08, .24'}), vec3(${kind === 'sea' ? '.03, .16, .36' : '.05, .22, .46'}), n);
           ${kind === 'sea' ? `vec3 sm = ${fetch('')}.rgb;
           // Depth: the shore map's coarse mip levels spread its narrow shallows band into a wide run from the coast
-          // to open water (one biased fetch, no second texture), so the sea reads calm navy offshore and teal inshore.
-          float shelf = ${fetch(`, ${SEA_SHELF_BIAS.toFixed(1)}`)}.r, open = smoothstep(${SEA_SHELF[0].toFixed(2)}, ${SEA_SHELF[1].toFixed(2)}, 1. - shelf);
+          // to open water (one biased fetch, no second texture), so the sea reads calm navy offshore and teal inshore.${joint ? `
+          // With regions, from the boards' joint map by world position (north at v = 1, as the texture's flipY and each board's ruv).
+          vec2 su = vec2((vWW.x - uShelfBox.x) / (uShelfBox.y - uShelfBox.x), 1. - (vWW.z - uShelfBox.z) / (uShelfBox.w - uShelfBox.z));` : ''}
+          float shelf = ${joint ? `texture2D(uShelfMap, su, ${(SEA_SHELF_BIAS - 2).toFixed(1)})` : fetch(`, ${SEA_SHELF_BIAS.toFixed(1)}`)}.r, open = smoothstep(${SEA_SHELF[0].toFixed(2)}, ${SEA_SHELF[1].toFixed(2)}, 1. - shelf);
           c = mix(vec3(${SEA_DEEP.join(', ')}), vec3(${SEA_MID.join(', ')}), n * ${SEA_GRAIN.toFixed(2)} + (1. - open) * ${(1 - SEA_GRAIN).toFixed(2)});
           c = mix(c, vec3(${SEA_SHALLOW.join(', ')}), max(sm.r, (1. - open) * ${SEA_SHELF_TINT.toFixed(2)}));
           c = mix(c, vec3(.42, .5, .5), sm.g * (.75 + .25 * sin(uTimeW * .8 + p.x * 3.)));` : ''}

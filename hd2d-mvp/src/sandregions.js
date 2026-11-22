@@ -76,8 +76,28 @@ function liftEdge(S, edge) {
   }
 }
 
+// The boards' shallows maps (sea.png) laid side by side at the original's texel density, in world space over the boards' joint box,
+// halved twice and kept with mipmaps: the sea's depth (sandtable.js waterMat, opts.shelf) reads its coarse mip levels from this one
+// picture, so they average across a board's edge instead of stopping at it (each board's own coarse levels disagreed at the seam,
+// a line down the Yellow Sea from far off; docs/战略地图海面拼缝_修复指南_2026-11-21.md). Black where no board lies: open sea.
+function jointShelf(S, regions, boxes) {
+  const J = boxes.reduce((u, b) => [Math.min(u[0], b[0]), Math.max(u[1], b[1]), Math.min(u[2], b[2]), Math.max(u[3], b[3])], [Infinity, -Infinity, Infinity, -Infinity]);
+  const [JX0, JX1, JZ0, JZ1] = J, [X0, X1, Z0, Z1] = S.meta.box, px = S.sea.image.width / (X1 - X0), pz = S.sea.image.height / (Z1 - Z0);
+  const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const full = canvas(Math.round((JX1 - JX0) * px), Math.round((JZ1 - JZ0) * pz)), g = full.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, full.width, full.height);
+  // Row 0 of each picture is its north (least z), as the canvas's top: no flip.
+  for (const B of [S, ...regions]) { const [b0, b1, b2, b3] = B.meta.box; g.drawImage(B.sea.image, (b0 - JX0) * px, (b2 - JZ0) * pz, (b1 - b0) * px, (b3 - b2) * pz); }
+  // Two halvings, not one step to a quarter: the shallows band is a few texels wide and a single step samples it unevenly.
+  const half = (src) => { const c = canvas(Math.ceil(src.width / 2), Math.ceil(src.height / 2)), h = c.getContext('2d'); h.imageSmoothingEnabled = true; h.drawImage(src, 0, 0, c.width, c.height); return c; };
+  const map = new THREE.CanvasTexture(half(half(full)));
+  map.anisotropy = 8; map.colorSpace = THREE.NoColorSpace; // as sea.png's (loadSandtable): anisotropy changes which mip level is read
+  return { map, box: J };
+}
+
 export function buildBoards(scene, S, opts = {}) {
   const regions = S.regions, boxes = [S.meta.box, ...regions.map((R) => R.meta.box)];
+  opts = { ...opts, shelf: jointShelf(S, regions, boxes) };
   const ownerOf = (c) => { const k = regions.findIndex((R) => seatIn(R.meta.box, c)); return k + 1; }; // 0: the original board
   // What each board adds to the scene is marked with its box: the 2D map's bake (strategy.js bakeView) clips each board's pieces at its own edge.
   // A board flush east of another starts on that one's last grid column (opts.seams.west), a hair west of its box: its clip reaches there too.
