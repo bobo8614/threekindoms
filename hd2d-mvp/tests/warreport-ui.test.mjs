@@ -49,3 +49,44 @@ for (const side of ['def', 'att']) test(`${side}: rice defeat without escape rep
     assert.deepEqual(page.errors, []);
   } finally { stop(); await page.close(); }
 });
+
+// D159 (冰@devblog #611): 扬州 → 建安, 孙策 behind 陈武 on his last city with no way out. The report says 下野 and where,
+// and back on the map he is still 下野 there while his house has fallen.
+test('AI ruler behind his 太守 on his last city: the report and the map both keep him 下野', async () => {
+  const page = await game.open('&flat');
+  const stop = closeMessages(page);
+  try {
+    await newCampaign(page, '刘备');
+    await page.evaluate(() => {
+      const { g, G, debug } = window.__game;
+      for (const c of g.cities) { c.faction = G.NONE; c.officers = []; }
+      const put = (id, f, ids) => { g.cities[id].faction = f; g.cities[id].officers = ids; for (const i of ids) Object.assign(g.officers[i], { status: G.SERVING, soldiers: 500 }); };
+      put(16, 4, [222, 144]); put(17, 3, [158, 164, 138]); put(15, 2, [131]); put(20, 2, [86]); put(18, 2, [99]);
+      g.factions[3].city = 17; g.cities[17].rice = 500;
+      const war = debug.setupWar(g, { from: 16, to: 17, ids: [222], commander: 222, gold: 0, rice: 500 });
+      debug.fieldWar(war, 'att');
+    });
+    await page.waitForFunction(() => window.__game.war?.st.deploying, null, { timeout: 30000 });
+    await page.evaluate(() => window.__game.war.finishDeploy());
+    await page.waitForFunction(() => { const w = window.__game.war; return w.field.turn === w.field.human && !w.st.busy && !document.querySelector('.banner, .panel.msg'); }, null, { timeout: 30000 });
+    await page.evaluate(() => {
+      const w = window.__game.war, f = w.field;
+      f.chest('def').rice = 0;
+      f.turn = 'def'; f.endTurn(); f.turn = f.human; w.endTurn();
+    });
+    await page.locator('.ledgers').waitFor({ timeout: 30000 });
+    const fate = (n) => page.locator('.lrow').filter({ hasText: n }).locator('.fate').textContent();
+    assert.equal(await fate('孙策'), '下野（建安）');
+    assert.equal(await fate('陈武'), '下野（建安）');
+    if (process.env.REPORT_CAPTURE) {
+      mkdirSync(process.env.REPORT_CAPTURE, { recursive: true });
+      await page.screenshot({ path: `${process.env.REPORT_CAPTURE}/report-ronin-ruler-1440x900.png` });
+    }
+    await page.getByRole('button', { name: '返回大地图', exact: true }).click();
+    await page.waitForFunction(() => window.__game.g.factions[3].ruler == null, null, { timeout: 30000 });
+    const actual = await page.evaluate(() => { const { g, G } = window.__game; return { ronin: g.officers[138].status === G.RONIN, loc: G.cityName(g.officers[138].loc), fallen: g.factions[3].fallen, city: g.cities[17].faction }; });
+    assert.deepEqual(actual, { ronin: true, loc: '建安', fallen: 138, city: 4 });
+    if (process.env.REPORT_CAPTURE) await page.screenshot({ path: `${process.env.REPORT_CAPTURE}/map-after-ronin-ruler-1440x900.png` });
+    assert.deepEqual(page.errors, []);
+  } finally { stop(); await page.close(); }
+});

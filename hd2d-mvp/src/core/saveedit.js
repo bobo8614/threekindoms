@@ -1,5 +1,6 @@
 // Save editor rules (save-editor.html): which fields of a record can be changed and to what range. The ranges are
-// the ones the game itself keeps (stats as in game-data.json, 9999 for city stores, 1000 soldiers per officer), so an
+// the ones the game itself keeps (stats as in game-data.json, 9999 for city stores, 统治 100 as 开发 and 施舍 reach,
+// 后备兵 10000 as 征兵 fills it, 1000 soldiers per officer), so an
 // edited record never holds a value the rules cannot produce; the original's overflows (兵力溢出 and the like) stay out.
 // Only plain numbers are edited: who serves where, rulers and status are left alone, as changing them would have to
 // keep cities[].officers, factions[].ruler and the officer's status in step.
@@ -16,8 +17,8 @@ export const OFFICER_FIELDS = [
   ['level', '等级', 1, 8], ['exp', '经验', 0, 49999], ['soldiers', '兵数', 0, 1000], ['weapon', '武器', 0, 23], ['armor', '防具', 0, 7],
 ];
 export const CITY_FIELDS = [
-  ['gold', '金', 0, 9999], ['rice', '米', 0, 9999], ['pop', '人口', 0, 9999], ['reserve', '后备兵', 0, 9999],
-  ['land', '土地', 0, 999], ['industry', '产业', 0, 999], ['disaster', '防灾', 0, 99], ['gov', '统治', 0, 99], ['treasure', '宝', 0, 99],
+  ['gold', '金', 0, 9999], ['rice', '米', 0, 9999], ['pop', '人口', 0, 9999], ['reserve', '后备兵', 0, 10000],
+  ['land', '土地', 0, 999], ['industry', '产业', 0, 999], ['disaster', '防灾', 0, 99], ['gov', '统治', 0, 100], ['treasure', '宝', 0, 99],
 ];
 export const ALLIANCE_MAX = 12; // months, as 同盟 sets it
 

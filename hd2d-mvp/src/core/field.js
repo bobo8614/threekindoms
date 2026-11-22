@@ -484,7 +484,7 @@ export class Field {
     // a mass capture of untouched officers.
     const loser = this.over.loser;
     this.war.day = this.day; // the occupation-loss tier in resolveWar reads the war's elapsed days
-    return { loser, survivors: surv, dead, captured, retreated, chests: { att: this.war.att, def: this.war.def } };
+    return { loser, survivors: surv, dead, captured, retreated, chests: { att: this.war.att, def: this.war.def }, field: true };
   }
 
   // ---------- War AI (6.8) ----------

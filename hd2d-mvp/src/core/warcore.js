@@ -65,7 +65,8 @@ export function winnerQueue(res) {
 export const retreatOptions = (g, war, f) => roads(war.city).filter((n) => n !== war.city && (g.cities[n].faction === f || g.cities[n].faction === NONE));
 
 // Field battle result. survivors: { att:[ids], def:[ids] }, dead:[ids], captured:{byAtt:[ids], byDef:[ids]},
-// retreated: [{id, city}], loser:'att'|'def', chests: {att:{gold,rice}, def:{gold,rice}}.
+// retreated: [{id, city}], loser:'att'|'def', chests: {att:{gold,rice}, def:{gold,rice}}, field: true from Field.result().
+// Writes res.adrift (see the losers' retreat below).
 export function resolveWar(g, war, res) {
   const r = rng(g), city = g.cities[war.city];
   const winF = res.loser === 'def' ? war.attacker : war.defender, loseF = res.loser === 'def' ? war.defender : war.attacker;
@@ -121,12 +122,24 @@ export function resolveWar(g, war, res) {
     queue = place(g, winF, queue, dest);
   }
   // Losers retreat (attackers prefer their source city).
-  const loseChest = res.chests[loseSide];
-  while (back.length) {
+  const loseChest = res.chests[loseSide], adrift = [];
+  for (let first = true; back.length; first = false) {
     const dest = retreatCity(g, war.city, loseF, loseSide === 'att' ? war.from : null);
-    if (dest == null) { for (const id of back) toRoninAt(g, id, war.city); break; }
+    if (dest == null) {
+      // With nowhere at all to go the queue is lost: officers 下野, the ruler with them dies (checkFactions). The AI
+      // settlement (`bank8:$BCE8..$BD56`) keeps the ruler's ID in zero page $02, but the first officer it sends 下野
+      // overwrites $02 with battle city × 8 (`$BD3E`), so a ruler behind him is sent 下野 too and survives
+      // (devblog #590/#611, 冰). Kept for a field battle the AI side lost on its last city, as in the controlled
+      // ROM replays; a ruler with a city left, a human side and AI-vs-AI wars stay as before.
+      // docs/原版非太守君主下野兼容_交接_2026-11-21.md
+      const lord = g.factions[loseF].ruler;
+      if (first && res.field && g.factions[loseF].ai && back.indexOf(lord) > 0 && !citiesOf(g, loseF).length) adrift.push(lord);
+      for (const id of back) toRoninAt(g, id, war.city);
+      break;
+    }
     back = place(g, loseF, back, dest);
   }
+  res.adrift = adrift;
   // Gold/rice (`$C027`): winner chest to the battle city. The loser's chest follows its commander
   // (`$052C`) only if he got out still serving the loser; dead, captured or ronin → battle city.
   const add = (c, ch) => { c.gold = Math.min(9999, c.gold + ch.gold); c.rice = Math.min(9999, c.rice + ch.rice); };
@@ -142,7 +155,8 @@ export function resolveWar(g, war, res) {
     if (c && c.faction === f) { g.factions[f].city = c.id; c.officers = [ruler, ...c.officers.filter((x) => x !== ruler)]; }
   }
   if (g.warlike) markFought(g, war);
-  return { winner: winF, loser: loseF };
+  // adrift: rulers this settlement sent 下野 alive; the report and checkFactions(g, io, res.adrift) read it.
+  return { winner: winF, loser: loseF, adrift };
 }
 
 // AI-vs-AI automatic battle (`10:ACD5`, `A91F`, `A9CC`, `AF9C`, `ABA3`, `11:CD68`).

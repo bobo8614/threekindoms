@@ -1,4 +1,4 @@
-// 系统 → 界面大小's zoom (desktop/uiscale.js): the screen asks for it (laid out for 810 rows at 标准, 720 大, 960 小), the window
+// 系统 → 界面大小's zoom (desktop/uiscale.js): the screen asks for it (laid out for 810 rows at 标准, 720 大; 小 never zooms, the size of 0.4.1 and before), the window
 // holds it back so the page is never laid out below 1280x720; whole and quarter steps, never below 1. The row itself, and what the
 // page tells the shell, are in tests/desktopwindow.test.mjs; the shell's own zooming (desktop/main.js) is not run here.
 import { test } from 'node:test';
@@ -21,8 +21,8 @@ test('标准 on the common Windows screens, full screen, maximized and in the ga
 test('大 and 小 move the step, and no zoomed page is laid out below 1280x720', () => {
   assert.equal(zoomFor(1920, 1080, 1920, 1080, 'large'), 1.5);
   assert.equal(zoomFor(2560, 1440, 2560, 1440, 'large'), 2);
-  assert.equal(zoomFor(1920, 1080, 1920, 1080, 'small'), 1);
-  assert.equal(zoomFor(2560, 1440, 2560, 1440, 'small'), 1.5);
+  // 小 is 0.4.1's size, unzoomed on every screen: at 150% a 27" 2560x1440 player found it still too large (2026-11-21)
+  for (const [sw, sh] of [[1920, 1080], [2560, 1440], [3440, 1440], [3840, 2160]]) assert.equal(zoomFor(sw, sh, sw, sh, 'small'), 1, `小 on ${sw}x${sh}`);
   assert.equal(zoomFor(1920, 1080, 1920, 1080, 'nonsense'), 1.25, 'an unknown size is 标准');
   for (const [sw, sh] of [[1920, 1080], [2560, 1440], [3840, 2160]]) for (const w of [1024, 1300, 1600, 1920, 2560, 3840]) for (const h of [600, 800, 1080, 1440, 2160]) {
     if (w > sw || h > sh) continue;

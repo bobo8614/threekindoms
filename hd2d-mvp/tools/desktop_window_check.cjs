@@ -125,7 +125,7 @@ app.whenReady().then(async () => {
     answers = [1]; win.close();
   } else if (report.step === 'zoom') {
     report.zoom = [];
-    for (const [w, h, size, expect] of [[1600, 900, 'normal', 1.25], [2560, 1377, 'normal', 1.75], [2000, 1125, 'normal', 1.5], [2560, 1377, 'large', 1.75], [1600, 900, 'large', 1.25], [2560, 1377, 'small', 1.5], [1100, 700, 'small', 1], [2560, 1377, 'normal', 1.75]]) {
+    for (const [w, h, size, expect] of [[1600, 900, 'normal', 1.25], [2560, 1377, 'normal', 1.75], [2000, 1125, 'normal', 1.5], [2560, 1377, 'large', 1.75], [1600, 900, 'large', 1.25], [2560, 1377, 'small', 1], [1100, 700, 'small', 1], [2560, 1377, 'normal', 1.75]]) {
       win.setContentSize(w, h); await js(`window.desktop.setUiSize(${JSON.stringify(size)})`); await wait(400);
       report.zoom.push({ size, expect, content: win.getContentBounds(), z: wc.getZoomFactor(), page: await js('[innerWidth, innerHeight, devicePixelRatio]') });
     }

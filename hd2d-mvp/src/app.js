@@ -83,10 +83,14 @@ async function loadDuelStrip(key) {
   // The third sheet (<key>-c: 舍身 run, crushing hit, defeat and triumph; tools/slice_duel_extra.py) only for the riders
   // listed in extra.json, so the others ask for no file they do not have.
   extraStrips ||= json('assets/ai/sprites/duel/extra.json').catch(() => []);
+  spinStrips ||= json('assets/ai/sprites/duel/spin.json').catch(() => []);
+  leapStrips ||= json('assets/ai/sprites/duel/leap.json').catch(() => []);
   const extra = (await extraStrips).includes(String(key)) ? await strip(`${key}-c`).catch(() => null) : null;
-  try { sprites[`duel-${key}`] = { ...(await strip(key)), turn: await strip(`${key}-turn`).catch(() => null), wheel: await strip(`${key}-wheel`).catch(() => null), extra }; } catch {}
+  const spin = (await spinStrips).includes(String(key)) ? await strip(`${key}-spin`).catch(() => null) : null;
+  const leap = (await leapStrips).includes(String(key)) ? await strip(`${key}-leap`).catch(() => null) : null;
+  try { sprites[`duel-${key}`] = { ...(await strip(key)), turn: await strip(`${key}-turn`).catch(() => null), wheel: await strip(`${key}-wheel`).catch(() => null), extra, spin, leap }; } catch {}
 }
-let extraStrips = null;
+let extraStrips = null, spinStrips = null, leapStrips = null;
 // War-map march strips: each side's general from the side, three-quarter front and three-quarter back,
 // standing and walking (tools/slice_march_frames.py); star officers ride in their own, built from their
 // 单挑 strips (tools/build_officer_march.py) and loaded when they take the field.
@@ -1161,9 +1165,9 @@ function sysButtons() {
     desk ? h('div', { class: 'sysmenu-pair' },
       (() => { const b = item(fullscreenText, () => desk.toggleFullscreen(), `铺满整个屏幕，再选一次恢复窗口（${fullscreenKeys}）`); b.classList.add('fullscreen-row'); return b; })(),
       uiSizeOn() ? item(() => `界面大小 ${uiSizeText()}`, (b) => {
-        cycleUiSize().then((k) => { if (k) toast(`界面大小 ${uiSizeText()}：按 ${Math.round(k * 100)}% 显示${k === 1 ? '（窗口不够大，不再放大）' : ''}`, 3000); });
+        cycleUiSize().then((k) => { if (k) toast(`界面大小 ${uiSizeText()}：按 ${Math.round(k * 100)}% 显示${k !== 1 ? '' : uiSizeText() === '小' ? '（不放大，与 0.4.1 及以前相同）' : '（窗口不够大，不再放大）'}`, 3000); });
         b.textContent = `界面大小 ${uiSizeText()}`;
-      }, '整个画面（面板、菜单、文字与地图）按屏幕分辨率放大　标准：1920×1080 的屏幕按 125%、2560×1440 按 175% 显示　大：再大一档　小：再小一档。窗口模式下放大到窗口放得下为止，窗口较小时不放大') : '') : '',
+      }, '整个画面（面板、菜单、文字与地图）按屏幕分辨率放大　标准：1920×1080 的屏幕按 125%、2560×1440 按 175% 显示　大：再大一档　小：不放大，与 0.4.1 及以前相同。窗口模式下放大到窗口放得下为止，窗口较小时不放大') : '') : '',
     // 地图标签 shares 帧率's row: a row of its own ran the column 9px past a 1024x600 window in a war (tests/desktopwindow.test.mjs).
     h('div', { class: 'sysmenu-pair' },
       item(() => `地图标签 ${labelSizeText()}`, (b) => { cycleLabelSize(); b.textContent = `地图标签 ${labelSizeText()}`; },
@@ -2832,8 +2836,10 @@ async function fieldWar(w, humanSide, { after = { kind: humanSide === 'att' ? 'a
   await fade(true);
   warNav?.dispose(); warNav = null; war?.dispose?.(); war = null; document.body.dataset.screen = 'strategy'; setMode(strategy);
   strategy.refresh(g); sel = w.city; strategy.select(w.city); strategy.focusCity(w.city); audio.playBgm('bgm-strategy'); hud();
-  await fade(false);
-  await G.checkFactions(g, io);
+  // No save until the faction check: res.adrift lives only here, and a record taken in between (the phone's autosave
+  // on hide, during this fade) would come back with the 下野 ruler still heading his house, for a later check to kill.
+  const held = busy; busy = true;
+  try { await fade(false); await G.checkFactions(g, io, res.adrift); } finally { busy = held; }
   strategy.refresh(g); hud();
   addLog(`${cityName(w.city)}之战：${win ? '<strong>我军胜利</strong>' : '<em>我军败北</em>'}`);
   void out;

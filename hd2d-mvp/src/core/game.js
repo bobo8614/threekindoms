@@ -401,12 +401,15 @@ export async function run(g, io) {
 }
 
 // After any war or event that can kill rulers or empty a faction: succession, then fall.
-export async function checkFactions(g, io) {
+// adrift: rulers a field battle's settlement sent 下野 alive (warcore resolveWar, res.adrift). Their house, left with no
+// city, falls with him still 下野 and to be found by 搜索; any other ruler out of office is lost.
+export async function checkFactions(g, io, adrift = []) {
   for (const fac of g.factions) {
     if (fac.ruler == null) continue;
     const f = fac.id, ruler = fac.ruler;
     const taken = rulerTaken(g, f);
-    if (taken || g.officers[ruler].status === DEAD || g.officers[ruler].status === RONIN) {
+    const loose = g.officers[ruler].status === RONIN && adrift.includes(ruler) && !citiesOf(g, f).length;
+    if (!loose && (taken || g.officers[ruler].status === DEAD || g.officers[ruler].status === RONIN)) {
       if (g.officers[ruler].status === RONIN) g.officers[ruler].status = DEAD; // a ruler with nowhere to go is lost
       if (!(await succession(g, io, f, ruler, taken))) continue;
     }

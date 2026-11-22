@@ -95,7 +95,8 @@ test('系统 → 界面大小 sits beside 全屏 and cycles 标准 → 大 → �
   assert.equal(await row('界面大小 大').count(), 1);
   await page.locator('.toast', { hasText: '按 125% 显示' }).waitFor();
   await row('界面大小 大').click();
-  await page.locator('.toast', { hasText: '不再放大' }).waitFor(); // the stand-in shell answers 1 for 小
+  // 小 is never zoomed (desktop/uiscale.js): its toast says it is 0.4.1's size, not that the window is too small
+  await page.locator('.toast', { hasText: '不放大，与 0.4.1 及以前相同' }).waitFor(); // the stand-in shell answers 1 for 小
   assert.deepEqual(await calls(), ['ui:large', 'ui:small']);
   assert.equal(await page.evaluate(() => localStorage.getItem('hd2d-ui-size')), 'small');
   await row('界面大小 小').click();

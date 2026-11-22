@@ -7,7 +7,7 @@
 // Turn sheet (--turn): front and back views of the same rider for the 白兵 board.
 // Wheel sheet (--wheel): the three-quarter views between his side and his front / back, so a horse wheels round
 // in the duel instead of backing up; mirrored for the other half of the turn.
-//   node hd2d-mvp/tools/duel_frame_prompts.mjs <officer_id|attacker|defender> [--b|--turn|--wheel]   → prints the prompt
+//   node hd2d-mvp/tools/duel_frame_prompts.mjs <officer_id|attacker|defender> [--b|--c|--turn|--wheel|--spin|--leap]   → prints the prompt
 // Weapon class (blade / spear / sword) comes from the officer's equipment group, so the strike reads as
 // a sweep, a thrust or a short cut; the generic generals carry the glaive their battle sprite shows.
 // 诸葛亮 fights from his four-wheeled carriage: the same 32 cells, with the horse's gaits, rears and
@@ -284,9 +284,157 @@ Cells in reading order (left to right, top row first):
 ${rows.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
 }
 
+// Spin and leap sheets (--spin / --leap, 3×2): the 普通攻击 overhead weapon spin and the 舍身 high leap of the
+// 2026-11-21 duel rework (单挑动作全面优化_交接_2026-11-21.md). 关羽's pair (38-spin / 38-leap) is the approved
+// sample, and is handed to Codex as reference image 2 for the layout, timing and size of the poses only.
+// Frame names match slice_duel_spin.py: spin = idle_ref, spin_1..4, spin_cleave; leap = idle_ref, leap_up, leap_apex,
+// leap_dive, leap_slam, leap_miss. Twin weapons (典韦 and 太史慈 short, 张任 long 双戟) spin one in each fist.
+export const FRAMES_SPIN = ['idle_ref', 'spin_1', 'spin_2', 'spin_3', 'spin_4', 'spin_cleave'];
+export const FRAMES_LEAP = ['idle_ref', 'leap_up', 'leap_apex', 'leap_dive', 'leap_slam', 'leap_miss'];
+// Riders whose approved duel sheet carries another weapon than their equipment class: the spin and leap follow the
+// sheet, or he would change weapons mid-duel (吕蒙's spin drew a short sword under his glaive strip, 2026-11-21).
+const DRAWN_AS = { 吕蒙: 'blade', 黄忠: 'sword' };  // 黄忠's broad sabre is one-handed: his spin drew a glaive
+const TWIN = /pair of short-hafted|twin short halberds|双戟/i;  // 张任 151 has no ICONIC line, only his 双戟
+const SPIN = {
+  blade: {
+    grip: 'both hands raise the long polearm high ABOVE HIS HEAD, shaft held level, and whirl it round in a flat horizontal circle above the helmet like a propeller',
+    phases: ['the blade end out at the FRONT (right), shaft level across above his head, the blade overhanging the horse\'s head',
+      'the blade swung round to the BACK (left), shaft still level above his head, blade now overhanging the horse\'s rump',
+      'the blade coming round the FAR side, shaft seen foreshortened and tilted slightly up toward the back, blade high behind his head',
+      'the blade coming back round to the FRONT (right), shaft level again above his head'],
+    trail: 'a thin pale-gold elliptical SPIN TRAIL streak arcing above his head behind the blade',
+    cleave: 'the polearm hauled up to its highest point over his head for a downward chop, both hands high, shaft diagonal with the blade raised high behind and above his head, torso arched back',
+  },
+  spear: {
+    grip: 'both hands raise the spear high ABOVE HIS HEAD, shaft held level, and twirl it round in a flat horizontal circle above the helmet (a spear flourish)',
+    phases: ['the spearhead out at the FRONT (right), shaft level above his head',
+      'the spearhead swung round to the BACK (left), shaft still level above his head',
+      'the spearhead coming round the FAR side, shaft foreshortened and tilted slightly up toward the back',
+      'the spearhead coming back round to the FRONT (right), shaft level again above his head'],
+    trail: 'a thin pale-gold ring-shaped SPIN TRAIL streak circling above his head behind the spearhead',
+    cleave: 'the spear raised highest over his head, both hands up, spearhead angled forward and down ready to drive a great thrust down at an enemy rider',
+  },
+  twin: {
+    grip: 'he raises BOTH weapons high ABOVE HIS HEAD, one gripped in each fist by its haft, and whirls them round each other in tight circles above his helmet',
+    phases: ['both weapon heads at the FRONT (right) above his head, arms raised',
+      'one weapon head at the front, the other swung to the back, crossing above his helmet',
+      'both weapon heads swung to the BACK (left) above his head',
+      'the weapon heads crossing back toward the front above his head'],
+    trail: 'two thin pale-gold circular SPIN TRAIL streaks above his head behind the weapon heads',
+    cleave: 'both weapons raised highest over his head, one in each fist, ready to chop down, torso arched back',
+  },
+  sword: {
+    grip: 'he raises the sword high ABOVE HIS HEAD in ONE hand and whirls it round in a flat circle above his helmet (a sword flourish), while the OTHER hand keeps hold of the reins at the saddle — the sword is never held two-handed',
+    phases: ['the sword tip pointing to the FRONT (right) above his head, sword arm raised straight up',
+      'the sword swung round to point to the BACK (left) above his head',
+      'the sword coming round the FAR side, blade foreshortened and tilted slightly up toward the back',
+      'the sword tip coming back round to the FRONT (right) above his head'],
+    trail: 'a thin bright pale-gold circular SPIN TRAIL streak above his head behind the sword tip',
+    cleave: 'the sword raised highest over his head in the one hand, blade pointing up and back, ready to cut down; the other hand still on the reins',
+  },
+  fan: {
+    // Under the carriage canopy there is no room above his head: the fan circles beside and in front of his face.
+    grip: 'he holds the white feather fan up in his LEFT hand at the height of his head and swirls it round in a circle beside and in front of his face, under the canopy, calling up the wind, his right hand gripping the carriage rail',
+    phases: ['the fan out in FRONT of his face (right), arm raised to head height', 'the fan swirled round close BEHIND his head (left)',
+      'the fan coming round the FAR side of his head, half hidden by it', 'the fan coming back round to the FRONT (right) of his face'],
+    trail: 'a pale cyan and white SPIRAL of wind curling round his head and the fan, inside the carriage, under the canopy',
+    cleave: 'the fan drawn back high beside his head in his left hand, just under the canopy roof, ready to sweep a gust forward, the whirlwind gathered round him',
+  },
+};
+const LEAP = {
+  blade: {
+    up: 'both hands hauling the polearm up, the crescent blade high above his head',
+    apex: 'polearm raised straight up overhead with both hands, blade pointing to the sky, torso arched back, cocking the blow',
+    dive: 'the polearm sweeping down and forward in one huge chop, blade out in front of the horse\'s head, with a HUGE bright pale-gold crescent SMEAR ARC trailing the blade from high above his head down to it (drawn as pixel art, part of the figure)',
+    slam: 'both arms at full stretch, the polearm swept level far out in front of the horse\'s head at the height of an enemy rider\'s chest',
+    miss: 'the blade swung through and down past the target, its tip near the ground in front of the horse',
+  },
+  spear: {
+    up: 'both hands raising the spear high, point forward',
+    apex: 'spear drawn back high over his shoulder with both hands, point aimed forward and down, torso arched back',
+    dive: 'the spear driven forward and down in one huge thrust, point far out in front of the horse\'s head, with a long bright pale-gold diagonal SMEAR streak behind the spearhead (drawn as pixel art, part of the figure)',
+    slam: 'the spear locked at full extension, level, far out in front of the horse\'s head at the height of an enemy rider\'s chest, whole body behind it',
+    miss: 'the spear thrust through past the target, point dipping toward the ground in front of the horse',
+  },
+  twin: {
+    up: 'both weapons raised high, one in each fist',
+    apex: 'both weapons raised high overhead, one in each fist, torso arched back',
+    dive: 'both weapons chopping down and forward together, with a big bright pale-gold crescent SMEAR ARC trailing them (drawn as pixel art, part of the figure)',
+    slam: 'both arms at full stretch forward, the two weapons out in front of the horse\'s head at the height of an enemy rider\'s chest',
+    miss: 'both weapons swung through and down past the target',
+  },
+  sword: {
+    up: 'the sword raised high to the sky in ONE hand, the other hand on the reins',
+    apex: 'the sword raised high overhead in the one hand, blade pointing up and back, torso arched back, cocking the blow',
+    dive: 'the sword slashing down and forward in one huge diagonal cut, arm stretched out past the horse\'s head, with a HUGE bright pale-gold crescent SMEAR ARC trailing the blade from high above his head down to it (drawn as pixel art, part of the figure)',
+    slam: 'sword arm at full stretch, the blade cut through level far out in front of the horse\'s head at the height of an enemy rider\'s chest',
+    miss: 'the sword swung through and down past the target, arm low in front of the horse',
+  },
+};
+const SHEET_LAYOUT = (cart) => `Layout (critical):
+- Landscape canvas 1536x1024 divided into an invisible 3-column × 2-row grid of 6 equal square cells (512×512 each). Do NOT draw grid lines, borders, numbers or labels.
+- Exactly ONE complete figure per cell, every figure at the SAME scale as reference image 1; nothing crosses into a neighbouring cell, nothing is cropped, keep at least 20 px of clear magenta margin around every figure, the weapon and its trail included.
+- Every figure faces RIGHT, strict side view, the same character, ${cart ? 'robe, carriage' : 'armour, horse'}, colours and weapon in all 6 cells — only the pose changes. Never mirror a cell.
+- Colour (critical): reference image 1 decides every colour and how dark it is; match its coat, armour and cloth value for value, never lighten, saturate or wash them out.
+- Background: one perfectly flat solid magenta (#FF00FF) everywhere — no ground, no shadow, no scenery, no text. No magenta or pink on the figures; trails and smears are pale gold / white, never pink.
+- Detailed 16-bit SNES/Octopath-style pixel art matching reference image 1 exactly: same pixel scale, crisp pixel clusters, dark outlines, 3-tone shading, light from the upper left.`;
+function spinLeapPrompt(key, kind) {
+  const generic = key === 'attacker' || key === 'defender';
+  const o = generic ? null : officer(Number(key));
+  const look = generic
+    ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm)`
+    : (ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
+  const base = generic ? 'blade' : DRAWN_AS[o.name] || weaponClass(o);
+  const cls = base === 'spear' && TWIN.test(look) ? 'twin' : base;
+  const cart = !generic && CARRIAGE.has(o.name);
+  const idle = cart ? 'IDLE (reference): carriage standing still, all four wheels on the ground, he sits upright holding the feather fan up — identical to the first cell of reference image 1'
+    : 'IDLE (reference): horse standing square on all four hooves, rider upright holding the weapon ready — identical to the first cell of reference image 1';
+  let rows, notes;
+  if (kind === 'spin') {
+    const s = SPIN[cls];
+    const still = cart ? 'the carriage stands perfectly still, all four wheels on the ground' : 'the horse stands perfectly still and square on all four hooves (never rearing, never lifting a hoof)';
+    rows = [idle, ...s.phases.map((p, i) => `SPIN ${i + 1}: ${still}; ${s.grip} — ${p}; ${s.trail}`), `SPIN CLEAVE: ${still}; ${s.cleave}`];
+    notes = `Cells 2–5 are ONE looping overhead spin (cell 5 leads back into cell 2): the ${cart ? 'carriage, his seat' : 'horse, its legs, the rider\'s seat'} and his head must be IDENTICAL in cells 1–6, pixel for pixel in position — only his arms, the weapon and the trail move. The weapon keeps its full length in every cell (foreshortened only in SPIN 3). All four cells show the weapon clearly ABOVE his head, never in front of his face.`;
+  } else if (cart) {
+    // 诸葛亮's carriage does not fly like a horse: a small hop while the fan calls a wind blade down from above.
+    rows = [idle,
+      'LEAP UP: the carriage lurches forward, its FRONT WHEELS clearly lifted off the ground; he half-rises from the seat, the fan drawn back beside his head in his left hand, right hand on the rail',
+      'LEAP APEX: the whole carriage bounced a LITTLE off the ground (all four wheels a hand\'s width above the ground line, no more); he half-rises, the fan held high beside his head just under the canopy roof, a gathering pale cyan and white whirlwind spiralling round the fan in front of the carriage',
+      'LEAP DIVE: the carriage still a little off the ground; he sweeps the fan down and forward with all his strength, and a HUGE bright pale-cyan and white crescent WIND BLADE arcs from in front of the canopy down to in front of the carriage (drawn as pixel art, part of the figure)',
+      'LEAP SLAM: all four wheels slammed back on the ground; his left arm at full stretch forward past the carriage front at the height of an enemy rider\'s chest, a burst of wind streaks flying forward from the fan',
+      'LEAP MISS: the blow missed — the carriage lurches with one front wheel caught, he stumbles forward over the front rail, the fan swung down and past, almost falling out'];
+    notes = 'Only LEAP APEX and LEAP DIVE are off the ground, and only by a little — the carriage never flies high like a horse.';
+  } else {
+    const l = LEAP[cls];
+    rows = [idle,
+      `LEAP UP: the horse explodes upward off its hind legs into a huge jump, body rising at a steep angle, front legs tucked, hind hooves just leaving the ground; rider standing in the stirrups, ${l.up}`,
+      `LEAP APEX: the horse at the very TOP of a huge jump, flying LEVEL and fully stretched out like a show-jumper (front legs reaching forward, hind legs trailing back), its lowest hoof HALF the horse's height above the ground line — the highest figure on the sheet; rider ${l.apex}`,
+      `LEAP DIVE: the horse plunging down from the jump, nose down, front legs reaching down to land; rider flinging his whole body forward, ${l.dive}`,
+      `LEAP SLAM: all four hooves slammed down, the horse crouched low from the impact, head UP and neck stretched forward; rider thrown low over the horse's neck, ${l.slam}`,
+      `LEAP MISS: the blow missed — the horse has overshot and dropped onto its FRONT KNEES, skidding, hind legs still standing; rider lurching forward over the mane, almost unseated, ${l.miss}`];
+    notes = 'LEAP UP, LEAP APEX and LEAP DIVE are airborne (hooves clearly above the ground line); IDLE, LEAP SLAM and LEAP MISS stand on the ground.';
+  }
+  // First 109 draws (2026-11-21) pushed the fan up through the canopy roof and painted rainbow wind, whose pink the
+  // slicer keys out with the magenta background.
+  if (cart) notes = notes.replace(/All four cells show the weapon clearly ABOVE his head, never in front of his face\./, '') + ' The carriage canopy (critical): it stays whole and on top in every cell — his arm and the fan are always BELOW the canopy roof, raised beside his head in front of the canopy pole, never poking through or above the roof. Wind, whirlwinds and wind blades are pale cyan and white only — NO pink, violet, magenta or rainbow colours anywhere.';
+  const ref2 = cart ? '' : `\nReference image 2 is the approved ${kind} sheet of a DIFFERENT rider (Guan Yu, green robe, red horse): follow ONLY its layout, the pose timing of each cell, how high the figures sit and how big the trails are. Copy NOTHING of his face, costume, colours, horse or weapon${cls === 'blade' ? '' : ` — this rider uses his own ${cls === 'sword' ? 'one-handed sword' : cls === 'twin' ? 'two separate weapons, one in each fist' : 'spear'}, handled as described below, not a two-handed polearm`}.`;
+  return `Animation pose sheet (sprite sheet) for an HD-2D remake of the 1992 Famicom strategy game "Sangokushi II: Haou no Tairiku" — a ${cart ? 'one-on-one duel fought from a four-wheeled war carriage (no horse in any cell)' : 'mounted one-on-one duel'}: the ${kind === 'spin' ? 'overhead weapon spin before a big blow' : 'all-out high leap and crushing downward strike'}.
+Subject: ${look} — exactly as in reference image 1.
+${generic ? '' : `Accent colour: ${accent(o)}.\n`}${weaponRule(look)}${cart ? FAN_RULE : ''}
+Reference image 1 is the approved FIRST pose sheet of this exact rider: copy his face, costume, ${cart ? 'carriage' : 'horse'}, weapon, pixel scale and rendering precisely.${ref2}
+
+${SHEET_LAYOUT(cart)}
+
+Cells in reading order (left to right, top row first):
+${rows.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+${notes} Exactly two hands in every cell.`;
+}
+
 export function framePrompt(key, sheet = 'a') {
   if (sheet === 'turn') return turnPrompt(key);
   if (sheet === 'wheel') return wheelPrompt(key);
+  if (sheet === 'spin' || sheet === 'leap') return spinLeapPrompt(key, sheet);
   const generic = key === 'attacker' || key === 'defender';
   const o = generic ? null : officer(Number(key));
   const cls = generic ? 'blade' : weaponClass(o);
@@ -346,4 +494,7 @@ ${sheet === 'b' || sheet === 'c' ? 'Reference image 1 is the approved FIRST pose
 Make the poses strongly readable in silhouette: the weapon, the rider's upper body and the ${cart ? "carriage's tilt and wheel spokes" : "horse's legs"} must clearly change between cells.`;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) process.stdout.write(framePrompt(process.argv[2], process.argv.includes('--turn') ? 'turn' : process.argv.includes('--wheel') ? 'wheel' : process.argv.includes('--b') ? 'b' : process.argv.includes('--c') ? 'c' : 'a'));
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const flag = ['turn', 'wheel', 'spin', 'leap', 'b', 'c'].find((f) => process.argv.includes(`--${f}`));
+  process.stdout.write(framePrompt(process.argv[2], flag || 'a'));
+}

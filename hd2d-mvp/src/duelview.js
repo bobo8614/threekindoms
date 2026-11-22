@@ -38,7 +38,10 @@ const STEP = { gallop: 0.55, walk: 0.3, loose: 0.6, flee: 0.55 };
 const WHEEL = { walk: { ms: 520, z: 0.55 }, gallop: { ms: 340, z: 0.4 }, loose: { ms: 340, z: 0.4 } };
 // The generals stand this far outside the longer weapon's reach, so a blow is a short drive in and the way back
 // to the mark is a step or two of reining back. (They stood 1.9 off and wheeled round twice to get back: 2026-11-09.)
-const STANDOFF = 0.75, NOSE_TO_NOSE = 3.0; // …and never nearer than this, or the standing horses' heads cross
+// Since 0.4.3 they stand off at mid-field instead (enter: STANDOFF past the longer reach, never under STANDOFF_MIN) and
+// both ride in to meet; the old nose-to-nose marks and the toggle that chose between the two stagings are gone.
+const STANDOFF = 1.8, STANDOFF_MIN = 4.2;
+const SPIN_GAP = 3.2; // 普通攻击: the closest the attacker spins his weapon to the foe (barrel to barrel)
 const MIN_GAP = 1.75, LANE = 1.3, SWING_SLIDE = 0.3; // SWING_SLIDE: the most a swing's poses carry him over the ground // closest horse spacing; the striker's near-side lane (z)
 // Geometries with material groups (BoxGeometry: one per face) merged into one, grouped by material index so a
 // mesh over the same material array draws once per material. (mergeGeometries' own groups are one per source.)
@@ -108,6 +111,9 @@ export function createDuelView(T, sprites = {}, audio) {
     map: canvasTex(64, 64, (g) => { const gr = g.createRadialGradient(32, 32, 12, 32, 32, 46); gr.addColorStop(0, 'rgba(8,4,2,0)'); gr.addColorStop(1, 'rgba(8,4,2,0.85)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }) }));
   vignette.material.map.magFilter = vignette.material.map.minFilter = THREE.LinearFilter; vignette.renderOrder = 999; vignette.frustumCulled = false; scene.add(vignette);
   const dim = (to, ms) => { const o0 = vignette.material.opacity; return tween(ms, (k) => { vignette.material.opacity = lerp(o0, to, ease(k)); }); };
+  // Tight DoF is reserved for 舍身 (and deathblows), never for regular swings.
+  let pull = 0, pulled = false;
+  const spot = (to, ms) => { const p0 = pull; pulled = true; return tween(ms, (k) => { pull = lerp(p0, to, ease(k)); }); };
   // The 舍身 contact's impact frame: both riders pressed to silhouettes for this many rendered frames.
   let silhouette = 0;
   // The camera's kick along a blow: a damped spring (kickX, kickV) pushed by kick(); scaled by the 震屏 setting.
@@ -152,7 +158,7 @@ export function createDuelView(T, sprites = {}, audio) {
   let slowUntil = 0;
   function slow(scale, ms) { timeScale = scale; slowUntil = performance.now() + ms; }
   function abort() {
-    aborted = true; freeze = 0; timeScale = 1; silhouette = 0; kickX = kickV = 0; vignette.material.opacity = 0; for (const R of riders) { R.hold = 0; R.trembleT = 0; }
+    aborted = true; freeze = 0; timeScale = 1; silhouette = 0; kickX = kickV = 0; vignette.material.opacity = 0; pull = 0; pulled = false; for (const R of riders) { R.hold = 0; R.trembleT = 0; }
     for (const t of [...tasks]) { tasks.delete(t); try { t.f(1); t.done?.(); } catch {} t.res(); }
   }
 
@@ -326,7 +332,7 @@ export function createDuelView(T, sprites = {}, audio) {
       const row = i % 3, col = Math.floor(i / 3);
       const m = billboard(tex, sw, sh, dir < 0);
       m.material.color.set('#d8d0c4'); // the ranks stay a step behind the duelists
-      const x = -dir * (5.4 + col * 0.55 + r() * 0.15), z = -1.9 + row * 0.55 + r() * 0.15, y0 = 0.25 + sh / 2;
+      const x = -dir * (6.0 + col * 0.55 + r() * 0.15), z = -1.9 + row * 0.55 + r() * 0.15, y0 = 0.25 + sh / 2;
       m.position.set(x, y0, z); m.userData = { y0, phase: r() * 6, side: dir };
       scene.add(m); out.push(m);
     }
@@ -355,7 +361,7 @@ export function createDuelView(T, sprites = {}, audio) {
       for (const S of [A.turn, A.wheel]) if (S) { const c = { body: framePlane(S, unit).body, meta: S.meta }; c.body.position.x = c.body.userData.ax; c.body.visible = false; cards.push(c); g.add(c.body); }
       // The third sheet is drawn facing right like the side strip and turns with him (show()); each of its frames
       // stands on its own ground line, meta.base px above the frame's bottom edge, so the frame sinks by that much.
-      if (A.extra) { const c = { body: framePlane(A.extra, unit).body, meta: A.extra.meta, follows: true }; c.body.userData.y0 = c.body.position.y; c.body.visible = false; cards.push(c); g.add(c.body); }
+      for (const S of [A.extra, A.spin, A.leap]) if (S) { const c = { body: framePlane(S, unit).body, meta: S.meta, follows: true }; c.body.userData.y0 = c.body.position.y; c.body.visible = false; cards.push(c); g.add(c.body); }
     } else {
       const own = sprites[`officer-${id}`], tex = own || sprites[look] || unitTex(look), img = tex.image, hh = own ? HERO_H : HERO_H * 0.9;
       body = billboard(tex, (hh * img.width) / img.height, hh, false); body.position.y = hh / 2; body.userData.ax = 0;
@@ -609,15 +615,15 @@ export function createDuelView(T, sprites = {}, audio) {
     await Promise.all([home, ride(foe, foe.home, WALK)]);
     await wait(120);
   }
-  // 舍身 (docs/单挑舍身败北与手感方案_2026-11-13.md §2.2): he reins back half a length, charges, leaps level at the
-  // foe and comes down on him. The sounds keep the original's order (96 rein back, 96 charge, 97 leap, 104 contact) at
-  // about half its pace: 97 → 104 is 520 ms, the length of the 97 sound, so the leap plays out and the blow follows on.
-  //   0–260 rein back (allin_windup) · 260–450 charge (allin_charge_1/2 by ground covered) · 450–920 leap (allin_leap,
-  //   on an arc, a fading trail) · 920–970 the down stroke (allin_smear) · 970 contact (allin_impact), a one-frame
-  //   silhouette, a 180 ms stop with the struck rider trembling, then 300 ms at 0.35× while he is driven back.
-  // A miss carries him on past the foe's near side as the foe sidesteps; he loses his balance and pays the cost.
-  // A rider without the third sheet plays it on the stand-ins (ALIAS).
-  const ALLIN = { back: 260, charge: 190, leap: 470, smear: 50, lift: 0.4, stop: 0.18, gap: 2.0 };
+  // 舍身 (docs/单挑舍身败北与手感方案_2026-11-13.md §2.2, the high leap since 0.4.3: docs/单挑动作全面优化_交接_2026-11-21.md):
+  // he reins back half a length while the foe walks up to meet him, charges, rockets high over the foe's head, hangs at
+  // the apex and dives down on him. The sounds keep the original's order (96 rein back, 96 charge, 97 leap, 104 contact).
+  //   0–260 rein back (allin_windup) · 260–450 charge (allin_charge_1/2 by ground covered) · 450–690 up (leap_up) ·
+  //   690–870 apex hang (leap_apex) · 870–1020 the dive with a fading trail (leap_dive) · contact (leap_slam), a
+  //   one-frame silhouette, a 180 ms stop with the struck rider trembling, then 300 ms at 0.35× while he is driven back.
+  // A miss: the foe sidesteps at the apex and he lands over-extended (leap_miss), paying the cost.
+  // A rider without the leap poses plays it on the stand-ins (allin_leap, allin_smear, allin_impact; ALIAS).
+  const ALLIN = { back: 260, charge: 190, stop: 0.18, gap: 2.0 };
   function ghost(R) {
     const src = R.cards.find((c) => c.body.visible)?.body || R.body, m = src.clone(), mat = src.material.clone();
     mat.map = src.material.map.clone(); mat.map.needsUpdate = true; // its own frame offset: the rider moves on to the next pose
@@ -626,7 +632,11 @@ export function createDuelView(T, sprites = {}, audio) {
     tween(280, (k) => { mat.opacity = 0.42 * (1 - k); }, () => { scene.remove(m); mat.map.dispose(); mat.dispose(); });
   }
   // The leap's height (world units above his stand): the frame rises, the shadow and ring stay on the ground.
-  function lift(R, h) { R.g.position.y = 0.25 + h; R.shadow.position.y = 0.01 - h; R.ring.position.y = 0.012 - h; R.shadow.scale.setScalar(1 - h * 0.6); R.shadow.scale.y = 0.4 * (1 - h * 0.6); }
+  function lift(R, h) {
+    const s = Math.max(0.28, 1 - h * 0.32);
+    R.g.position.y = 0.25 + h; R.shadow.position.y = 0.01 - h; R.ring.position.y = 0.012 - h;
+    R.shadow.scale.set(s, 0.4 * s, 1);
+  }
   // Struck by a 舍身: the horse sits back on its haunches and he is driven a full length back.
   async function crush(R) {
     const x0 = R.g.position.x, back = x0 - R.face * 1.0;
@@ -638,48 +648,72 @@ export function createDuelView(T, sprites = {}, audio) {
   async function allIn(me, foe, a, ctx) {
     const dir = me.dir, x0 = me.g.position.x, z0 = me.g.position.z;
     const tier = a.dmg > 0 ? 'heavy' : a.hit ? 'graze' : null;
+    const foeMeet = foe.home - dir * 0.45;
     // He comes down a little short of a normal blow's spacing (MIN_GAP): the third sheet's leap and impact draw the
     // horse at full stretch, so nearer than this its head runs into the foe's before the blow lands.
-    const strikeX = foe.g.position.x - dir * Math.max(ALLIN.gap, reach(me, 'allin_impact') - 0.25);
+    const strikeX = foeMeet - dir * Math.max(ALLIN.gap, reach(me, 'allin_impact') - 0.25);
     const endX = a.hit ? strikeX : strikeX + dir * 0.3; // a miss carries him on, into the ground the foe has left
-    const backX = x0 - dir * 0.9, run = endX - backX, xb = backX + run * 0.42, xc = backX + run * 0.9;
+    const backX = x0 - dir * 0.6, run = endX - backX, xb = backX + run * 0.42, xc = backX + run * 0.9;
     me.loop = null; foe.react = null; cutIn++;
     // 蓄势: rein back, the shot closes in a little and its edges darken.
     show(me, 'allin_windup'); hoof();
     popup('舍身', head(me, 3.0), `${me.look} allin`);
-    if (fx) dim(0.75, ALLIN.back);
-    moveCam(cam.pos.clone().lerp(cam.look, 0.05), cam.look.clone(), ALLIN.back + ALLIN.charge);
+    if (fx) { dim(0.68, ALLIN.back); spot(1, ALLIN.back); }
+    moveCam(SHOT.pos.clone().lerp(SHOT.look, 0.06), SHOT.look.clone(), ALLIN.back + ALLIN.charge);
+    const foeStep = ride(foe, foeMeet, WALK * 1.6, 'walk', true).then(() => { foe.loop = null; show(foe, 'feint_ready'); });
     await tween(ALLIN.back, (k) => { me.g.position.x = lerp(x0, backX, 1 - (1 - k) * (1 - k)); });
     // 助跑
     hoof();
     let lastDust = 0;
-    await tween(ALLIN.charge, (k) => {
+    await Promise.all([foeStep, tween(ALLIN.charge, (k) => {
       const x = lerp(backX, xb, k * k); me.g.position.x = x; me.g.position.z = lerp(z0, LANE, k * 0.4);
       show(me, Math.floor(Math.abs(x - backX) / 0.3) % 2 ? 'allin_charge_2' : 'allin_charge_1');
       if (fx && k - lastDust > 0.45) { lastDust = k; dustPuff(scene, me.g.position.clone().setY(0.35), 0.55, tween); }
-    });
+    })]);
     // 起跳
     audio?.sfx('sfx-duel-swing');
-    show(me, 'allin_leap');
-    if (!a.hit) { show(foe, 'dodge'); foe.loop = null; const f0 = foe.g.position.x; tween(ALLIN.leap, (k) => { foe.g.position.x = f0 + dir * 1.2 * ease(k); }); }
-    let ghosts = 0;
-    await tween(ALLIN.leap, (k) => {
-      me.g.position.x = lerp(xb, xc, k); me.g.position.z = lerp(z0, LANE, 0.4 + k * 0.5); lift(me, ALLIN.lift * Math.sin(Math.PI * Math.min(1, k * 1.08)));
-      if (fx && k > 0.2 + ghosts * 0.22 && ghosts < 3) { ghosts++; ghost(me); }
+    // Exaggerated FC-style high leap: rocket high above the foe's head, hang briefly at the apex, then dive-cleave.
+    // 诸葛亮's carriage only hops (leap sheet: a small bounce while the fan calls a wind blade down), user's call 2026-11-21.
+    const peak = me.meta?.weapon === 'fan' ? 0.35 : 1.9, xMid = lerp(xb, xc, 0.58), xHang = lerp(xb, xc, 0.78);
+    const upPose = hasPose(me, 'leap_up') ? 'leap_up' : 'allin_leap';
+    const apexPose = hasPose(me, 'leap_apex') ? 'leap_apex' : 'allin_leap';
+    const divePose = hasPose(me, 'leap_dive') ? 'leap_dive' : 'allin_smear';
+    const camZoom = SHOT.pos.clone().lerp(SHOT.look, 0.06);
+    const camLookHigh = SHOT.look.clone().add(new THREE.Vector3(0, 0.55, 0));
+    moveCam(camZoom, camLookHigh, 240);
+    show(me, upPose);
+    await tween(240, (k) => {
+      const e = 1 - (1 - k) * (1 - k);
+      me.g.position.x = lerp(xb, xMid, k); me.g.position.z = lerp(z0, LANE, 0.4 + k * 0.35);
+      lift(me, peak * e);
     });
-    // 扑击
-    show(me, 'allin_smear');
-    await tween(ALLIN.smear, (k) => { me.g.position.x = lerp(xc, endX, k); me.g.position.z = lerp(z0, LANE, 0.9 + k * 0.1); lift(me, 0); });
+    // Dramatic mid-air apex hang: foe dodges at the last moment on a miss.
+    show(me, apexPose);
+    if (!a.hit) { show(foe, 'dodge'); foe.loop = null; const f0 = foe.g.position.x; tween(260, (k) => { foe.g.position.x = f0 + dir * 1.25 * ease(k); }); }
+    await tween(180, (k) => {
+      me.g.position.x = lerp(xMid, xHang, ease(k)); me.g.position.z = lerp(z0, LANE, 0.75 + k * 0.15);
+      lift(me, peak + 0.12 * Math.sin(Math.PI * k));
+    });
+    // Steep downward cleave dive with afterimages.
+    show(me, divePose);
+    moveCam(camZoom, SHOT.look.clone(), 150);
+    let ghosts = 0;
+    await tween(150, (k) => {
+      me.g.position.x = lerp(xHang, endX, k); me.g.position.z = lerp(z0, LANE, 0.9 + k * 0.1);
+      lift(me, peak * (1 - k * k));
+      if (fx && k > 0.15 + ghosts * 0.25 && ghosts < 3) { ghosts++; ghost(me); }
+    });
     lift(me, 0);
     // 接触: 104 lands on the blow, hit or miss (as in the original).
     audio?.sfx(CONTACT.desperate);
     if (tier) {
-      show(me, 'allin_impact');
+      const slamPose = hasPose(me, 'leap_slam') ? 'leap_slam' : 'allin_impact';
+      show(me, slamPose);
       impact(me, foe, a, tier, ctx, 'allin_impact', tier !== 'heavy');
       if (tier === 'heavy') {
         freeze = ALLIN.stop; foe.trembleT = ALLIN.stop;
         if (fx && shakeLevel() > 0) silhouette = 1;
-        if (fx) { groundRing(scene, foe.g.position.clone().setY(0.75), '#ffd9a0', { r: 2.2, ms: 520 }, tween); dustPuff(scene, foe.g.position.clone().setY(0.4), 1.4, tween); }
+        if (fx) { groundRing(scene, foe.g.position.clone().setY(0.75), '#ffd9a0', { r: 2.6, ms: 540 }, tween); dustPuff(scene, foe.g.position.clone().setY(0.4), 1.65, tween); }
         slow(0.35, ALLIN.stop * 1000 + 300);
         foe.react = crush(foe);
       }
@@ -688,14 +722,140 @@ export function createDuelView(T, sprites = {}, audio) {
       // Over-extended: past the foe, he loses his balance and staggers two steps; the cost lands as he does.
       popup('落空', head(foe), `${foe.look} miss`);
       foe.react = wait(240).then(() => { foe.loop = 'idle'; show(foe, 'idle_a'); });
-      show(me, 'off_balance');
+      show(me, hasPose(me, 'leap_miss') ? 'leap_miss' : 'off_balance');
       wait(120).then(() => { if (a.self) { popup(`反噬 -${a.self}`, head(me, 2.5), `${me.look} self`); if (fx) me.flash = 0.12; ctx.onSelf?.(me.id, a.self); } });
       const xs = me.g.position.x;
       await tween(380, (k) => { me.g.position.x = xs + dir * 0.3 * Math.sin(k * Math.PI / 2); });
       show(me, 'recover'); await wait(220);
     }
-    if (fx) dim(0, 420);
+    if (fx) { dim(0, 420); spot(0, 420); }
     if (tier !== 'heavy') moveCam(SHOT.pos, SHOT.look, 420); // a heavy blow's cut-in eases back out by itself (punchIn)
+    const home = reinBack(me, z0);
+    await foe.react;
+    foe.react = null;
+    await Promise.all([home, ride(foe, foe.home, WALK)]);
+    await wait(120);
+  }
+  // Gentle horizontal camera pan following the clash center without zooming, darkening or tightening DoF.
+  function panShot(dx, ms) {
+    const p = SHOT.pos.clone(), l = SHOT.look.clone(); p.x += dx; l.x += dx;
+    return moveCam(p, l, ms);
+  }
+  // Mid-range riding approach for single-picture riders as well as full strips.
+  function approach(R, x, speed, gait = 'gallop', quiet = false) {
+    if (R.meta) return ride(R, x, speed, gait, quiet);
+    const x0 = R.g.position.x, d = Math.abs(x - x0);
+    if (d < 0.01) return Promise.resolve();
+    if (!quiet) hoof();
+    return tween((d / speed) * 1000, (k) => { R.g.position.x = lerp(x0, x, k); });
+  }
+  // Spark point between the two engaged riders for non-damaging blade clashes.
+  function clashPoint(me, foe, frame = 'swing_mid') {
+    const p = tipOf(me, frame);
+    p.x = (me.g.position.x + foe.g.position.x) * 0.5 + me.dir * 0.15;
+    p.y = Math.min(Math.max(p.y, 1.25), 1.95);
+    return p;
+  }
+  // 牵制 (FC mode 16): both riders close into mid-field, trade three crisp blade clashes (98×3)
+  // with the defender parrying the first two, and settle the graze/hit only on the third clash.
+  async function feintClash(me, foe, a, ctx) {
+    const dir = me.dir, z0 = me.g.position.z;
+    const foeMeet = foe.home - dir * 0.55;
+    const strikeX = foeMeet - dir * Math.max(MIN_GAP, reach(me, 'feint_jab') + 0.12);
+    const tier = a.dmg > 0 ? 'light' : a.hit ? 'graze' : null;
+    me.loop = null; foe.react = null; cutIn++;
+    panShot((strikeX + foeMeet) * 0.18, 320);
+    await Promise.all([
+      approach(me, strikeX - dir * 0.35, 6.2, 'gallop', false),
+      approach(foe, foeMeet, 2.2, 'walk', true).then(() => { foe.loop = null; show(foe, 'feint_ready'); }),
+    ]);
+    me.loop = null;
+    for (let i = 0; i < 2; i++) {
+      const mx0 = me.g.position.x, fx0 = foe.g.position.x;
+      show(me, 'feint_ready'); await wait(65);
+      show(me, 'feint_jab'); audio?.sfx(CONTACT.feint);
+      if (fx) sparkBurst(scene, clashPoint(me, foe, 'feint_jab'), 8, '#ffe6a8', tween);
+      show(foe, i === 0 ? 'recoil_step' : 'feint_ready');
+      await tween(100, (k) => {
+        me.g.position.x = lerp(mx0, mx0 + dir * 0.14, ease(k));
+        me.g.position.z = lerp(me.g.position.z, LANE, ease(k));
+        foe.g.position.x = lerp(fx0, fx0 + dir * 0.08, Math.sin(Math.PI * k));
+      });
+      show(me, 'feint_back'); show(foe, 'feint_ready'); await wait(65);
+    }
+    const mx0 = me.g.position.x;
+    show(me, 'feint_ready'); await wait(65);
+    show(me, 'feint_jab');
+    await tween(80, (k) => { me.g.position.x = lerp(mx0, strikeX, ease(k)); me.g.position.z = lerp(me.g.position.z, LANE, ease(k)); });
+    audio?.sfx(CONTACT.feint);
+    if (tier) {
+      const stop = impact(me, foe, a, tier, ctx, 'feint_jab');
+      if (stop) await wait(stop * 1000);
+    } else {
+      const xf = foe.g.position.x;
+      foe.loop = null; show(foe, 'dodge'); popup('落空', head(foe), `${foe.look} miss`);
+      foe.react = tween(160, (k) => { foe.g.position.x = xf + dir * 0.55 * ease(k); });
+    }
+    await wait(90); show(me, 'feint_back'); await wait(90); show(me, 'recover'); await wait(80);
+    moveCam(SHOT.pos, SHOT.look, 380);
+    const home = reinBack(me, z0);
+    await foe.react;
+    foe.react = null;
+    await Promise.all([home, ride(foe, foe.home, WALK)]);
+    await wait(120);
+  }
+  // 普通攻击 (FC mode 17): both riders close into mid-field; the attacker whirls his weapon overhead
+  // three full turns (97×3, identical on hit and miss while the defender holds guard) then drives in on the
+  // decisive cleave (105) which alone reveals the hit or miss.
+  async function spinAttack(me, foe, a, ctx) {
+    const dir = me.dir, z0 = me.g.position.z;
+    const foeMeet = foe.home - dir * 0.55;
+    const strikeX = foeMeet - dir * Math.max(MIN_GAP, reach(me) - 0.05);
+    // He spins from at least SPIN_GAP out, as 关羽's long blade does: a sword's short reach put the horses nose to
+    // nose for the whole spin (刘备 vs 典韦, 2026-11-21). The drive-in below covers the extra ground.
+    const engageX = foeMeet - dir * Math.max(SPIN_GAP, Math.abs(foeMeet - strikeX) + 0.7);
+    me.loop = null; foe.react = null; cutIn++;
+    panShot((strikeX + foeMeet) * 0.2, 340);
+    await Promise.all([
+      approach(me, engageX, 6.2, 'gallop', false),
+      approach(foe, foeMeet, 2.2, 'walk', true).then(() => { foe.loop = null; show(foe, 'feint_ready'); }),
+    ]);
+    me.loop = null;
+    if (hasPose(me, 'spin_1')) {
+      // Three overhead weapon spins (97×3): 4-frame 360° loop per turn, steady mount, defender holds guard.
+      for (let i = 0; i < 3; i++) {
+        show(me, 'spin_1'); await wait(70);
+        show(me, 'spin_2'); audio?.sfx('sfx-duel-swing'); await wait(70);
+        show(me, 'spin_3'); await wait(70);
+        show(me, 'spin_4'); await wait(70);
+      }
+      show(me, 'spin_cleave'); await wait(95);
+    } else {
+      for (let i = 0; i < 3; i++) {
+        show(me, 'windup'); await wait(95);
+        show(me, 'swing_mid'); audio?.sfx('sfx-duel-swing'); await wait(95);
+        show(me, 'windup'); await wait(90);
+      }
+    }
+    // Decisive cleave (105): drive in from engageX to strikeX and reveal the outcome.
+    const nearX = me.g.position.x;
+    show(me, 'swing_mid');
+    await tween(Math.min(170, 115 * Math.max(1, Math.abs(strikeX - nearX) / 0.7)), (k) => {
+      me.g.position.x = lerp(nearX, strikeX, ease(k));
+      me.g.position.z = lerp(z0, LANE, ease(k));
+      if (k >= 0.45 && me.frame !== 'swing_late') show(me, 'swing_late');
+    });
+    show(me, 'strike'); audio?.sfx(CONTACT.attack);
+    if (a.hit) {
+      const stop = impact(me, foe, a, a.dmg > 0 ? 'normal' : 'graze', ctx);
+      if (stop) await wait(stop * 1000);
+    } else {
+      const xf = foe.g.position.x;
+      foe.loop = null; show(foe, 'dodge'); popup('落空', head(foe), `${foe.look} miss`);
+      foe.react = tween(160, (k) => { foe.g.position.x = xf + dir * 0.7 * ease(k); });
+    }
+    await wait(100); show(me, 'follow'); await wait(100); show(me, 'recover'); await wait(90);
+    moveCam(SHOT.pos, SHOT.look, 380);
     const home = reinBack(me, z0);
     await foe.react;
     foe.react = null;
@@ -709,6 +869,7 @@ export function createDuelView(T, sprites = {}, audio) {
     // Chased down: the foe gallops after him and strikes his back before he gets clear, inside the shot.
     // They stand close, so the foe holds until he has turned and run a few strides: the chase has ground to cover.
     const mid = me.home - me.dir * 1.9;
+    panShot(-me.dir * 0.85, 650);
     await Promise.all([wheel(me, 'front', spin).then(() => ride(me, mid, GALLOP * 0.5)), wait(260).then(() => ride(foe, mid + me.dir * Math.max(MIN_GAP, reach(foe) - 0.2), GALLOP))]);
     me.loop = null;
     await play(foe, 'feint', () => {
@@ -990,6 +1151,8 @@ export function createDuelView(T, sprites = {}, audio) {
       sky.update(time); shafts.update(time); env.update(pdt, time, cam.look, 14); T.water.offset.x = time * 0.05;
     },
     focusPoint() { return cam.look; },
+    // Tighter DoF reserved for 舍身, reset cleanly on abort().
+    dof() { return pulled ? { strength: lerp(1.5, 2.6, pull), band: lerp(0.1, 0.075, pull) } : null; },
     // Stage the field's two generals; ranks scale with the troops each side still has.
     // warm: run once the set and riders are made, before the camera moves (app.js compiles their shaders then).
     async enter(battle, looks, warm = null) {
@@ -1006,8 +1169,8 @@ export function createDuelView(T, sprites = {}, audio) {
       release(gone, scene, Object.values(T)); // the last duel's set, riders and ranks
       performance.measure('duel:build', { start: T0 });
       await warm?.();
-      // Stand-off distance follows the longer weapon: close enough that a blow is a short drive in.
-      const gap = Math.max(NOSE_TO_NOSE, Math.max(MIN_GAP, reach(RA), reach(RD)) + STANDOFF);
+      // Stand-off distance: a mid-range riding gap, so both generals meet mid-field.
+      const gap = Math.max(STANDOFF_MIN, Math.max(MIN_GAP, reach(RA), reach(RD)) + STANDOFF);
       RA.home = -gap / 2; RD.home = gap / 2;
       cam.pos.copy(OPEN.pos); cam.look.copy(OPEN.look); cutIn++; // no war-start phrase: the original starts the duel theme and nothing else
       await Promise.all([moveCam(SHOT.pos, SHOT.look, 2100), ride(RA, RA.home, GALLOP * 0.75, undefined, true), ride(RD, RD.home, GALLOP * 0.75, undefined, true)]); // quiet: the original enters on the theme alone
@@ -1022,7 +1185,9 @@ export function createDuelView(T, sprites = {}, audio) {
       if (a.cmd === 'persuade') return persuade(me, foe, a);
       if (a.cmd === 'surrender') return yieldTo(me);
       if (a.cmd === 'desperate' && me.meta) return allIn(me, foe, a, ctx);
-      return swing(me, foe, a, ctx);
+      if (a.cmd === 'feint') return feintClash(me, foe, a, ctx);
+      if (a.cmd === 'attack') return spinAttack(me, foe, a, ctx);
+      return swing(me, foe, a, ctx); // a 舍身 by a rider without an action strip
     },
     // Death: struck from the saddle, the rider falls to the ground and his horse bolts riderless.
     // Death (or, under 武将不战死, a capture): see fallFrom().

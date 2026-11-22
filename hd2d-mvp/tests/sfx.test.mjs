@@ -15,7 +15,9 @@ after(() => game?.close());
 const spy = (p) => p.evaluate(() => { const a = window.__game.audio; window.__sounds = []; a.sfx = (k) => window.__sounds.push(k); });
 const heard = (p) => p.evaluate(() => window.__sounds.splice(0));
 const RIDE = 'sfx-duel-ride';
+const HIT = 'HIT'; // where ctx.onHit lands among the sounds
 const weapon = (list) => list.filter((k) => k !== RIDE);
+const blows = (list) => weapon(list).filter((k) => k !== HIT);
 
 test('a 单挑 plays the original sound of each action, the same on a hit and a miss', async () => {
   await spy(page);
@@ -27,7 +29,7 @@ test('a 单挑 plays the original sound of each action, the same on a hit and a 
     dv.setPlace({ month: 2, city: 12, siege: null }); debug.show('dview');
     const take = () => window.__sounds.splice(0);
     await dv.enter(battle, { a: 'attacker', d: 'defender' }); out.enter = take();
-    const A = battle.side.a.id, ctx = { hp: { [A]: 50, [battle.side.d.id]: 50 } };
+    const A = battle.side.a.id, ctx = { hp: { [A]: 50, [battle.side.d.id]: 50 }, onHit: () => window.__sounds.push('HIT') };
     const run = async (name, a) => { await dv.act({ by: A, ...a }, ctx); out[name] = take(); };
     await run('feintHit', { cmd: 'feint', hit: true, dmg: 4 });
     await run('feintMiss', { cmd: 'feint', hit: false, dmg: 0 });
@@ -43,16 +45,20 @@ test('a 单挑 plays the original sound of each action, the same on a hit and a 
     return out;
   });
   assert.deepEqual(r.enter, [], `the riders come in under the duel theme alone: ${r.enter}`);
-  assert.deepEqual(weapon(r.feintHit), ['sfx-chime'], `牵制: ${r.feintHit}`);
-  assert.deepEqual(weapon(r.attackHit), ['sfx-duel-swing', 'sfx-duel-blow'], `攻击: ${r.attackHit}`);
-  assert.deepEqual(weapon(r.desperateHit), ['sfx-duel-swing', 'sfx-duel-desperate'], `舍身: ${r.desperateHit}`);
+  // The original's rhythms (docs/单挑动作全面优化_交接_2026-11-21.md): 牵制 three clashes (98×3), 攻击 three overhead
+  // spins and the cleave (97×3, 105), 舍身 the leap and the blow (97, 104). The blow lands on the last sound alone: the
+  // clashes and spins before it take no hp.
+  assert.deepEqual(weapon(r.feintHit), ['sfx-chime', 'sfx-chime', 'sfx-chime', HIT], `牵制: ${r.feintHit}`);
+  assert.deepEqual(weapon(r.attackHit), ['sfx-duel-swing', 'sfx-duel-swing', 'sfx-duel-swing', 'sfx-duel-blow', HIT], `攻击: ${r.attackHit}`);
+  assert.deepEqual(weapon(r.desperateHit), ['sfx-duel-swing', 'sfx-duel-desperate', HIT], `舍身: ${r.desperateHit}`);
   for (const k of ['feint', 'attack', 'desperate']) {
-    assert.deepEqual(weapon(r[`${k}Miss`]), weapon(r[`${k}Hit`]), `${k} sounds the same when it misses`);
+    assert.ok(!r[`${k}Miss`].includes(HIT), `${k}: a miss takes no hp: ${r[`${k}Miss`]}`);
+    assert.deepEqual(blows(r[`${k}Miss`]), blows(r[`${k}Hit`]), `${k} sounds the same when it misses`);
     assert.equal(r[`${k}Hit`][0], RIDE, `${k} starts with the horse driving in: ${r[`${k}Hit`]}`);
     assert.ok(r[`${k}Hit`].filter((x) => x === RIDE).length >= 2, `${k}: in and back again: ${r[`${k}Hit`]}`);
   }
   for (const k of ['taunt', 'tauntMiss', 'persuade']) assert.deepEqual(r[k], [], `${k} is silent: ${r[k]}`);
-  assert.ok(r.chased.length && r.chased.every((x) => x === RIDE), `a pursuit is gallops only, no blow: ${r.chased}`);
+  assert.ok(r.chased.length && r.chased.every((x) => x === RIDE || x === HIT), `a pursuit is gallops only, no blow: ${r.chased}`);
 });
 
 test('a 白兵 volley sounds as it looses and again as the arrows land', async () => {
