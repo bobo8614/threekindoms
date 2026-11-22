@@ -42,6 +42,7 @@ const FLAT_TERRITORY_ZOOM = [1, 2], FLAT_RIM_ALPHA = [0.16, 0.14], FLAT_RIM_WIDT
 const FLAT_BORDER_ALPHA = 0.8, FLAT_BORDER_MINE = 1.15, FLAT_BORDER_GAIN = 1.5, FLAT_GLOW_PX = 16;
 const FLAT_GLOW_WIDTH = [1, 0.72, 0.44], FLAT_GLOW_ALPHA = [0.035, 0.06, 0.1];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const closeTowns = (p) => { for (const b of Object.values(p.towns ?? {})) b.close(); }; // a season's town atlases, one per building style
 
 // A data pack's cities on the 2D map (docs/战略地图数据包扩展设计_2026-11-17.md §6): the pictures stay as baked; the new towns, their
 // roads and their land are laid over them. The bake's camera is fitted from its own 30 towns (where the sand table stands them, against
@@ -57,8 +58,13 @@ async function packBoard(board, data) {
       .then(([meta, h, flat]) => ({ name, dir, meta, flat, height: new Uint16Array(h) }))
       .catch((e) => { console.error(`战略地图: extension region ${name} not loaded`, e); return null; });
   };
+  // The town pictures of each building style the pack's towns use (core/pack.js STYLES): towns-<style>.json beside the Han towns.json,
+  // baked by tools/bake_strategy_flat.mjs --towns --style. A style whose pictures fail to load draws its towns in the Han ones, loudly.
+  const want = [...new Set(data.cities.filter((c) => c.mod && c.style).map((c) => c.style))];
   const [meta, hbuf, towns, ...rs] = await Promise.all([fetch(`${SAND}/board.json`).then((r) => r.json()), fetch(`${SAND}/height.bin`).then((r) => r.arrayBuffer()), fetch(`${DIR}/towns.json`).then((r) => r.json()),
+    ...want.map((st) => json(`${DIR}/towns-${st}.json`).catch((e) => { console.error(`战略地图: ${st} town pictures not loaded, Han ones instead`, e); return null; })),
     ...(data.pack.boards ?? []).map(region)]);
+  const styled = { han: towns }; want.forEach((st, i) => { if (rs[i]) styled[st] = rs[i]; }); rs.splice(0, want.length);
   const regions = rs.filter(Boolean), inBox = ([x0, x1, z0, z1], x, z) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
   U.uSnowFar.value = regions.some((r) => r.meta.box[2] < meta.box[2] - 1e-6) ? 5 : 0; // as strategy.js: the summer snow line past the boards
   const mainAt = heightField(meta, new Uint16Array(hbuf)), SEABED = meta.h[0];
@@ -94,11 +100,11 @@ async function packBoard(board, data) {
   const pos = meta.cities.map((c) => new THREE.Vector3(c.mx, c.y, c.mz)), seats = meta.cities.map((c) => ({ id: c.id, x: c.x, z: c.z }));
   const added = [];
   for (const c of data.cities.slice(meta.cities.length)) {
-    const seat = townSeat(c, meta.size, heightAt), [cx, cy] = project(seat.x, seat.y, seat.z);
-    const band = towns.bands.reduce((b, z, i) => (Math.abs(z - seat.z) < Math.abs(towns.bands[b] - seat.z) ? i : b), 0);
-    const t = towns.towns.find((q) => q.tier === c.tier && q.band === band);
+    const seat = townSeat(c, meta.size, heightAt), [cx, cy] = project(seat.x, seat.y, seat.z), style = styled[c.style] ? c.style : 'han', T = styled[style];
+    const band = T.bands.reduce((b, z, i) => (Math.abs(z - seat.z) < Math.abs(T.bands[b] - seat.z) ? i : b), 0);
+    const t = T.towns.find((q) => q.tier === c.tier && q.band === band);
     const city = { id: c.id, cx: n(cx), cy: n(cy), flag: [n(cx + t.flag[0]), n(cy + t.flag[1])], tag: [n(cx + t.tag[0]), n(cy + t.tag[1])], rx: t.rx, ry: t.ry,
-      town: { col: towns.tiers.indexOf(c.tier), row: band } };
+      town: { style, col: T.tiers.indexOf(c.tier), row: band } };
     board.cities.push(city); added.push(city);
     pos[c.id] = new THREE.Vector3(seat.x, seat.y, seat.z); seats.push({ id: c.id, x: seat.x, z: seat.z });
   }
@@ -109,7 +115,7 @@ async function packBoard(board, data) {
     const pts = courseOf(c.id, m, pos, groundY, wetCost), sea = pts.map((q) => heightAt(q.x, q.z) < SEA_Y + 0.01 && !waterAt(q.x, q.z));
     board.roads.push({ a: c.id, b: m, sea, pack: true, p: pts.flatMap((q, i) => project(q.x, Math.max(q.y, sea[i] ? SEA_Y : heightAt(q.x, q.z)), q.z)).map(n) });
   }
-  return { towns, added, groundAt, seats, regions };
+  return { towns, styles: [...new Set(added.map((c) => c.town.style))], added, groundAt, seats, regions };
 }
 
 // The board's coordinates and the first picture are in before it returns, so the map never opens blank. ctx.month: the month to open on
@@ -201,14 +207,15 @@ export async function createStrategyFlat(ctx) {
       // With a pack, the season's town pictures come with its board picture (a town with no picture would be a gap); they go with it.
       // A region's picture for the season comes with it too (its board would be a hole in the table).
       const regionPic = (r) => fetch(`${r.dir}/flat-${SEASONS[s]}.webp`).then((q) => { if (!q.ok) throw new Error(`${q.status}`); return q.blob(); }).then((b) => createImageBitmap(b));
-      loading.set(s, Promise.all([bitmap(SEASONS[s]), pack?.added.length ? bitmap(`towns-${SEASONS[s]}`) : null, ...R.map(regionPic)])
-        .then(([p, t, ...rp]) => { if (asleep) { p.close(); t?.close(); rp.forEach((b) => b.close()); throw new Error('released'); } if (t) p.towns = t; if (rp.length) p.regions = rp; pics.set(s, p); return p; }).finally(() => loading.delete(s)));
+      const ST = pack?.styles ?? [];
+      loading.set(s, Promise.all([bitmap(SEASONS[s]), Promise.all(ST.map((st) => bitmap(st === 'han' ? `towns-${SEASONS[s]}` : `towns-${st}-${SEASONS[s]}`))), ...R.map(regionPic)])
+        .then(([p, t, ...rp]) => { if (asleep) { p.close(); t.forEach((b) => b.close()); rp.forEach((b) => b.close()); throw new Error('released'); } if (t.length) p.towns = Object.fromEntries(ST.map((st, i) => [st, t[i]])); if (rp.length) p.regions = rp; pics.set(s, p); return p; }).finally(() => loading.delete(s)));
     }
     return loading.get(s);
   };
   const prune = () => {
     const keep = new Set([...layers.map((l) => l.s), want, (want + 1) % 4, trying]);
-    for (const [s, p] of pics) if (!keep.has(s)) { p.close(); p.towns?.close(); p.regions?.forEach((b) => b.close()); pics.delete(s); }
+    for (const [s, p] of pics) if (!keep.has(s)) { p.close(); closeTowns(p); p.regions?.forEach((b) => b.close()); pics.delete(s); }
   };
   // Shows a season's picture when it is ready, the old one staying up until then; one that will not load gives way to a neighbour's.
   async function show(s, instant) {
@@ -304,10 +311,10 @@ export async function createStrategyFlat(ctx) {
   }
   // A pack's towns' pictures, over each season's picture as it fades (so they turn with the season) and under the owners' tint. No
   // road is drawn with them: since 2026-11-21 the pictures carry none, and the 道路 overview and the selected city's beads are the roads.
-  function drawPackTowns(c2, atlas, k, x, y) {
-    if (!atlas) return;
-    const [cw, ch] = pack.towns.cell, [ax, ay] = pack.towns.anchor;
-    for (const c of pack.added) c2.drawImage(atlas, c.town.col * cw, c.town.row * ch, cw, ch, x + (c.cx - ax) * k, y + (c.cy - ay) * k, cw * k, ch * k);
+  function drawPackTowns(c2, atlases, k, x, y) {
+    if (!atlases) return;
+    const [cw, ch] = pack.towns.cell, [ax, ay] = pack.towns.anchor; // every style's atlas is laid out as the Han one
+    for (const c of pack.added) c2.drawImage(atlases[c.town.style], c.town.col * cw, c.town.row * ch, cw, ch, x + (c.cx - ax) * k, y + (c.cy - ay) * k, cw * k, ch * k);
   }
   function draw(dt = 0) {
     if (asleep || document.querySelector('.tt')) return; // the title screen is opaque over the whole window: its pan needs viewState, not a picture repainted every frame nobody can see. Gone, the next frame draws, before it is shown.
@@ -909,7 +916,7 @@ export async function createStrategyFlat(ctx) {
     asleep = true;
     cv.width = cv.height = under.width = under.height = 0;
     if (skyCv) skyCv.width = skyCv.height = 0;
-    for (const p of pics.values()) { p.close(); p.towns?.close(); }
+    for (const p of pics.values()) { p.close(); closeTowns(p); }
     pics.clear(); layers = []; trying = flying = null; snap = false; underKey = '';
   }
   // The month's picture is in and painted when this lands; the other map stays up until then. Pictures on their way when it was released are dropped as they land.

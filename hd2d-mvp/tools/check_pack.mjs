@@ -62,8 +62,10 @@ export function checkPack(dir) {
   const boards = boardsFor(data.pack.boards ?? []), allowed = ['base', ...(data.pack.boards ?? [])];
   for (const c of data.cities.slice(base.cities.length)) {
     const x = toX(c.lon), z = toZ(c.lat), r = HALF[c.tier];
-    const b = allowed.map((k) => boards[k]).find((q) => q?.inside(x, z));
+    const on = allowed.find((k) => boards[k]?.inside(x, z)), b = boards[on];
     if (!b) { errors.push(`城 ${c.name}：${c.lon}, ${c.lat} 不在原版沙盘${allowed.length > 1 ? '或所声明的地块' : ''}上`); continue; }
+    // The style is the author's choice (a Han garrison may stand in Japan): only a reminder that it exists.
+    if (on === 'japan' && !c.style) warnings.push(`城 ${c.name}：在 japan 地块上，模型是汉式城池；要日式或朝鲜式的，写 "style": "japan" 或 "korea"`);
     const pts = [[0, 0], ...Array.from({ length: 12 }, (_, k) => [Math.cos(k * Math.PI / 6) * r, Math.sin(k * Math.PI / 6) * r])];
     const wet = pts.filter(([ox, oz]) => b.heightAt(x + ox, z + oz) < b.sea + 0.02).length;
     if (b.heightAt(x, z) < b.sea + 0.02) errors.push(`城 ${c.name}：治所 ${c.lon}, ${c.lat} 在水里`);

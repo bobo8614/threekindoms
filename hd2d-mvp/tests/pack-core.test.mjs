@@ -52,6 +52,7 @@ test('each kind of mistake is named', () => {
   has(edit((p) => { p.cities.add[0].lon = 140; }), '落在原版沙盘之外');
   has(edit((p) => { p.cities.add[1].lon = 120.4; p.cities.add[1].lat = 30.1; }), '离会稽太近');
   has(edit((p) => { p.cities.add[0].tier = 'huge'; }), 'tier 只能是');
+  has(edit((p) => { p.cities.add[0].style = 'french'; }), 'style 只能是');
   has(edit((p) => { p.cities.add[0].gold = 20000; }), 'gold 应为 0–9999');
   has(edit((p) => { p.cities.edit.push({ city: '洛阳', lon: 112 }); }), '不能改原版城的经纬度');
   has(edit((p) => { p.roads.push(['会稽', '会稽']); }), '同一座城');
@@ -88,6 +89,17 @@ async function campaign(D, seed, player, months) {
   try { await G.run(g, io); } catch (x) { if (x !== g) throw x; }
   return g;
 }
+test('a new city\'s building style is looks only: kept on the record when not han, and nothing else changes', () => {
+  // docs/城池风格模型_方案_2026-11-22.md: the sand table and the 2D map draw it; no rule reads it, so the save format is as before.
+  const plain = merge(FIX).data, styled = edit((p) => { p.cities.add[0].style = 'japan'; p.cities.add[1].style = 'han'; });
+  assert.deepEqual(styled.errors, []);
+  assert.equal(styled.data.cities[30].style, 'japan');
+  assert.ok(!('style' in styled.data.cities[31]) && !('style' in plain.cities[30]), 'han, written or not, leaves the record as it was');
+  const { style, ...rest } = styled.data.cities[30];
+  assert.deepEqual(rest, plain.cities[30]);
+  assert.equal(P.PACK_FORMAT, 1);
+});
+
 test('the AI plays twenty years on a pack with a new house', async () => {
   const { data: D } = merge(FIX);
   let houseWon = 0;
@@ -156,4 +168,8 @@ test('the author\'s checker: the shipped packs pass, a seat in the sea or on a r
   const hill = checkPack(dir);
   assert.deepEqual(hill.errors, []);
   assert.ok(hill.warnings.some((w) => w.includes('豫章') && w.includes('山脉')), hill.warnings.join(' | '));
+  // A town on the japan board with no style is told the styles exist; with one, nothing is said.
+  const jp = checkPack(MVP + 'tools/fixtures/packs/test-japan').warnings, st = checkPack(MVP + 'tools/fixtures/packs/test-styles').warnings;
+  assert.ok(jp.some((w) => w.includes('江户') && w.includes('"style"')), jp.join(' | '));
+  assert.ok(!st.some((w) => w.includes('"style"') && !w.includes('博多')) && st.some((w) => w.includes('博多') && w.includes('"style"')), st.join(' | '));
 });

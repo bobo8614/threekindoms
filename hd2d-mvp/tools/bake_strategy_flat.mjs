@@ -3,6 +3,8 @@
 //   node hd2d-mvp/tools/bake_strategy_flat.mjs <scratch_dir> [--dest assets/ai/sandtable/flat] [--ss 1.5] [--only spring] [--metadata-only]
 //   node hd2d-mvp/tools/bake_strategy_flat.mjs <scratch_dir> --towns    the town pictures a data pack's new cities stand in on the 2D map:
 //     each tier's model alone, photographed by the same camera in each season at three latitudes (snow), into towns-<season>.webp and towns.json
+//   node hd2d-mvp/tools/bake_strategy_flat.mjs <scratch_dir> --towns --style japan    the same in a building style (core/pack.js STYLES), into
+//     towns-<style>-<season>.webp and towns-<style>.json; a tier the style has no model for yet is photographed as the Han one
 //   node hd2d-mvp/tools/bake_strategy_flat.mjs <scratch_dir> --region <name>    an extension region's pictures for the 2D map
 //     (docs/战略地图数据包扩展设计_2026-11-17.md §5.5): the board with the region on one table, photographed by the original pictures'
 //     own camera through a window over the region (setViewOffset, a margin all round so occlusion and bloom do not seam), into
@@ -46,7 +48,8 @@ async function main() {
   if (!scratch || scratch.startsWith('--')) { console.error('usage: bake_strategy_flat.mjs <scratch_dir> [--dest assets/ai/sandtable/flat] [--ss 1.5] [--only spring]'); process.exit(2); }
   const HD2D = join(dirname(fileURLToPath(import.meta.url)), '..'), ROOT = join(HD2D, '..');
   const dest = resolve(HD2D, arg('--dest', 'assets/ai/sandtable/flat')), SS = Number(arg('--ss', 1.5)), only = arg('--only');
-  const metadataOnly = process.argv.includes('--metadata-only'), towns = process.argv.includes('--towns'), region = arg('--region');
+  const metadataOnly = process.argv.includes('--metadata-only'), towns = process.argv.includes('--towns'), region = arg('--region'), style = arg('--style');
+  if (style != null && !(towns && ['japan', 'korea'].includes(style))) throw Error(`--style ${style}: japan or korea, with --towns`);
   if (region != null && !/^[a-z0-9-]+$/.test(region)) throw Error(`region name ${region}`); // refresh ownership after a border warp change, without photographing the seasons again
   // Season files and the month each is shot in: 二月, 四月, 九月, 十一月 (floor(month / 3) picks the picture in play).
   const SEASONS = [['spring', 1], ['summer', 3], ['autumn', 8], ['winter', 10]].filter(([s]) => !only || s === only);
@@ -71,7 +74,9 @@ async function main() {
       // A cell per tier (columns) and latitude band (rows); the seat projects to ANCHOR in its cell. The towns stand in one frame,
       // spread over the board's middle: at this lens (10°) the view of a town hardly changes across the board.
       const TIERS = ['capital', 'major', 'county', 'pass'], BANDS = [-7, 0, 6], XS = [-6, -2, 2, 6], CELL = [260, 230], ANCHOR = [130, 135];
-      const spots = BANDS.flatMap((z, b) => TIERS.map((tier, t) => ({ tier, band: b, x: XS[t], z })));
+      const spots = BANDS.flatMap((z, b) => TIERS.map((tier, t) => ({ tier, style, band: b, x: XS[t], z })));
+      if (style) await page.evaluate((st) => window.__game.strategy.loadCityStyle(st), style);
+      const name = style ? `towns-${style}` : 'towns';
       let meta = null;
       for (const [season, month] of SEASONS) {
         const res = await page.evaluate(async ({ W, H, SS, month, spots, CELL, ANCHOR, first }) => {
@@ -117,12 +122,12 @@ async function main() {
           return { png, out };
         }, { W: FRAME[0], H: FRAME[1], SS, month, spots, CELL, ANCHOR, first: !meta });
         meta = { cell: CELL, anchor: ANCHOR, tiers: TIERS, bands: BANDS, towns: res.out };
-        const png = join(scratch, `towns-${season}.png`), webp = join(dest, `towns-${season}.webp`);
+        const png = join(scratch, `${name}-${season}.png`), webp = join(dest, `${name}-${season}.webp`);
         writeFileSync(png, Buffer.from(res.png, 'base64'));
         execFileSync('cwebp', ['-quiet', '-q', '88', '-m', '6', '-alpha_q', '100', png, '-o', webp]);
         console.log(`towns ${season}: month ${month}`);
       }
-      writeFileSync(join(dest, 'towns.json'), JSON.stringify(meta));
+      writeFileSync(join(dest, `${name}.json`), JSON.stringify(meta));
     } else if (metadataOnly) {
       const board = JSON.parse(readFileSync(join(dest, 'board.json'), 'utf8'));
       board.tint = await page.evaluate(({ board, frame, scale, runMax }) => {

@@ -1,0 +1,13 @@
+{
+  "add": [
+    { "name":  "江户", "lon":  139.69, "lat":  35.69, "tier":  "capital", "style":  "japan", "like":  "洛阳" },
+    { "name":  "京都", "lon":  135.77, "lat":  35.01, "tier":  "major", "style":  "japan", "like":  "建业" },
+    { "name":  "仙台", "lon":  140.87, "lat":  38.27, "tier":  "county", "style":  "japan", "like":  "长沙" },
+    { "name":  "箱根", "lon":  138.6, "lat":  35.3, "tier":  "pass", "style":  "japan", "like":  "西平关" },
+    { "name":  "汉城", "lon":  126.98, "lat":  37.57, "tier":  "capital", "style":  "korea", "like":  "青州" },
+    { "name":  "平壤", "lon":  125.75, "lat":  39.03, "tier":  "major", "style":  "korea", "like":  "幽州" },
+    { "name":  "庆州", "lon":  129.2, "lat":  35.85, "tier":  "county", "style":  "korea", "like":  "长沙" },
+    { "name":  "铁岭", "lon":  127.6, "lat":  38.9, "tier":  "pass", "style":  "korea", "like":  "西平关" },
+    { "name":  "博多", "lon":  130.42, "lat":  33.58, "tier":  "major", "like":  "建业" }
+  ]
+}

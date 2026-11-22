@@ -355,12 +355,13 @@ export function createStrategy(ctx) {
     // spot's tier standing there alone (as strategycities builds one: the model, its ground shadow), for the 2D map's town pictures.
     // Returns each spot with `top`, how far over its seat the town's tag stands (strategycities: the town's top, or its pole's).
     // Call it after every bakeView (which shows the board's pieces again); the towns are made on the first call.
+    loadCityStyle: (style) => world.loadCityStyle?.(style),
     bakeTowns(spots, y = 0.35) {
       for (const o of [...scene.children]) if (!o.isLight && o !== camera && !o.userData.bakeTown) o.visible = false;
       if (bakedTowns) return bakedTowns;
       return bakedTowns = spots.map((s) => {
         const g = new THREE.Group(), half = world.size[TIER_KIND[s.tier]] / 2;
-        for (const { geo, mat } of world.cityModel(s.tier)) { const m = new THREE.Mesh(geo, mat); m.position.y = -0.03; g.add(m); }
+        for (const { geo, mat } of world.cityModel(s.tier, s.style)) { const m = new THREE.Mesh(geo, mat); m.position.y = -0.03; g.add(m); }
         const modelTop = new THREE.Box3().setFromObject(g).max.y;
         g.add(townShadow(half)); g.position.set(s.x, y, s.z); g.userData.bakeTown = true; scene.add(g);
         return { ...s, y, half, top: Math.max(modelTop, s.tier === 'capital' ? 0.56 : 0.44) + 0.15 };

@@ -11,6 +11,9 @@ export const PACK_FILES = ['cities.json', 'roads.json', 'factions.json', 'office
 export const FIRST_MOD_FACTION = 8, MAX_MOD_FACTIONS = 8; // 7 is NONE (no owner) and stays a placeholder: 8–15 fit 4 territory bits
 const NONE = 7;
 export const TIERS = ['capital', 'major', 'county', 'pass'];
+// The building style a new city's sand-table model is drawn in (docs/城池风格模型_方案_2026-11-22.md): looks only, no rule
+// reads it, so it is not in the save format. han is the default and is left out of the merged record.
+export const STYLES = ['han', 'japan', 'korea'];
 export const MIN_CITY_GAP = 0.9; // board units between two seats (the closest original pair, 兖州–豫州, is 1.13 apart as drawn)
 
 // The map fields of the original 30 (data/base-map.json) go onto game-data.json's cities by id.
@@ -27,7 +30,7 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/, VERSION = /^\d{1,4}\.\d{1,4}(\.\d{1,4}
 const CITY_NUM = { gold: [0, 9999], rice: [0, 9999], pop: [0, 9999], land: [0, 999], industry: [0, 999], disaster: [0, 99], gov: [0, 100], reserve: [0, 10000], treasure: [0, 99] };
 const OFFICER_NUM = { hp: [1, 100], war: [1, 100], int: [1, 100], loyalty: [1, 100], virtue: [1, 100], exp: [0, 49999], soldiers: [0, 1000],
   weapon: [0, 23], armor: [0, 7], level: [1, 8], year: [189, 300], death: [189, 400] };
-const CITY_ADD = new Set(['name', 'lon', 'lat', 'seat', 'tier', 'like', 'calamity', 'faction', 'search', ...Object.keys(CITY_NUM), 'facilities', 'rice_rate', 'shop', 'field_shop', 'ai_shop', 'note']);
+const CITY_ADD = new Set(['name', 'lon', 'lat', 'seat', 'tier', 'style', 'like', 'calamity', 'faction', 'search', ...Object.keys(CITY_NUM), 'facilities', 'rice_rate', 'shop', 'field_shop', 'ai_shop', 'note']);
 const CITY_EDIT = new Set(['city', 'faction', ...Object.keys(CITY_NUM), 'note']);
 const OFFICER_ADD = new Set(['name', 'like', 'city', 'appear', 'faction', 'army', ...Object.keys(OFFICER_NUM), 'note']);
 const OFFICER_EDIT = new Set(['officer', 'city', ...Object.keys(OFFICER_NUM), 'army', 'note']);
@@ -184,11 +187,13 @@ export function mergePack(base, pack, opts = {}) {
     if (!(typeof c.lon === 'number' && typeof c.lat === 'number')) err(where, 'lon、lat 必填（治所经纬度）');
     else if (!boxes.some((b) => c.lon >= b.lon[0] && c.lon <= b.lon[1] && c.lat >= b.lat[0] && c.lat <= b.lat[1])) err(where, `经纬度 ${c.lon}, ${c.lat} 落在原版沙盘${regions.length ? '和所声明地块' : ''}之外`);
     if (!TIERS.includes(c.tier)) err(where, `tier 只能是 ${TIERS.join(' / ')}`);
+    if (c.style != null && !STYLES.includes(c.style)) err(where, `style 只能是 ${STYLES.join(' / ')} 或不写（han）`);
     if (c.seat != null && !SAFE_TEXT.test(c.seat)) err(where, 'seat 含不允许的字符');
     if (c.calamity != null && !['drought', 'flood'].includes(c.calamity)) err(where, 'calamity 只能是 drought（旱）、flood（水）或不写');
     const rec = { ...structuredClone(L), id, name: c.name, faction: factionRef(where, c.faction ?? null), officers: [], roads: [],
       lon: c.lon, lat: c.lat, seat: c.seat ?? c.name, tier: c.tier, like, mod: true };
     delete rec.bank; delete rec.fort;
+    if (c.style && c.style !== 'han') rec.style = c.style;
     for (const k of Object.keys(CITY_NUM)) if (c[k] !== undefined) rec[k] = c[k];
     for (const k of ['facilities', 'rice_rate', 'shop', 'field_shop', 'ai_shop']) if (c[k] !== undefined) rec[k] = structuredClone(c[k]);
     if (c.facilities !== undefined && (!isObj(c.facilities) || Object.keys(c.facilities).some((k) => !['weapons', 'school', 'market', 'hospital'].includes(k) || typeof c.facilities[k] !== 'boolean'))) err(where, 'facilities 应为 { weapons, school, market, hospital } 的 true/false');

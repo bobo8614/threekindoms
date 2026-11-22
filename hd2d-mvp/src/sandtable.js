@@ -22,6 +22,12 @@ const SEASONED = { 'tree-broad': 'broad', grove: 'broad', 'tree-pine': 'pine' };
 const RANGE_PIECES = new Set(['range-a', 'range-b']); // their painted trees recolour, but they are not tree instances or tree LODs
 const RANGE_TILES = 3; // fewer, longer range tiles offset the extra variant's draw calls; tree culling stays at 6×6
 const TIER = { capital: 'city-capital', major: 'city-major', county: 'city-county', pass: 'pass' };
+// A pack town's model in another building style (core/pack.js STYLES, docs/城池风格模型_方案_2026-11-22.md): <tier kind>-<style>,
+// made the size and weight of the Han tier by tools/blender_city_styles.py. Only these are on the server; a style's tier not
+// made yet (the Korean capital and major city are being redrawn) stands as the Han model, as does one that fails to load.
+const STYLED = new Set(['city-capital-japan', 'city-major-japan', 'city-county-japan', 'pass-japan', 'city-county-korea', 'pass-korea']);
+const styledKind = (tier, style) => (style && style !== 'han' ? `${TIER[tier]}-${style}` : null);
+const baseKind = (kind) => kind.replace(/-(japan|korea)$/, '');
 // The Tripo towns' stone a little lighter, as the mock-up's pale walls (the review renders' value lift).
 const LIFT = { 'city-capital': 1.3, 'city-major': 1.3, 'city-county': 1.3, pass: 1.3, hamlet: 1.3, bridge: 1.1, grove: 1.3, 'tree-broad': 1.15, 'tree-pine': 0.88 };
 const TREE_TINT = { 'tree-pine': [0.86, 1, 0.92] }; // pines have no leaf-colour test; broadleaf cooling uses the seasonal reference
@@ -61,7 +67,8 @@ export function nearestSeat(x, z, cities) {
 
 // regions: the official extension regions a data pack names (data.pack.regions, design §5.5), each its own board in
 // assets/ai/sandtable/regions/<name>/ drawn with this board's piece models; none, as without a pack, fetches nothing there.
-export async function loadSandtable(regions = []) {
+// towns: a pack's added cities ({ tier, style }); the styled models they use are fetched with the rest, nothing more without a pack.
+export async function loadSandtable(regions = [], towns = []) {
   const board = new URLSearchParams(location.search).get('board');
   if (board != null && board !== 'sand' && board !== 'staged') return null;
   const dir = board === 'staged' ? STAGED_DIR : DIR;
@@ -71,7 +78,8 @@ export async function loadSandtable(regions = []) {
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 8; return t;
     });
     const loader = new GLTFLoader();
-    const kinds = [...new Set([...Object.keys(meta.pieces).filter((k) => !UNSEEN.has(k)), 'city-capital', 'city-major', 'city-county', 'pass'])];
+    const styled = towns.map((c) => styledKind(c.tier, c.style)).filter((k) => k && STYLED.has(k));
+    const kinds = [...new Set([...Object.keys(meta.pieces).filter((k) => !UNSEEN.has(k)), 'city-capital', 'city-major', 'city-county', 'pass', ...styled])];
     const farKinds = (meta.far ?? []).filter((k) => meta.pieces[k]?.length); // no LOD download for a piece absent from this board
     const model = (f) => loader.loadAsync(`${dir}/models/${f}.glb`).then((g) => g.scene).catch(() => null);
     const [albedo, light, mask, sea, frame, height, ...models] = await Promise.all([
@@ -79,7 +87,7 @@ export async function loadSandtable(regions = []) {
       fetch(`${dir}/height.bin`).then((r) => r.arrayBuffer()),
       ...kinds.map(model), ...farKinds.map((k) => model(`${k}-far`)),
     ]);
-    const S = { meta, albedo, light, mask, sea, frame, height: new Uint16Array(height), models: Object.fromEntries(kinds.map((k, i) => [k, models[i]])),
+    const S = { dir, meta, albedo, light, mask, sea, frame, height: new Uint16Array(height), models: Object.fromEntries(kinds.map((k, i) => [k, models[i]])),
       farModels: Object.fromEntries(farKinds.map((k, i) => [k, models[kinds.length + i]])) };
     // A region that fails to load is left out loudly, not the whole baked board: its towns then stand on the open sea.
     if (regions.length) S.regions = (await Promise.all(regions.map((name) => loadRegion(name, S, tex).catch((e) => { console.error(`extension region ${name} not loaded`, e); return null; })))).filter(Boolean);
@@ -107,7 +115,7 @@ function partsOf(root, kind) {
     if (!o.isMesh) return;
     const g = o.geometry.clone().applyMatrix4(o.matrixWorld);
     const mat = seasonalPiece(o.material, SEASONED[kind] ?? (RANGE_PIECES.has(kind) ? 'range' : 'rock'));
-    mat.color.multiplyScalar(LIFT[kind] ?? 1);
+    mat.color.multiplyScalar(LIFT[kind] ?? LIFT[baseKind(kind)] ?? 1);
     if (TREE_TINT[kind]) mat.color.multiply(new THREE.Color().setRGB(...TREE_TINT[kind]));
     out.push({ geo: g, mat });
   });
@@ -414,9 +422,9 @@ export function buildSandtable(scene, S, opts = {}) {
   // A pack's towns: their seats on the board, and the small pieces their walls would stand in lifted (a tree through a
   // roof). The long ranges and massifs stay; tools/check_pack.mjs warns a pack author off them.
   const extra = (opts.cities ?? []).slice(meta.cities.length).map((c) => {
-    if (opts.owns && !opts.owns(c)) { const { x, z } = opts.seat?.(c) ?? { x: toX(c.lon), z: toZ(c.lat) }; return { id: c.id, name: c.name, tier: c.tier, x, z, mx: x, mz: z, y: SEA_Y, ms: 1, mod: true, away: true }; }
+    if (opts.owns && !opts.owns(c)) { const { x, z } = opts.seat?.(c) ?? { x: toX(c.lon), z: toZ(c.lat) }; return { id: c.id, name: c.name, tier: c.tier, style: c.style, x, z, mx: x, mz: z, y: SEA_Y, ms: 1, mod: true, away: true }; }
     const { x, z, y } = townSeat(c, meta.size, heightAt);
-    return { id: c.id, name: c.name, tier: c.tier, x, z, mx: x, mz: z, y, ms: 1, mod: true };
+    return { id: c.id, name: c.name, tier: c.tier, style: c.style, x, z, mx: x, mz: z, y, ms: 1, mod: true };
   });
   const STAY = new Set(['range-a', 'range-b', 'massif', 'ridge']);
   const lifted = (kind, x, z) => !STAY.has(kind) && extra.some((c) => !c.away && Math.hypot(x - c.x, z - c.z) < meta.size[TIER[c.tier]] * 0.65 + (meta.size[kind] ?? 0) / 2);
@@ -474,9 +482,15 @@ export function buildSandtable(scene, S, opts = {}) {
     const pts = []; for (let k = 0; k < r.p.length; k += 3) pts.push(new THREE.Vector3(r.p[k], r.p[k + 1], r.p[k + 2]));
     return r.a === a ? pts : pts.reverse();
   };
-  const tiers = new Map(), cityModel = (tier) => {
-    if (!tiers.has(tier)) tiers.set(tier, partsOf(S.models[TIER[tier] ?? tier], TIER[tier] ?? tier));
-    return tiers.get(tier);
+  // The model of a tier in a style (none: Han). Footprint and banner pole stay the tier's (meta.size): only the buildings change.
+  const tiers = new Map(), cityModel = (tier, style) => {
+    let kind = styledKind(tier, style) ?? TIER[tier] ?? tier;
+    if (kind !== (TIER[tier] ?? tier) && !S.models[kind]) {
+      if (STYLED.has(kind)) console.error(`city model ${kind} not loaded: the Han ${TIER[tier]} instead`);
+      kind = TIER[tier] ?? tier;
+    }
+    if (!tiers.has(kind)) tiers.set(kind, partsOf(S.models[kind], kind));
+    return tiers.get(kind);
   };
 
   const nearestCity = (x, z) => nearestSeat(x, z, cities);
@@ -484,6 +498,11 @@ export function buildSandtable(scene, S, opts = {}) {
   let near = null; const gapSea = new Map(); const cityOwner = new Int16Array(cities.length), cityHue = new Array(cities.length);
   return {
     heightAt, surfaceAt, ground, table, cities, roadPath, cityModel, size: meta.size, sea: SEA_Y,
+    // For tools/bake_strategy_flat.mjs --towns --style only: every model of a style, as a pack using all its tiers would fetch.
+    async loadCityStyle(style) {
+      const loader = new GLTFLoader();
+      await Promise.all([...STYLED].filter((k) => k.endsWith(`-${style}`) && !S.models[k]).map((k) => loader.loadAsync(`${S.dir}/models/${k}.glb`).then((g) => { S.models[k] = g.scene; })));
+    },
     box: meta.box,
     // Open sea between this board and another (sandregions.js; `other` its shallows map and box): each board's shallows map
     // clamped at its edge, blended across the strait by distance to the two edges. A material of its own: the 2D map's bake
