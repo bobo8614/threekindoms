@@ -15,6 +15,9 @@ import { easeSeams } from './regionseam.js';
 
 const DIR = 'assets/ai/sandtable/board';
 const STAGED_DIR = 'assets/ai/sandtable/source/ranges-board'; // ?board=staged: review the mountain side bake before installation
+// Pieces the board lists and the game leaves out: its bridges stood where the baked roads crossed a river, and no road is drawn
+// on the ground since 2026-11-21 (strategyroads.js), so a bridge would join nothing.
+const UNSEEN = new Set(['bridge']);
 const SEASONED = { 'tree-broad': 'broad', grove: 'broad', 'tree-pine': 'pine' };
 const RANGE_PIECES = new Set(['range-a', 'range-b']); // their painted trees recolour, but they are not tree instances or tree LODs
 const RANGE_TILES = 3; // fewer, longer range tiles offset the extra variant's draw calls; tree culling stays at 6×6
@@ -68,7 +71,7 @@ export async function loadSandtable(regions = []) {
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 8; return t;
     });
     const loader = new GLTFLoader();
-    const kinds = [...new Set([...Object.keys(meta.pieces), 'city-capital', 'city-major', 'city-county', 'pass'])];
+    const kinds = [...new Set([...Object.keys(meta.pieces).filter((k) => !UNSEEN.has(k)), 'city-capital', 'city-major', 'city-county', 'pass'])];
     const farKinds = (meta.far ?? []).filter((k) => meta.pieces[k]?.length); // no LOD download for a piece absent from this board
     const model = (f) => loader.loadAsync(`${dir}/models/${f}.glb`).then((g) => g.scene).catch(() => null);
     const [albedo, light, mask, sea, frame, height, ...models] = await Promise.all([
@@ -418,6 +421,7 @@ export function buildSandtable(scene, S, opts = {}) {
   const STAY = new Set(['range-a', 'range-b', 'massif', 'ridge']);
   const lifted = (kind, x, z) => !STAY.has(kind) && extra.some((c) => !c.away && Math.hypot(x - c.x, z - c.z) < meta.size[TIER[c.tier]] * 0.65 + (meta.size[kind] ?? 0) / 2);
   for (const [kind, arr] of Object.entries(meta.pieces)) {
+    if (UNSEEN.has(kind)) continue;
     const parts = partsOf(S.models[kind], kind), tiles = new Map(), grid = RANGE_PIECES.has(kind) ? RANGE_TILES : T;
     if (kind === 'hamlet') for (const { mat } of parts) { mat.transparent = true; hamletMats.push(mat); }
     const farGeos = []; S.farModels?.[kind]?.updateMatrixWorld(true); S.farModels?.[kind]?.traverse((o) => { if (o.isMesh) farGeos.push(o.geometry.clone().applyMatrix4(o.matrixWorld)); });
@@ -480,7 +484,6 @@ export function buildSandtable(scene, S, opts = {}) {
   let near = null; const gapSea = new Map(); const cityOwner = new Int16Array(cities.length), cityHue = new Array(cities.length);
   return {
     heightAt, surfaceAt, ground, table, cities, roadPath, cityModel, size: meta.size, sea: SEA_Y,
-    pieceModel: (kind) => cityModel(kind), // any baked piece's meshes (a pack road's bridge)
     box: meta.box,
     // Open sea between this board and another (sandregions.js; `other` its shallows map and box): each board's shallows map
     // clamped at its edge, blended across the strait by distance to the two edges. A material of its own: the 2D map's bake

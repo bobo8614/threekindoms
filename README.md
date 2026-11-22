@@ -38,7 +38,7 @@ hd2d-mvp/
 git clone https://github.com/tianlin/threekindoms.git
 cd threekindoms
 # 从 Releases 下载与代码对应的素材包（跟进 main 就用最新的），解压到仓库根目录：
-unzip -o ~/Downloads/threekindoms-assets-0.4.2.zip
+unzip -o ~/Downloads/threekindoms-assets-0.4.2-1.zip
 shasum -a 256 -c ASSETS.sha256 | grep -v ': OK$'    # 没有输出就说明素材齐全
 ```
 

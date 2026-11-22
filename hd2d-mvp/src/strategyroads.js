@@ -1,18 +1,14 @@
-// Strategy roads: receives the scene, board, city positions and ground height; owns the paths and road meshes.
+// Strategy roads: receives the scene, board, city positions and ground height; owns the paths and the 道路 overview.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SEA_Y } from './worldmap.js';
-import { courseOf, waterIndex, wetCostOf, crossings } from './packgeo.js';
+import { courseOf, waterIndex, wetCostOf } from './packgeo.js';
 
-// Quiet road ink follows the bake at roughly three CSS pixels wide; fresh water keeps its own surface.
-const ROAD_HALF_PX = 1.4, ROAD_CORE = 0.45, ROAD_ALPHA = 0.55, ROAD_SEA_ALPHA = 0.18, ROAD_END_ALPHA = 0.7, ROAD_LIFT = 0.012;
-const ROAD_WATER_CELL = 0.5, ROAD_WATER_MARGIN = 0.09, ROAD_BRIDGE_RADIUS = 0.12, ROAD_SIMPLIFY_XZ = 0.00025, ROAD_SIMPLIFY_Y = 0.003, ROAD_MAX_STEP = 0.2;
-const ROAD_EDGE = '#b39569', ROAD_LAND = '#d8bd8f', ROAD_SEA = '#b6d4d6', ROAD_NEAR_OPACITY = 0.45, ROAD_ZOOM = [10, 45.6]; // warm earth; BasicMaterial does not receive owner tint
-const ROAD_FAR_ZOOM = [24, 45.6], ROAD_FAR_ALPHA = 0.4, ROAD_FAR_HALF_PX = 1;
+// How a pack road's course reads fresh water (it takes the course that crosses the least of it).
+const ROAD_WATER_CELL = 0.5, ROAD_WATER_MARGIN = 0.09;
 
 export function createStrategyRoads({ scene, data, sand, world, cityPos, groundY }) {
-  // Roads: packed-earth ribbons draped on the land, bowing round any city that sits on the straight line;
-  // a crossing by sea (辽东–青州 over the 渤海) is a dashed sea lane. The selected city's roads light up (select()).
+  // Roads: ribbons draped on the land, bowing round any city that sits on the straight line; a crossing by sea (辽东–青州 over
+  // the 渤海) is a dashed sea lane. The procedural board (no sand table) draws them always, as packed earth.
   const paths = new Map();
   let wetCost = null; // the sand table's, for a pack's roads (set below): how much of a course runs over fresh water
   const pathOf = (a, b) => {
@@ -47,90 +43,13 @@ export function createStrategyRoads({ scene, data, sand, world, cityPos, groundY
     const g = ribbon(pathOf(c.id, n), 0.03, 0.02, (atSea, run, end) => [atSea ? lane : dirt, atSea ? (dash(run) ? 0.75 : 0) : end ? 0.4 : 0.8]);
     const road = new THREE.Mesh(g, roadMat); road.receiveShadow = true; road.renderOrder = 2; scene.add(road);
   }
-  // Four vertices across each ribbon feather the edge; one mesh and an offset attribute keep its width adjustable.
-  const baseRoadMat = sand ? new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }) : null;
-  const roadWidth = { value: 0 };
-  let baseRoad = null, roadDist = NaN, roadHeight = NaN, roadFov = NaN;
-  if (sand) {
-    const edge = new THREE.Color(ROAD_EDGE), land = new THREE.Color(ROAD_LAND), sea = new THREE.Color(ROAD_SEA), pieces = [];
-    const widths = [1, ROAD_CORE, -ROAD_CORE, -1], bridges = sand.meta.pieces.bridge ?? [];
+  // On the sand table no road is drawn until asked for (2026-11-21): its ground carries none (tools/sandtable_deroad.py took the
+  // baked roads out of the pictures), so a pack may lay towns and roads anywhere without a second network beside the old one. The
+  // 道路 overview below and the selected city's beads (strategymarks.js) are the roads. No bridge either, the board's own (sandtable.js
+  // UNSEEN) or one for a pack's road. A pack road's course still takes the bow that crosses the least fresh water.
+  if (sand && data.pack) {
     // A pack's extension regions bring their own rivers (sandregions.js); without one, the original board's alone.
-    const waterAt = waterIndex(sand.regions?.length ? [...sand.meta.water, ...sand.regions.flatMap((r) => r.meta.water)] : sand.meta.water, { cell: ROAD_WATER_CELL, margin: ROAD_WATER_MARGIN });
-    // Remove only points within a sub-pixel lateral tolerance and the local ground relief.
-    const thin = (pts) => {
-      const kept = [pts[0]]; let start = 0;
-      for (let i = 2; i < pts.length; i++) {
-        const a = pts[start], b = pts[i], dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz;
-        let fits = b.alpha === a.alpha && len2 <= ROAD_MAX_STEP * ROAD_MAX_STEP;
-        for (let j = start + 1; fits && j < i; j++) {
-          const q = pts[j], t = len2 ? Math.min(1, Math.max(0, ((q.x - a.x) * dx + (q.z - a.z) * dz) / len2)) : 0;
-          fits = q.alpha === a.alpha && (q.x - a.x - t * dx) ** 2 + (q.z - a.z - t * dz) ** 2 <= ROAD_SIMPLIFY_XZ ** 2 && Math.abs(q.y - a.y - t * (b.y - a.y)) <= ROAD_SIMPLIFY_Y;
-        }
-        if (!fits) { kept.push(pts[i - 1]); start = i - 1; }
-      }
-      if (pts.length > 1) kept.push(pts[pts.length - 1]);
-      return kept;
-    };
-    baseRoadMat.onBeforeCompile = (sh) => {
-      sh.uniforms.uRoadWidth = roadWidth;
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 roadOffset; uniform float uRoadWidth;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.xz += roadOffset * uRoadWidth;');
-    };
-    baseRoadMat.customProgramCacheKey = () => 'sandRoadInk';
-    const packEarth = new THREE.Color('#d2c29c'); // the baked roads' packed earth in the albedo
-    const trackMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
-    // A pack road's crossings: each run of points over fresh water gets one baked bridge piece along the road, stretched to
-    // the run's length, and those points count as bridge (the ink goes over it). Returns the bridged point indices.
-    const bridgeParts = world.pieceModel?.('bridge') ?? [], BRIDGE_LEN = sand.meta.size.bridge ?? 0.2;
-    if (data.pack) wetCost = wetCostOf(waterAt);
-    const spans = (course) => {
-      const on = new Set();
-      for (const [k, e] of crossings(course, waterAt)) {
-        const a = course[Math.max(0, k - 1)], b = course[Math.min(course.length - 1, e + 1)], len = a.distanceTo(b);
-        for (let q = Math.max(0, k - 1); q <= Math.min(course.length - 1, e + 1); q++) on.add(q);
-        const mid = course[(k + e) >> 1], ry = Math.atan2(-(b.z - a.z), b.x - a.x), sc = Math.max(1, len / BRIDGE_LEN);
-        const y = Math.max(world.surfaceAt(a.x, a.z), world.surfaceAt(b.x, b.z));
-        for (const { geo, mat } of bridgeParts) {
-          const m = new THREE.Mesh(geo, mat); m.position.set(mid.x, y, mid.z); m.rotation.y = ry; m.scale.set(sc, 1, Math.min(sc, 1.5)); m.userData.packBridge = true; scene.add(m);
-        }
-      }
-      return on;
-    };
-    for (const c of data.cities) for (const n of c.roads) if (c.id < n) {
-      // A road the bake drew has its course and its earth in the picture; never invent a second course beside it. A pack's
-      // road (one end or both at a city the bake never saw, or a new pair) takes the drawn curve, an earth track under the ink,
-      // and a bridge wherever it crosses a river or lake.
-      const baked = world.roadPath(c.id, n), course = baked?.length ? baked : data.pack ? pathOf(c.id, n) : null;
-      if (!course?.length) continue;
-      const span = baked?.length ? null : spans(course);
-      if (span) {
-        const g = ribbon(course, 0.032, 0.006, (atSea, run, end) => [packEarth, atSea ? 0 : end ? 0.5 : 0.85]);
-        const track = new THREE.Mesh(g, trackMat); track.renderOrder = 2; scene.add(track);
-      }
-      let run = 0;
-      const pts = thin(course.map((p, k) => {
-        if (k) run += p.distanceTo(course[k - 1]);
-        let bridge = !!span?.has(k);
-        const atSea = !bridge && world.heightAt(p.x, p.z) < SEA_Y + 0.01, wet = waterAt(p.x, p.z);
-        if (wet && !atSea) for (let i = 0; i < bridges.length; i += 6) if ((p.x - bridges[i]) ** 2 + (p.z - bridges[i + 2]) ** 2 <= ROAD_BRIDGE_RADIUS ** 2) { bridge = true; break; }
-        const alpha = wet && !bridge ? 0 : atSea ? (dash(run) ? ROAD_SEA_ALPHA : 0) : ROAD_ALPHA * (run < 0.35 || k > course.length - 8 ? ROAD_END_ALPHA : 1);
-        return { x: p.x, y: (bridge ? Math.max(world.surfaceAt(p.x, p.z), p.y) : world.surfaceAt(p.x, p.z)) + ROAD_LIFT, z: p.z, atSea, alpha };
-      }));
-      const pos = [], offset = [], col = [], idx = [];
-      pts.forEach((p, k) => {
-        const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)], dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1;
-        for (let j = 0; j < widths.length; j++) {
-          const core = j === 1 || j === 2, color = core ? (p.atSea ? sea : land) : edge;
-          pos.push(p.x, p.atSea ? Math.max(p.y, SEA_Y + ROAD_LIFT) : p.y, p.z); offset.push(-dz / L * widths[j], dx / L * widths[j]);
-          col.push(color.r, color.g, color.b, core ? p.alpha : 0);
-          if (k && j < widths.length - 1) { const v = k * widths.length + j; idx.push(v - widths.length, v, v - widths.length + 1, v - widths.length + 1, v, v + 1); }
-        }
-      });
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('roadOffset', new THREE.Float32BufferAttribute(offset, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); g.setIndex(idx); pieces.push(g);
-    }
-    const merged = mergeGeometries(pieces); merged.computeBoundingSphere(); merged.boundingSphere.radius += 0.5; // offsets also remain visible at the screen edge
-    baseRoad = new THREE.Mesh(merged, baseRoadMat); baseRoad.renderOrder = 2; scene.add(baseRoad);
-    for (const g of pieces) g.dispose();
+    wetCost = wetCostOf(waterIndex(sand.regions?.length ? [...sand.meta.water, ...sand.regions.flatMap((r) => r.meta.water)] : sand.meta.water, { cell: ROAD_WATER_CELL, margin: ROAD_WATER_MARGIN }));
   }
   // 道路 overview (playtest of 2026-10-30, T15): every road at once, a bright lacquer-gold line on a dark edge so it
   // reads over sand, snow and water alike; sea lanes dashed. Built on first use; roads(on) shows it.
@@ -151,14 +70,5 @@ export function createStrategyRoads({ scene, data, sand, world, cityPos, groundY
     pathOf,
     roads(on) { roadsOn = on; if (on) overview ??= buildOverview(); if (overview) overview.visible = on; },
     get roadsOn() { return roadsOn; },
-    hideBase() { if (baseRoad) baseRoad.visible = false; },
-    update(view, camera) {
-      if (baseRoadMat && (roadDist !== view.dist || roadHeight !== innerHeight || roadFov !== camera.fov)) {
-        roadDist = view.dist; roadHeight = innerHeight; roadFov = camera.fov;
-        const far = THREE.MathUtils.smoothstep(roadDist, ROAD_FAR_ZOOM[0], ROAD_FAR_ZOOM[1]);
-        roadWidth.value = THREE.MathUtils.lerp(ROAD_HALF_PX, ROAD_FAR_HALF_PX, far) * 2 * Math.tan(THREE.MathUtils.degToRad(roadFov / 2)) * roadDist / Math.max(1, roadHeight);
-        baseRoadMat.opacity = THREE.MathUtils.lerp(ROAD_NEAR_OPACITY, 1, THREE.MathUtils.smoothstep(roadDist, ROAD_ZOOM[0], ROAD_ZOOM[1])) * THREE.MathUtils.lerp(1, ROAD_FAR_ALPHA / ROAD_ALPHA, far);
-      }
-    },
   };
 }

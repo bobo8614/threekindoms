@@ -218,7 +218,6 @@ export function createStrategy(ctx) {
       view.yaw += (goal.yaw - view.yaw) * ez; view.bias += (goal.bias - view.bias) * ez;
       view.dist += (goal.dist - view.dist) * ez; view.target.lerp(goal.target, ep);
       time += dt; world.update(time, camera, view.dist, ctx.renderer?.getPixelRatio()); atmosphere.advance(time);
-      roadLayer.update(view, camera);
       atmosphere.update(dt, time, view, world);
       visualMarks.updateRings(time);
       atmosphere.updateTable(dt, world);
@@ -290,7 +289,7 @@ export function createStrategy(ctx) {
     // Weather, drifting cloud shade and wet ground are off and the clock fixed, so the four pictures differ by season alone and cross-fade cleanly.
     bakeView({ month, size: [W, H] }) {
       this.select(null); this.highlight(null); hoverCity(null); this.pickMode(null); this.roads(false); this.territory(false); territoryOnly = null;
-      world.disableDetail(); roadLayer.hideBase(); // the flat pictures retain full sea crests and their baked roads
+      world.disableDetail(); // the flat pictures retain full sea crests
       setSeason(month, true); // territory is live ink, never part of the seasonal pictures
       const [X0, X1, Z0, Z1] = sand.meta.box, centre = new THREE.Vector3((X0 + X1) / 2, 0, (Z0 + Z1) / 2 + 1.5); // the frame's near side reaches further down the view
       for (const v of [view, goal]) { v.yaw = 0; v.bias = 0; v.dist = BAKE_DIST; v.target.copy(centre); }

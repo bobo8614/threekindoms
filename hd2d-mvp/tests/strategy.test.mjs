@@ -130,6 +130,23 @@ test('selection, hover and candidate marks keep a dim depth-occluded copy', asyn
   assert.equal(result.beadLeft, false, 'clearing selection removes the bead copy');
 });
 
+test('the sand table shows no road until asked: none in its ground, none drawn, the 道路 overview brings them', async () => {
+  const r = await page.evaluate(async () => {
+    const s = window.__game.strategy, flat = (o) => o.isMesh && o.material?.isMeshBasicMaterial && o.material.vertexColors && o.visible && o.parent.visible;
+    const ribbons = () => { let n = 0; s.scene.traverse((o) => { if (flat(o)) n++; }); return n; };
+    // The bake marks its painted roads in mask.png's alpha (128 on a road); tools/sandtable_deroad.py takes the roads out and the mark with them.
+    const img = new Image(); img.src = 'assets/ai/sandtable/board/mask.png'; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data; let marked = 0; for (let i = 3; i < d.length; i += 4) marked += Number(d[i] < 250);
+    s.roads(false); const off = ribbons(); s.roads(true); const on = ribbons(); s.roads(false); const back = ribbons();
+    return { marked, off, on, back, roads: new Set(window.__game.G.data().cities.flatMap((c, i) => c.roads.map((n) => `${Math.min(i, n)}-${Math.max(i, n)}`))).size };
+  });
+  assert.equal(r.marked, 0, 'a rebaked board still has its roads painted in: run tools/sandtable_deroad.py');
+  assert.equal(r.off, 0, 'no road ribbon by default');
+  assert.equal(r.on, r.roads * 2, 'the overview: an edge and a line for every road');
+  assert.equal(r.back, 0);
+});
+
 test('tree LODs drop only isolated instances and keep the shared near footprint', async () => {
   const r = await page.evaluate(async () => {
     const { TREE_ISOLATED_RADIUS, TREE_ISOLATED_MAX_NEIGHBORS } = await import(new URL('src/sandtable.js', location.href).href);

@@ -42,7 +42,6 @@ const FLAT_TERRITORY_ZOOM = [1, 2], FLAT_RIM_ALPHA = [0.16, 0.14], FLAT_RIM_WIDT
 const FLAT_BORDER_ALPHA = 0.8, FLAT_BORDER_MINE = 1.15, FLAT_BORDER_GAIN = 1.5, FLAT_GLOW_PX = 16;
 const FLAT_GLOW_WIDTH = [1, 0.72, 0.44], FLAT_GLOW_ALPHA = [0.035, 0.06, 0.1];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const PACK_ROAD = '#d6c8a0', PACK_ROAD_W = 0.064 * PAN_UNIT; // as the sand table's earth track for a pack's road (strategyroads.js), the baked roads' packed earth
 
 // A data pack's cities on the 2D map (docs/战略地图数据包扩展设计_2026-11-17.md §6): the pictures stay as baked; the new towns, their
 // roads and their land are laid over them. The bake's camera is fitted from its own 30 towns (where the sand table stands them, against
@@ -303,26 +302,9 @@ export async function createStrategyFlat(ctx) {
     if (wet) { ug.globalCompositeOperation = 'multiply'; ug.fillStyle = `rgb(${255 - 76 * wet}, ${255 - 66 * wet}, ${255 - 56 * wet})`; ug.fillRect(0, 0, vw, vh); ug.globalCompositeOperation = 'source-over'; }
     if (roadsOn) { ug.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y); drawRoads(ug); }
   }
-  // A pack's roads in packed earth and its towns' pictures, over each season's picture as it fades (so they turn with the season) and
-  // under the owners' tint. The roads end at the walls, as the bake's.
-  let packRoads = null;
+  // A pack's towns' pictures, over each season's picture as it fades (so they turn with the season) and under the owners' tint. No
+  // road is drawn with them: since 2026-11-21 the pictures carry none, and the 道路 overview and the selected city's beads are the roads.
   function drawPackTowns(c2, atlas, k, x, y) {
-    if (!packRoads) {
-      packRoads = new Path2D();
-      for (const r of board.roads) if (r.pack) {
-        const A = cities[r.a], B = cities[r.b]; let on = false;
-        for (let i = 0; i < r.sea.length - 1; i++) {
-          const [x0, y0, x1, y1] = [r.p[i * 2], r.p[i * 2 + 1], r.p[i * 2 + 2], r.p[i * 2 + 3]];
-          if (r.sea[i] || r.sea[i + 1] || insideTown(A, x1, y1) || insideTown(B, x0, y0)) { on = false; continue; }
-          if (!on) packRoads.moveTo(x0, y0); packRoads.lineTo(x1, y1); on = true;
-        }
-      }
-    }
-    const a = c2.globalAlpha;
-    c2.save(); c2.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y); c2.lineJoin = c2.lineCap = 'round'; c2.strokeStyle = PACK_ROAD;
-    c2.globalAlpha = a * 0.35; c2.lineWidth = PACK_ROAD_W * 1.6; c2.stroke(packRoads);
-    c2.globalAlpha = a * 0.9; c2.lineWidth = PACK_ROAD_W; c2.stroke(packRoads);
-    c2.restore(); c2.globalAlpha = a;
     if (!atlas) return;
     const [cw, ch] = pack.towns.cell, [ax, ay] = pack.towns.anchor;
     for (const c of pack.added) c2.drawImage(atlas, c.town.col * cw, c.town.row * ch, cw, ch, x + (c.cx - ax) * k, y + (c.cy - ay) * k, cw * k, ch * k);
