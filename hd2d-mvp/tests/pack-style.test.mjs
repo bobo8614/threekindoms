@@ -1,14 +1,14 @@
 // A data pack's town in another building style (docs/城池风格模型_方案_2026-11-22.md): "style": "japan" or "korea" on a new city
 // stands it as city-<tier>-<style>.glb on the sand table and in its style's pictures on the 2D map. The test pack
-// (tools/fixtures/packs/test-styles) has the four Japanese tiers, the four Korean ones (the capital and major city not made yet: they
-// stand as the Han ones, quietly) and one town with no style. A game without a pack, or with a pack that names no style, fetches
+// (tools/fixtures/packs/test-styles) has the four Japanese tiers, the four Korean ones (the major city not made yet: it
+// stands as the Han one, quietly) and one town with no style. A game without a pack, or with a pack that names no style, fetches
 // none of it.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { startGame, newCampaign } from './game.mjs';
 
-const MADE = ['city-capital-japan', 'city-major-japan', 'city-county-japan', 'pass-japan', 'city-county-korea', 'pass-korea'];
+const MADE = ['city-capital-japan', 'city-major-japan', 'city-county-japan', 'pass-japan', 'city-capital-korea', 'city-county-korea', 'pass-korea'];
 const fixture = (id) => {
   const dir = new URL(`../tools/fixtures/packs/${id}/`, import.meta.url);
   return async (ctx) => {
@@ -63,7 +63,7 @@ test('3D: each styled town stands as its style\'s model, a style\'s tier not mad
     });
   });
   assert.deepEqual(r, [['江户', 'capital/japan'], ['京都', 'major/japan'], ['仙台', 'county/japan'], ['箱根', 'pass/japan'],
-    ['汉城', 'capital/han'], ['平壤', 'major/han'], ['庆州', 'county/korea'], ['铁岭', 'pass/korea'], ['博多', 'major/han']]);
+    ['汉城', 'capital/korea'], ['平壤', 'major/han'], ['庆州', 'county/korea'], ['铁岭', 'pass/korea'], ['博多', 'major/han']]);
   assert.deepEqual(logged.filter((t) => /city model/.test(t)), [], 'a tier not made yet is not an error');
   assert.deepEqual(page.errors, []);
 });

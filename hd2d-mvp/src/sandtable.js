@@ -24,8 +24,8 @@ const RANGE_TILES = 3; // fewer, longer range tiles offset the extra variant's d
 const TIER = { capital: 'city-capital', major: 'city-major', county: 'city-county', pass: 'pass' };
 // A pack town's model in another building style (core/pack.js STYLES, docs/城池风格模型_方案_2026-11-22.md): <tier kind>-<style>,
 // made the size and weight of the Han tier by tools/blender_city_styles.py. Only these are on the server; a style's tier not
-// made yet (the Korean capital and major city are being redrawn) stands as the Han model, as does one that fails to load.
-const STYLED = new Set(['city-capital-japan', 'city-major-japan', 'city-county-japan', 'pass-japan', 'city-county-korea', 'pass-korea']);
+// made yet (the Korean major city: its reference picture is redrawn, its model not yet made) stands as the Han model, as does one that fails to load.
+const STYLED = new Set(['city-capital-japan', 'city-major-japan', 'city-county-japan', 'pass-japan', 'city-capital-korea', 'city-county-korea', 'pass-korea']);
 const styledKind = (tier, style) => (style && style !== 'han' ? `${TIER[tier]}-${style}` : null);
 const baseKind = (kind) => kind.replace(/-(japan|korea)$/, '');
 // The Tripo towns' stone a little lighter, as the mock-up's pale walls (the review renders' value lift).

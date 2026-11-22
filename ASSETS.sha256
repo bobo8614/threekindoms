@@ -1533,6 +1533,7 @@ b26af1b33c8325b63583d470997d6239e32a239415ab9baea12911604dc7078b  hd2d-mvp/asset
 930a174827c0c1931a825c8e854e35f46a42a78f08b0e9e14dc5d21c43fea751  hd2d-mvp/assets/ai/sandtable/board/models/boat.glb
 ad173b9dec7c32df9a10bda1e122ba38a1ad301ca4bbabc30ebebb83c171a496  hd2d-mvp/assets/ai/sandtable/board/models/bridge.glb
 78d142774ae6b762ac7112e1f9aaa8858a6839f09c3dbe6e510e397a7a96b4d1  hd2d-mvp/assets/ai/sandtable/board/models/city-capital-japan.glb
+4160e11c82b00ecf4831ffadb3612859a88901c467bda975d15f6f18b7cb23f6  hd2d-mvp/assets/ai/sandtable/board/models/city-capital-korea.glb
 949dc601b146dde322a1791f1f222e68199b7311d21bbc154a5718d1a0e906c0  hd2d-mvp/assets/ai/sandtable/board/models/city-capital.glb
 cad9a81b2f087f50da50200eb11806600be186a32826fe944af9feb037c48304  hd2d-mvp/assets/ai/sandtable/board/models/city-county-japan.glb
 5824e2bffd4e72050caf44628735df83e310d0db3d2e8aaa6b47dfa92e9f49ca  hd2d-mvp/assets/ai/sandtable/board/models/city-county-korea.glb
@@ -1563,10 +1564,10 @@ b3db99721922a968cd2be7054a25d98cbf3a89219a30e12915667b3a5f3d2759  hd2d-mvp/asset
 bc6e63ab355cea984aec266294994b6650e4db5306a2e8615bf4cf7d59ce2cec  hd2d-mvp/assets/ai/sandtable/flat/towns-japan-spring.webp
 ba557972ab402e02533689aae642c4051f7be398a16fa22d32ca9f166576f256  hd2d-mvp/assets/ai/sandtable/flat/towns-japan-summer.webp
 a36f5afd437c56ca9fa5249fd55cc9f659b5d0227f6ad4869c9ce7064d65de32  hd2d-mvp/assets/ai/sandtable/flat/towns-japan-winter.webp
-4cee832c77e341e6f2758b5dd3cb09d2d412837fb4590f08e2df6d00e640341a  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-autumn.webp
-f936d313be95a736901310c5d64c2841483b8b9f987bbfbfacbe0ea60a4862bb  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-spring.webp
-f4d9a09d2f11e7972fb0b47a325b9be30fdbbd5c03e4d184ee1058c3093c4e67  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-summer.webp
-4f54863f4da175c0d1e437532ed33b6014b1f5cdeafb6247bda033d87a7aaafb  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-winter.webp
+af10cd11f30ec7d3bf43280904939ad340bedbb0421df13ce6239a513046ef2e  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-autumn.webp
+72e10328cde20e18dd98759a69240097de2510daa7393545eaa9dae5c25f0272  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-spring.webp
+ab261d95ab5f445d76b0001578781c872cda0e9cd6921a6453432b791eab8603  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-summer.webp
+2685d40917b367b124fc56509fcdbbb1698541c575241d7fed85ac8a992572fb  hd2d-mvp/assets/ai/sandtable/flat/towns-korea-winter.webp
 ac209c795dacc6e2624b122c8089478d32dd4070a273fc63d7b49c803ddeb68d  hd2d-mvp/assets/ai/sandtable/flat/towns-spring.webp
 bd0381b29d567317ec1cd7cd04e68cb20467a0d8bf75926b226380909df4baaf  hd2d-mvp/assets/ai/sandtable/flat/towns-summer.webp
 c92fa98e2a30671863d252a49a212048b227de7cdfa638f26803a26e8185344d  hd2d-mvp/assets/ai/sandtable/flat/towns-winter.webp
