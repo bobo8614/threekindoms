@@ -124,7 +124,10 @@ export function makeBoard(wv) {
   const PB = { x0: -PLATE_M, y0: -PLATE_M, w: W + PLATE_M * 2, h: H + PLATE_M * 2 }, PA = { x0: -APRON, y0: -APRON, w: GW, h: GH };
   const uvIn = (P) => (px, pz) => [(px - (P.x0 - W / 2)) / P.w, 1 - (pz - (P.y0 - H / 2)) / P.h];
   const uvB = uvIn(PB), uvA = uvIn(PA);
-  const tiles = flat ? new THREE.Group() : buildTerrain({ W: GW, H: GH, wx: (x) => wx(x - APRON), wz: (y) => wz(y - APRON), cell: (X, Y) => grid[Y * GW + X], textures: calmTextures(), roundBanks: true,
+  // Painted, the tops are 'plate' / 'far' and the mesa faces 'tier', which the calm set has no tile for: paintTerrain below swaps
+  // those materials for the plates, so they start with no map (null, not undefined: three.js warns on an undefined parameter).
+  const calm = calmTextures(), TX = G ? { ...calm, top: { ...calm.top, plate: null, far: null }, side: { ...calm.side, tier: null } } : calm;
+  const tiles = flat ? new THREE.Group() : buildTerrain({ W: GW, H: GH, wx: (x) => wx(x - APRON), wz: (y) => wz(y - APRON), cell: (X, Y) => grid[Y * GW + X], textures: TX, roundBanks: true,
     ...(G ? { roundCliffs: true, wobble: 0.16, uvOf: (px, pz, c) => (c.top === 'plate' ? uvB : uvA)(px, pz) } : {}) });
   tp = phase('war:terrain', tp);
   if (G && !flat) {

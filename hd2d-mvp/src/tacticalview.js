@@ -213,7 +213,11 @@ export function createTacticalView(T, sprites) {
   // stays and only the men are made again (PERF-05: the ground's bake was most of the pause after the pick).
   let laid = null;
   const sameField = (b, looks) => !!laid && laid.b === b && laid.G === tacticalGround(where.month, where.city) && laid.month === where.month && laid.city === where.city && laid.a === looks.a && laid.d === looks.d;
-  function build(b, looks) {
+  // troops: each side's pack troop looks ({ a: { soldier: 'ashigaru' }, d: null }, core/game.js factionTroops); a look whose
+  // strips are not loaded (the release packages leave them out) wears its original kind's.
+  let wear = {};
+  function build(b, looks, troops = {}) {
+    wear = troops || {};
     const T0 = performance.now(); // tools/scene_switch_trace.mjs (PERF-05): measures only
     blast.clear(); aim?.(null);
     if (set && sameField(b, looks)) {
@@ -257,13 +261,15 @@ export function createTacticalView(T, sprites) {
       const id = battle.side[u.side].id, A = sprites[`duel-${id}`] || (sprites[`officer-${id}`] ? null : sprites[`duel-${look}`]);
       return [A || { tex: sprites[`officer-${id}`] || sprites[look] || unitTex(look), meta: null }];
     }
-    const k = `troop-${look}-${KIND[u.kind]}`, list = [sprites[k], sprites[`${k}-v2`]].filter(Boolean);
+    const kind = KIND[u.kind], alt = wear[u.side]?.[kind], own = alt && sprites[`troop-${look}-${alt}`] ? alt : kind;
+    const k = `troop-${look}-${own}`, list = [sprites[k], sprites[`${k}-v2`]].filter(Boolean);
     return list.length ? list : [{ tex: sprites[`${look}-${KIND[u.kind]}`] || sprites[`${look}-soldier`] || unitTex(look, 'soldier'), meta: null }];
   }
   // One camera-facing card of a strip (with its shadow proxy): the side strip, or the front / back one.
   function card(A, kind, face, shade, line) {
     const { meta } = A, img = A.tex.image, n = meta ? meta.frames.length : 1;
-    const [cw, ch] = meta ? meta.cell : [img.width, img.height], figH = meta ? meta.figH : img.height;
+    // A pack troop look (core/pack.js TROOP_LOOKS) keeps its borrowed kind's pixel scale (meta.ref): the elephant towers over a horse.
+    const [cw, ch] = meta ? meta.cell : [img.width, img.height], figH = meta ? meta.ref ?? meta.figH : img.height;
     const unit = FIG[kind] / figH, tex = A.tex.clone(); tex.repeat.set(1 / n, 1); tex.needsUpdate = true;
     const geo = new THREE.PlaneGeometry(cw * unit, ch * unit); geo.translate((cw / 2 - (meta ? meta.anchor : cw / 2)) * unit, (ch * unit) / 2, 0);
     // emissive (map-shaped, off at rest) is only the hit flash

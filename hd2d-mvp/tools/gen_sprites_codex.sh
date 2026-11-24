@@ -10,15 +10,20 @@ set -e
 MVP=${0:A:h:h}; ROOT=${MVP:h}
 id=$1
 work=$(mktemp -d); trap 'rm -rf $work' EXIT
-portrait=$MVP/assets/ai/portraits/$id.png; [[ -f $portrait ]] || portrait=$MVP/assets/ai/portraits/$id.webp
-python3 -c "from PIL import Image;Image.open('$portrait').convert('RGB').save('$work/portrait.png')"
+# A woman general's look (heroine_prompts.mjs, key f-<weapon>) has no portrait: the prompt alone is her identity.
+refs=(-i $work/portrait.png -i $work/style.png)
+if [[ $id == f-* ]]; then refs=(-i $work/style.png)
+else
+  portrait=$MVP/assets/ai/portraits/$id.png; [[ -f $portrait ]] || portrait=$MVP/assets/ai/portraits/$id.webp
+  python3 -c "from PIL import Image;Image.open('$portrait').convert('RGB').save('$work/portrait.png')"
+fi
 python3 -c "from PIL import Image;Image.open('$MVP/assets/ai/sprites/source/attacker-general.webp').convert('RGBA').save('$work/style.png')"
 raw=$work/raw.png
 body=$(node $MVP/tools/sprite_prompts.mjs $id)
 task="Use the \$imagegen skill with the built-in image_gen tool (not the CLI) to create ONE image from the spec below, then copy the final PNG to $raw. Do not modify any other file. Reply with only the saved path.
 
 $body"
-codex exec --skip-git-repo-check -C $ROOT -s workspace-write --add-dir $work -i $work/portrait.png -i $work/style.png -- "$task" < /dev/null
+codex exec --skip-git-repo-check -C $ROOT -s workspace-write --add-dir $work $refs -- "$task" < /dev/null
 mkdir -p $MVP/assets/ai/sprites/source/officers $MVP/assets/ai/sprites/officers
 python3 - $raw $MVP/assets/ai/sprites/source/officers/$id.webp $work/keyed.png <<'EOF'
 import sys
@@ -46,4 +51,4 @@ s = 512 / im.height; im.resize((round(im.width * s), 512), Image.LANCZOS).save(w
 EOF
 python3 $MVP/tools/pixelize.py $work/keyed.png $MVP/assets/ai/sprites/officers/$id.png --height 128 --colors 48
 # index.json lists the ids the game may load (src/app.js loadOfficerSprites).
-python3 -c "import os,json;d='$MVP/assets/ai/sprites/officers';json.dump(sorted(int(f[:-4]) for f in os.listdir(d) if f.endswith('.png')),open(d+'/index.json','w'))"
+python3 -c "import os,json;d='$MVP/assets/ai/sprites/officers';json.dump(sorted(int(f[:-4]) for f in os.listdir(d) if f.endswith('.png') and f[:-4].isdigit()),open(d+'/index.json','w'))"

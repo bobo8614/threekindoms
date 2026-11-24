@@ -18,8 +18,11 @@ if [[ $key == attacker || $key == defender ]]; then
   ref=$MVP/assets/ai/sprites/source/$key-general.webp; refs=(-i $work/ref.png)
 else
   ref=$MVP/assets/ai/sprites/source/officers/$key.webp; refs=(-i $work/ref.png -i $work/portrait.png)
-  portrait=$MVP/assets/ai/portraits/$key.png; [[ -f $portrait ]] || portrait=$MVP/assets/ai/portraits/$key.webp
-  python3 -c "from PIL import Image;Image.open('$portrait').convert('RGB').save('$work/portrait.png')"
+  if [[ $key == f-* ]]; then refs=(-i $work/ref.png)  # a woman general's look (heroine_prompts.mjs) has no portrait
+  else
+    portrait=$MVP/assets/ai/portraits/$key.png; [[ -f $portrait ]] || portrait=$MVP/assets/ai/portraits/$key.webp
+    python3 -c "from PIL import Image;Image.open('$portrait').convert('RGB').save('$work/portrait.png')"
+  fi
 fi
 [[ $b == --b || $b == --c || $b == --turn || $b == --wheel || $b == --spin || $b == --leap ]] && ref=$MVP/assets/ai/sprites/source/duel/$key.png
 [[ $b == --turn ]] && refs=(-i $work/ref.png)

@@ -9,9 +9,12 @@
     "smoke": "electron . --smoke=smoke",
     "dist:win": "node build-app.mjs && electron-builder --win zip --x64",
     "dist:dir": "node build-app.mjs && electron-builder --mac dir",
-    "dist:mac": "node build-app.mjs && electron-builder --mac dmg --arm64 --x64"
+    "dist:mac": "node build-app.mjs && electron-builder --mac dmg --arm64 --x64",
+    "release:win": "node build-app.mjs --official && electron-builder --win zip --x64",
+    "release:mac": "node build-app.mjs --official && electron-builder --mac dmg --arm64 --x64"
   },
   "devDependencies": {
+    "@fontsource/lxgw-wenkai-tc": "5.3.1",
     "@fontsource/ma-shan-zheng": "5.3.1",
     "@fontsource/noto-serif-sc": "5.3.1",
     "electron": "38.8.6",
@@ -31,6 +34,8 @@
       "main.js",
       "preload.js",
       "uiscale.js",
+      "updater.js",
+      "update-keys.json",
       "app/**/*",
       "package.json"
     ],

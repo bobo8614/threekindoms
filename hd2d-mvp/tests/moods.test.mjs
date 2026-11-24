@@ -140,6 +140,37 @@ test('灾害 and 暴乱: the struck city\'s governor, 忧, and 喜 where 防灾 
   await closeWindow(); await page.evaluate(() => window.__evt);
 });
 
+// D176 (一光年的距离@devblog #642): the settlement itself into the window, not a hand-made list. Two of the player's cities
+// struck in one month, one at 防灾 99 and one at 0: the hurt one's governor grieves, then the full one's is glad.
+for (const kind of ['drought', 'flood']) test(`${kind} from the settlement: 防灾 99 is told 不过请放心 by a glad governor, 防灾 0 大事不好`, async () => {
+  const s = await page.evaluate((kind) => {
+    const { g, G } = window.__game, D = G.data(), list = kind === 'drought' ? D.rules.drought_cities : D.rules.flood_cities;
+    const [safe, hurt] = list.filter((cid) => g.cities[cid].officers.length && g.cities[cid].faction !== 7).slice(0, 2).map((cid) => g.cities[cid]);
+    const was = [safe.faction, hurt.faction];
+    safe.faction = hurt.faction = g.player;
+    let got = null;
+    for (let seed = 1; seed < 2000 && !got; seed++) {
+      const t = structuredClone(g); t.seed = seed; t.cities[safe.id].disaster = 99; t.cities[hurt.id].disaster = 0;
+      const hit = G.disaster(t, kind);
+      if (hit.some(([cid]) => cid === safe.id) && hit.some(([cid]) => cid === hurt.id)) got = { seed, hit, pop: [t.cities[safe.id].pop, t.cities[hurt.id].pop] };
+    }
+    g.seed = got.seed; safe.disaster = 99; hurt.disaster = 0;
+    const pop = [safe.pop, hurt.pop], hit = G.disaster(g, kind);
+    window.__evt = window.__game.io.event({ type: 'disaster', kind, list: hit });
+    return { safe: safe.id, hurt: hurt.id, safeGov: safe.officers[0], hurtGov: hurt.officers[0], was, pop, after: [safe.pop, hurt.pop] };
+  }, kind);
+  assert.equal(s.after[0], s.pop[0], 'the full city lost nobody'); assert.ok(s.after[1] < s.pop[1], 'the empty one did');
+  let w = await nextWindow();
+  assert.deepEqual([w.who, w.mood], [s.hurtGov, 'grief']); assert.match(w.text, /大事不好/);
+  // The second window follows at once, so this one is closed by waiting for its text to go, not for no window.
+  await page.evaluate(() => document.querySelector('.panel.msg')?.click());
+  await page.waitForFunction(() => !/大事不好/.test(document.querySelector('.panel.msg')?.textContent ?? ''));
+  w = await nextWindow();
+  assert.deepEqual([w.who, w.mood], [s.safeGov, 'joy']); assert.match(w.text, /不过请放心.*没有受到损害/);
+  await closeWindow(); await page.evaluate(() => window.__evt);
+  await page.evaluate(({ safe, hurt, was }) => { const { g } = window.__game; g.cities[safe].faction = was[0]; g.cities[hurt].faction = was[1]; }, s);
+});
+
 test('an envoy\'s offer accepted: the ruler, 喜', async () => {
   const { foe } = await stock();
   await page.evaluate((foe) => { window.__ans = window.__game.io.allianceOffer(foe, 'gold', 100); }, foe);

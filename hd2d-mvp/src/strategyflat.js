@@ -13,6 +13,7 @@ import { createSky2d } from './skyfx2d.js';
 import { layoutTags, measureTags, tagHtml, tagInk } from './citytags.js';
 import { labelK } from './labelsize.js';
 import { NONE, cityName, factionName } from './core/game.js';
+import { zh } from './lang.js'; // 繁體: text shown through CSS attr() is not reached by lang.js's patches
 
 const DIR = 'assets/ai/sandtable/flat';
 const SEASONS = ['spring', 'summer', 'autumn', 'winter'], seasonOf = (m) => Math.floor(m / 3);
@@ -941,7 +942,7 @@ export async function createStrategyFlat(ctx) {
     announce(cid, text, color, ms) {
       for (const d of [0, 0.45, 0.9]) pulse(cid, color, d);
       const el = marks[cid].el; clearTimeout(el.newsT);
-      el.dataset.news = text; el.style.setProperty('--news', color); el.classList.add('news');
+      el.dataset.news = zh(text); el.style.setProperty('--news', color); el.classList.add('news');
       el.newsT = setTimeout(() => el.classList.remove('news'), ms);
     },
     highlight(cid) { ringAt = cid; marks.forEach((m, i) => m.el.classList.toggle('hl', i === cid)); },

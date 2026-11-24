@@ -7,6 +7,7 @@ import { COMMANDS, TACTICS, FORMATIONS, KINDS } from './core/tactical.js';
 import { ORIGINAL, paceSpeed } from './pace.js';
 import { realChance } from './core/origrng.js';
 import { stage as markStage, fresh, GUARD } from './commitguard.js'; // `stage` is runTactical's 单挑 stage below
+import { zh } from './lang.js'; // 繁體: text shown through CSS attr() is not reached by lang.js's patches
 
 // The formation each of the player's generals deployed last, and the army's last (D32 §7): the picker starts on it, so a player
 // who keeps to one formation deploys with one press, as before. For this game only (app.js begin clears it).
@@ -47,7 +48,7 @@ function formationSvg(f, kinds, side) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // warm: run once the field is first laid, before anything shows on it (app.js: its shaders compile while the cut-in covers it).
-export async function runTactical({ battle, hs, looks, view, duel: stage, audio, face, name, D, banner, message, profiles = null, warm = null }) {
+export async function runTactical({ battle, hs, looks, troopLooks = {}, view, duel: stage, audio, face, name, D, banner, message, profiles = null, warm = null }) {
   const S = battle.side[hs], E = S.foe, es = hs === 'a' ? 'd' : 'a';
   const root = h('div', { class: 'tq', 'data-side': looks[hs] });
   document.body.append(root);
@@ -89,7 +90,7 @@ export async function runTactical({ battle, hs, looks, view, duel: stage, audio,
   const redeploy = (ownOnly = false) => {
     battle.units = []; battle.deploy();
     if (ownOnly) battle.units = battle.units.filter((u) => u.side === hs);
-    view.build(battle, looks);
+    view.build(battle, looks, troopLooks);
   };
   const choosing = !(hs === 'd' && battle.castleDef);
   // Picked, pointed at and deployed are three things (D32 §7): pointing at a card (the pointer, the keys' or the pad's focus) lines
@@ -202,7 +203,7 @@ export async function runTactical({ battle, hs, looks, view, duel: stage, audio,
       // lands on an order)
       h('span', { class: 'tq-kind', onclick: PHONE ? () => unfold(null) : null }, KIND_NAME[k], h('small', {}, k === 'gen' ? '' : `×${counts[k]}`)),
       h('div', { class: 'tq-seg', role: 'radiogroup', 'aria-label': `${KIND_NAME[k]}的将令` }, ...Object.entries(COMMANDS).map(([c, label]) => h('button', {
-        class: `tq-cmd ${S.cmd[k] === c ? 'on' : ''}`, role: 'radio', 'aria-checked': S.cmd[k] === c, 'aria-label': label, 'data-k': KIND_NAME[k], disabled: !counts[k] || auto,
+        class: `tq-cmd ${S.cmd[k] === c ? 'on' : ''}`, role: 'radio', 'aria-checked': S.cmd[k] === c, 'aria-label': label, 'data-k': zh(KIND_NAME[k]), disabled: !counts[k] || auto,
         title: `${label}：${{ advance: '向敌将推进，遇敌即攻', retreat: '向本阵边缘撤出战场', wait: '原地待命，射程内仍会攻击', surround: '包围敌将但不攻击，第4回合起体力低的敌将可能被俘（君主不会被俘）' }[c]}`,
         onclick: () => { if (PHONE && open !== k) return void unfold(k); S.cmd[k] = c; if (PHONE) unfold(null); else drawConsole(); },
       }, h('i', {}, CMD_ICON[c]), CMD_SHORT[c])))));

@@ -1,0 +1,8 @@
+{
+  "add": [
+    { "name": "勾践", "like": "孙策", "city": "会稽", "war": 80, "int": 75, "virtue": 85, "loyalty": 100 },
+    { "name": "越女", "like": "甘宁", "look": "f-sword", "city": "会稽", "war": 92, "weapon": 2 },
+    { "name": "西施", "like": "陆逊", "look": "f-spear", "city": "会稽", "weapon": 16 },
+    { "name": "郑旦", "like": "太史慈", "look": "f-blade", "city": "豫章", "weapon": 9 }
+  ]
+}

@@ -155,7 +155,7 @@ export function flatten(war, G, blankScene) {
   wrap.append(cv); document.body.append(wrap); document.body.classList.add('flat2d');
   const g = cv.getContext('2d');
   const view = { z: 1, x: 0, y: 0 };
-  let box = null, time = 0, tv = 0; // tv: how far the ground view (F04) is shown
+  let box = null, time = 0, tv = 0, leftClear = 0; // tv: how far the ground view (F04) is shown; leftClear: px kept on the left for the desktop war roster
   const sky = createSky2d(); let skyT;
   const thin = new Map(); // each general's eased opacity while he covers the hovered cell
   const shift = new Map(); // each general's plaque, eased off its own place out of a neighbour's way (draw)
@@ -171,12 +171,16 @@ export function flatten(war, G, blankScene) {
   function place() {
     const dpr = Math.min(FLAT_DPR, devicePixelRatio || 1), vw = innerWidth, vh = innerHeight;
     // The board as large as the band between the HUD strips allows; the countryside runs on under the strips.
-    const B = pic.board, band = vh - FLAT_INSET.top - FLAT_INSET.bottom, k0 = Math.min((vw - FLAT_INSET.side * 2) / B.w, band / B.h), k = k0 * view.z;
+    // Desktop: leftClear only shifts the board right into unused right margin and never shrinks k0.
+    const B = pic.board, band = vh - FLAT_INSET.top - FLAT_INSET.bottom;
+    const k0 = Math.min((vw - FLAT_INSET.side * 2) / B.w, band / B.h), k = k0 * view.z;
     // The phone's drag and pinch (view): the board may slide until its far edge is a third of the screen in from the side,
     // so every cell can be brought clear of the HUD in the corners.
     const mx = Math.max(0, (B.w * k - vw) / 2) + vw * 0.3, my = Math.max(0, (B.h * k - vh) / 2) + vh * 0.32;
     view.x = Math.max(-mx, Math.min(mx, view.x)); view.y = Math.max(-my, Math.min(my, view.y));
-    box = { k, cw: (B.w * k) / W, ch: (B.h * k) / H, x: (vw - B.w * k) / 2 + view.x, y: FLAT_INSET.top + (band - B.h * k) / 2 + view.y, dpr };
+    const baseX = (vw - B.w * k) / 2;
+    const shiftX = !PHONE && leftClear > 0 ? Math.min(Math.max(0, leftClear - baseX), Math.max(0, vw - FLAT_INSET.side - (baseX + B.w * k))) : 0;
+    box = { k, cw: (B.w * k) / W, ch: (B.h * k) / H, x: baseX + shiftX + view.x, y: FLAT_INSET.top + (band - B.h * k) / 2 + view.y, dpr };
   }
   // A touch device (phone or tablet) only: one finger slides the board, two fingers zoom it about the point between them (app.js).
   const slide = (dx, dy) => { goal = null; view.x += dx; view.y += dy; place(); };
@@ -607,8 +611,17 @@ export function flatten(war, G, blankScene) {
   return Object.assign(Object.create(war), {
     scene: blankScene, flat: true, flatHud: true,
     composite: () => mapImg ?? paintFlatMap(G, field), // the composed map: the layout guide a painting is made from (tools/flat_shot.mjs --dump)
-    // For the tests: how often the board under the generals was painted (paintBase) against frames drawn.
-    flatDebug: () => ({ plates: plateRects, basePaints, frames, base: [base.width, base.height], canvas: [cv.width, cv.height], country: pic.country }),
+    // For the tests: how often the board under the generals was painted (paintBase) against frames drawn, and where the board sits.
+    flatDebug: () => ({ plates: plateRects, basePaints, frames, base: [base.width, base.height], canvas: [cv.width, cv.height], country: pic.country, box: { x: box.x, y: box.y, w: box.cw * W, h: box.ch * H } }),
+    // Desktop: space kept on the left for the expanded war roster, shifting the board into the right margin without shrinking it.
+    setLeftClear(px) { const v = Math.max(0, Number(px) || 0); if (v === leftClear) return; leftClear = v; place(); },
+    // Whether the full-scale 2D board has enough horizontal slack to sit right of `clear` px without shrinking.
+    canFitLeft(clear) {
+      if (PHONE) return false;
+      const B = pic.board, band = innerHeight - FLAT_INSET.top - FLAT_INSET.bottom;
+      const k0 = Math.min((innerWidth - FLAT_INSET.side * 2) / B.w, band / B.h);
+      return innerWidth - FLAT_INSET.side - B.w * k0 >= clear - 0.5;
+    },
     // A hidden window still moves the war on (app.js runs it 30 times a second) but paints nothing, as the 3D views.
     update(dt) { time += dt; war.update(dt); if (TOUCH) follow(dt); if (!document.hidden) draw(); },
     hover(ndc) { return war.hoverCell(cellAt(ndc)); },

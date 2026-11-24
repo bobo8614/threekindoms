@@ -282,12 +282,14 @@ for (const query of ['', '&flat']) test(`Enter casts the count just set with the
         const after = await read();
         assert.equal(after.pool, remaining, `Enter on ${key} spent exactly two casts`);
         assert.equal(after.stage, 'busy', 'the cast has started');
+        // The last run spends the pool to 0: once it has played out the turn passes by itself (霸王之王@devblog, src/war/play.js check()).
+        if (!remaining) { await page.waitForFunction(() => { const f = window.__game.war.field; return f.turn !== f.human; }, null, { timeout: 40000 }); continue; }
         await castDone(page);
         await page.keyboard.down('Enter'); // a repeat from the same press, now on the next step
         const repeated = await read();
         assert.equal(repeated.pool, remaining, 'the held key did not spend more mobility');
         assert.equal(repeated.day, day, 'the held key did not end the day');
-        assert.equal(repeated.stage, remaining ? 'targets' : 'cmds', 'the held key did not pick another target');
+        assert.equal(repeated.stage, 'targets', 'the held key did not pick another target');
       } finally { await page.keyboard.up('Enter'); }
     }
     assert.deepEqual(page.errors, []);
@@ -358,12 +360,12 @@ test('连续 N 次: 1 to pool ÷ cost, a run of 3 is three casts in one window, 
     const back = await page.evaluate(() => { const p = window.__game.war.probe(), v = p.view; return { yaw: v.yaw, zoom: v.zoom, atFit: v.atFit, dist: v.dist, fit: p.fitDist() }; });
     assert.ok(back.zoom === before.zoom && back.yaw === before.yaw && back.atFit && Math.abs(back.dist - back.fit) < 0.5, `the view given back, at 全景's own distance: ${JSON.stringify([before, back])}`);
     // With the mobility for one cast only: no count; cast, he is back on his commands.
-    await page.evaluate(() => { const w = window.__game.war; w.field.pool[w.field.human] = 6; w.clickCell(window.__k.me.x, window.__k.me.y); });
+    await page.evaluate(() => { const w = window.__game.war; w.field.pool[w.field.human] = 7; w.clickCell(window.__k.me.x, window.__k.me.y); }); // 7: at 0 the turn would pass by itself (src/war/play.js check())
     await page.keyboard.press('x'); await page.waitForSelector('.actpanel [data-target]');
     await page.locator('.actpanel [data-target]').first().click(); await page.waitForSelector('.actpanel.confirm');
     assert.equal(await run(page), null, 'N = 1: no count row');
     await castGo(page); await castDone(page);
-    assert.deepEqual(await page.evaluate(() => [window.__game.war.st.stage, window.__game.war.field.pool[window.__game.war.field.human]]), ['cmds', 0], 'no mobility for another: back on his commands');
+    assert.deepEqual(await page.evaluate(() => [window.__game.war.st.stage, window.__game.war.field.pool[window.__game.war.field.human]]), ['cmds', 1], 'no mobility for another: back on his commands');
     // 十面埋伏 has no count (one ambush to an army).
     await page.evaluate(() => { const w = window.__game.war, f = w.field; window.__cc = f.canCast; f.canCast = () => true; f.pool[f.human] = 30; w.chooseStrategy(11); });
     await page.waitForSelector('.actpanel.confirm');

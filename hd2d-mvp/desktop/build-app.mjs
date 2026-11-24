@@ -2,6 +2,7 @@
 //   node hd2d-mvp/desktop/build-app.mjs
 //   node hd2d-mvp/desktop/build-app.mjs --generated-music     # no local audio: chiptune BGM stand-ins, committed SFX
 //   node hd2d-mvp/desktop/build-app.mjs --no-original-music   # leave the original-game BGM out (SFX stay original)
+//   node hd2d-mvp/desktop/build-app.mjs --official            # the release build: online updates on, and its snapshot (see build.json below)
 // Copies index.html, save-editor.html (系统 → 记录编辑 on the title), src/, data/, mods/ (the shipped data packs) and the runtime assets (git-tracked plus untracked-but-not-ignored files,
 // so generator sources never ship), adds for every BGM slot each git-ignored local version the manifest
 // lists (the Suno remix in assets/audio/remix/ and the original track in assets/audio/original/), so the
@@ -26,8 +27,10 @@ import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { TROOP_LOOKS, HEROINE_LOOKS } from '../src/core/pack.js';
 
 const run = promisify(execFile);
 
@@ -47,6 +50,15 @@ const REGIONS = 'assets/ai/sandtable/regions', regionIndex = join(game, REGIONS,
 // The boards of the open regions (one of a region's name, or a region's `boards`: src/core/pack.js regionBoards).
 const openRegions = new Set(existsSync(regionIndex) ? Object.entries(JSON.parse(readFileSync(regionIndex, 'utf8'))).flatMap(([n, e]) => (e.boards ? Object.keys(e.boards) : [n])) : []);
 SKIP.push({ test: (f) => f.startsWith(`${REGIONS}/`) && f !== `${REGIONS}/index.json` && !openRegions.has(f.slice(REGIONS.length + 1).split('/')[0]) });
+// The pack troop looks (战象, 蛮兵, 足轻, 铁骑: core/pack.js TROOP_LOOKS) are for packs built on the open-source repository, not for the
+// release packages (user's decision, 2026-11-24): their strips, their list and their battle sprites stay out, and a pack faction that
+// names one fights in its original kind's look there (src/app.js loadTroopLooks).
+const LOOKS = Object.values(TROOP_LOOKS).flat().join('|');
+SKIP.push(new RegExp(`^assets/ai/sprites/(troops/)?(attacker|defender)-(${LOOKS})[-.]`), /^assets\/ai\/sprites\/troops\/looks\.json$/);
+// The women generals' battle looks (core/pack.js HEROINE_LOOKS) likewise (user's decision, 2026-11-24): their sprites, 单挑 and march
+// strips and their list stay out, and a pack officer who wears one fights in his `like` officer's look there (src/app.js battleArt).
+const HEROINES = Object.keys(HEROINE_LOOKS).join('|');
+SKIP.push(new RegExp(`^assets/ai/sprites/(officers|duel|march|source/officers|source/duel)/(${HEROINES})[-.]`), /^assets\/ai\/sprites\/heroines\.json$/);
 
 rmSync(out, { recursive: true, force: true });
 const listed = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: game, encoding: 'utf8' }).split('\0');
@@ -199,10 +211,13 @@ writeFileSync(join(out, 'index.html'), html);
 // Fonts: the same families and weights index.html asks Google Fonts for, woff2 only. --mobile: every character of
 // the shipped text (code, data, markup, the 鸣谢 list) plus printable ASCII; each fontsource slice is cut to the characters
 // of its unicode-range that occur, and a slice with none is left out (as toy/build-toy.mjs on the Toy branch).
-const faces = [['noto-serif-sc', [400, 600, 900]], ['ma-shan-zheng', [400]]];
+// LXGW WenKai TC is the 繁體 brush face (系统 → 文字, src/lang.js; Ma Shan Zheng has no 繁體 glyphs): it only ever draws the
+// shipped text, so the desktop build too keeps just the slices that text touches (whole, no pyftsubset needed).
+const faces = [['noto-serif-sc', [400, 600, 900]], ['ma-shan-zheng', [400]], ['lxgw-wenkai-tc', [700]]];
+const TRIMMED = new Set(['lxgw-wenkai-tc']);
 const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
 const used = new Set();
-if (MOBILE) {
+if (MOBILE || TRIMMED.size) {
   for (const f of walk(out)) if (/\.(html|js|json|css|txt)$/.test(f) && !f.includes('/vendor/')) for (const c of readFileSync(f, 'utf8')) used.add(c.codePointAt(0));
   for (let c = 0x20; c < 0x7f; c++) used.add(c);
 }
@@ -223,6 +238,10 @@ for (const [pkg, weights] of faces) for (const w of weights) {
       const chars = range ? [...used].filter((c) => parseRange(range[1]).some(([a, b]) => c >= a && c <= b)) : [...used];
       if (!chars.length) continue;
       fontJobs.push({ file: join(dir, 'files', name), dst: join(out, 'vendor/fonts/files', name), chars });
+    } else if (TRIMMED.has(pkg)) {
+      const range = block.match(/unicode-range:\s*([^;]+);/);
+      if (range && ![...used].some((c) => parseRange(range[1]).some(([a, b]) => c >= a && c <= b))) continue;
+      cpSync(join(dir, 'files', name), join(out, 'vendor/fonts/files', name));
     } else cpSync(join(dir, 'files', name), join(out, 'vendor/fonts/files', name));
     css += block.replace(/,\s*url\([^)]*\.woff\) format\('woff'\)/g, '').trimEnd() + '\n';
   }
@@ -246,7 +265,21 @@ const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: game
 const dirty = execFileSync('git', ['status', '--porcelain', '--', 'index.html', 'save-editor.html', 'src', 'data', 'mods', 'assets'], { cwd: game, encoding: 'utf8' }).trim() ? '+dirty' : '';
 // version: the 说明 shows it (src/app.js gameVersion), from the same package.json the release bumps (天使之翼723@devblog).
 const version = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version;
-writeFileSync(join(out, 'build.json'), JSON.stringify({ version, commit: commit + dirty, built: new Date().toISOString(), ...(MOBILE ? { profile: 'mobile' } : {}), music }, null, 1));
+// --official (npm run release:*): the package players get, the only one that checks for and loads online updates (desktop/main.js,
+// docs/在线增量更新方案与开发交接_2026-11-23.md §2). A build without it (development, checks, a build from the open-source mirror)
+// never goes online. The package's snapshot goes beside it, release/snapshots/<channel>-<version>.json: the base the first update
+// after it is measured against (tools/update/build_update.mjs, publish_update.mjs --snapshot-only).
+const OFFICIAL = process.argv.includes('--official');
+if (OFFICIAL && dirty) throw new Error('--official from a working tree with uncommitted game files: commit first');
+writeFileSync(join(out, 'build.json'), JSON.stringify({ version, commit: commit + dirty, built: new Date().toISOString(), ...(MOBILE ? { profile: 'mobile' } : {}), ...(OFFICIAL ? { updates: 'official' } : {}), music }, null, 1));
+if (OFFICIAL) {
+  const { snapshotOf } = createRequire(import.meta.url)('./updater.js');
+  const channel = MOBILE ? 'mobile' : 'desktop', snapFile = join(dirname(out), 'release', 'snapshots', `${channel}-${version}.json`);
+  mkdirSync(dirname(snapFile), { recursive: true });
+  const snap = snapshotOf(out, { channel, version, commit });
+  writeFileSync(snapFile, JSON.stringify(snap, null, 1) + '\n');
+  console.log(`  --official: updates on; snapshot ${relative(process.cwd(), snapFile)} (${Object.keys(snap.files).length} files)`);
+}
 const mb = (n) => `${(n / 2 ** 20).toFixed(1)} MB`;
 for (const [label, s] of Object.entries(slim)) console.log(`  --mobile ${label}: ${s.files} files, ${mb(s.was)} → ${mb(s.now)}`);
 if (MOBILE) console.log(`  --mobile total: ${mb(walk(out).reduce((n, f) => n + statSync(f).size, 0))}`);

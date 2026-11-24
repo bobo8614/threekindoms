@@ -2,6 +2,8 @@
 // commander, and a low three-quarter angle turned 90°.
 //   node hd2d-mvp/tools/war_sample_capture.mjs [out_dir] [--size 1600x900] [--url …] [--plain]
 // --plain also saves each view with the HD-2D post stack off (H key), to tell lighting from materials.
+// --pre "<js>" runs in the page right after it loads, before the new game (e.g. to dress 曹操 in another look:
+//   "__game.G.data().officers[131].art = 'f-spear'").
 // --eval "<js>" runs in the page once the war is up (e.g. to try post settings via window.__game.debug.post).
 // --views board,close picks which stills to take (yaw0..yaw3: the overview at each angle; tactical: Tab's view from straight above). castle / village / unit / unitlow are 800×450 crops around that cell
 // (sharpest with --dpr 2); --hide-units hides the unit sprites so the set pieces can be judged.
@@ -25,6 +27,7 @@ page.on('console', (m) => m.type() === 'error' && !m.text().includes('404') && e
 
 // Same route into the war as map_capture.mjs: 曹操 marches on the first neighbour offered (冀州 on a new game).
 await page.goto(URL); await page.waitForFunction(() => window.__game?.debug);
+if (arg('--pre')) await page.evaluate(arg('--pre'));
 await page.getByText('新的征程').click(); await page.waitForTimeout(800);
 await page.locator('.ruler', { hasText: '曹操' }).click(); await page.locator('.ruler', { hasText: '曹操' }).click();
 await page.waitForFunction(() => document.body.dataset.screen === 'strategy'); await page.waitForTimeout(2500);

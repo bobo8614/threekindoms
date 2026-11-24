@@ -1,0 +1,10 @@
+{
+  "add": [
+    { "name": "会稽", "lon": 120.43, "lat": 29.75, "tier": "major", "like": "建安", "faction": "越", "calamity": "flood" },
+    { "name": "豫章", "lon": 115.44, "lat": 28.98, "tier": "county", "like": "长沙", "faction": "越" },
+    { "name": "合浦", "lon": 109.3, "lat": 21.85, "tier": "county", "like": "郁林", "calamity": "drought" }
+  ],
+  "edit": [
+    { "city": "建安", "faction": "越", "gold": 900 }
+  ]
+}

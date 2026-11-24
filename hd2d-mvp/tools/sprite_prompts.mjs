@@ -6,6 +6,7 @@
 import { fileURLToPath } from 'node:url';
 import { ICONIC, accent, weaponRule, officer } from './portrait_prompts.mjs';
 import { readFileSync } from 'node:fs';
+import { heroine, feminize } from './heroine_prompts.mjs';
 import { dirname, join } from 'node:path';
 
 const DATA = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../data/game-data.json'), 'utf8'));
@@ -26,14 +27,14 @@ const SEAT = {
 };
 
 export function spritePrompt(o) {
-  const look = ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), canonical look from the novel and opera tradition`;
+  const look = o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), canonical look from the novel and opera tradition`;
   const sage = o.int - o.war >= 15;
-  const ride = SEAT[o.name] || `riding ${MOUNT[o.name] || (sage ? 'a calm well-groomed horse' : 'an armoured warhorse with barding in his accent colour')}`;
+  const ride = SEAT[o.name] || `riding ${MOUNT[o.name] || o.mount || (sage ? 'a calm well-groomed horse' : 'an armoured warhorse with barding in his accent colour')}`;
   const pose = sage
     ? 'upright and composed in the saddle, holding his fan, scroll or sword of office, no heavy armour unless his description has it'
     : 'leaning forward in a battle-ready charge, weapon held ready along the horse\'s flank';
   return `Game sprite source art for an HD-2D remake of the 1992 Famicom strategy game "Sangokushi II: Haou no Tairiku".
-Subject: ${look}.
+Subject: ${look.replace(/\.$/, '')}.
 He is ${ride}; ${pose}.
 ${weaponRule(look)}
 Accent colour: ${accent(o)} on cloak, barding or banner tassels.
@@ -43,12 +44,13 @@ Format (critical):
 - Detailed 16-bit SNES/Octopath-style pixel art with crisp pixel clusters, dark outlines and 3-tone shading; no anti-aliased painterly blur.
 - One single figure, centred, filling about 85% of the canvas height; square 1024x1024 canvas.
 - Background: one perfectly flat solid magenta (#FF00FF) colour everywhere around the figure — no ground, no shadow, no gradient, no scenery, no text. Do not use magenta or pink anywhere on the figure.
-Reference image 1 is this officer's approved character portrait: match his face, hair, beard, headwear, armour colours and weapon exactly.
-Reference image 2 is an approved sprite of a different officer: match ONLY its pixel-art rendering style, proportions and side-view framing, not its colours or costume.`;
+${o.heroine ? 'Reference image 1' : 'Reference image 1 is this officer\'s approved character portrait: match his face, hair, beard, headwear, armour colours and weapon exactly.\nReference image 2'} is an approved sprite of a different officer: match ONLY its pixel-art rendering style, proportions and side-view framing, not its colours or costume.`;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === '--stars') { process.stdout.write(DATA.officers.filter(hasSprite).map((o) => o.id).join(' ')); process.exit(0); }
+  const h = heroine(process.argv[2]);
+  if (h) { process.stdout.write(feminize(spritePrompt(h))); process.exit(0); }
   const o = officer(Number(process.argv[2]));
   if (!o) { console.error('unknown officer id'); process.exit(1); }
   process.stdout.write(spritePrompt(o));

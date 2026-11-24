@@ -6,6 +6,8 @@
 // hall waits for its own click and the input is ignored for a moment after each screen opens.
 import { name } from './core/game.js';
 import { h, avatar, figure } from './ui.js';
+// The 鸣谢 and makers are players' own names: rawText keeps them as written in 繁體 too.
+import { rawText } from './lang.js';
 
 const ART = { dusk: 'assets/ai/ending/dusk.webp', dawn: 'assets/ai/ending/dawn.webp', court: 'assets/ai/ending.webp', hall: 'assets/ai/ending/hall.webp', fallen: 'assets/ai/ending/fallen.webp' };
 const MAKERS = ['tianlin@GitHub'];
@@ -147,11 +149,11 @@ async function scroll(stage, content, ms, stopAt = null) {
 // The people who told the project what to fix, then its maker, then 完.
 async function thanks(stage, list) {
   await stage.paint(ART.hall, 'dim deep');
-  const makers = h('div', { class: 'end-makers' }, MAKERS.map((m) => { const [who, where] = signature(m); return h('p', {}, who, h('small', {}, where)); }));
+  const makers = h('div', { class: 'end-makers' }, MAKERS.map((m) => { const [who, where] = signature(m); return h('p', {}, rawText(who), h('small', {}, where)); }));
   const view = stage.add(h('div', { class: 'end-credits' }, h('div', { class: 'end-credits-roll' },
     h('h2', {}, '特别鸣谢'),
     h('p', { class: 'end-credits-lead' }, '感谢为这个免费项目提出宝贵意见的网友'),
-    h('div', { class: 'end-names' }, list.map((line) => { const [who, where] = signature(line); return h('p', {}, who, h('small', {}, where)); })),
+    h('div', { class: 'end-names' }, list.map((line) => { const [who, where] = signature(line); return h('p', {}, rawText(who), h('small', {}, where)); })),
     makers)));
   await scroll(stage, view.firstChild, Math.max(26000, Math.ceil(list.length / 3) * 1500), makers);
   const fin = stage.add(h('div', { class: 'end-fin' }, h('b', {}, '完'), h('span', { class: 'end-more' }, '▼ 回到标题')));

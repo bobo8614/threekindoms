@@ -101,3 +101,37 @@ test('search_preference holds the original table, 程昱 with 曹操 among them'
   assert.ok(D.rules.search_preference['2'].includes(id('程昱')));
   assert.ok(!D.rules.search_preference['2'].includes(id('郭嘉')));
 });
+
+// D50 (捕风的喵@devblog): the original sends a 下野 officer found nearby down the ronin scan ($B9EA), which returns him
+// with the drawn result 5 or 6 kept and never compares him with the preference table, so a 下野 徐庶 joins free or asks
+// his price like anyone else; only a 未登场 entry from the city's table can become result 7 and refuse
+// (research/player-search-evidence.md §3). 0.4.3 ran every candidate through the table. Here the player is 曹操 and
+// 徐庶 favours 刘备; every outcome row is forced to `res`.
+function ronin(res, { status = G.RONIN, year = 190, seed = 1 } = {}) {
+  const g = G.newGame(2, 1, seed), jing = D.cities.find((c) => c.name === '荆州').id, c = g.cities[jing], xu = id('徐庶');
+  c.faction = g.player; c.officers = g.officers.filter((o) => o.status === G.SERVING).slice(0, 3).map((o) => o.id);
+  g.year = year;
+  for (const n of ['伊籍', '周仓']) g.officers[id(n)].status = G.SERVING;
+  g.officers[id('诸葛亮')].status = G.UNAPPEARED; // 194: not ready in 190, so the queue gives nobody and the ronin scan runs
+  const near = [jing, ...G.roads(jing)], far = D.cities.findIndex((x, i) => !near.includes(i));
+  for (const o of g.officers) if (o.status === G.RONIN) o.loc = far;
+  Object.assign(g.officers[xu], { status, loc: jing, loyalty: 60 });
+  const rows = D.search_outcomes; D.search_outcomes = Object.fromEntries(Object.keys(rows).map((k) => [k, Array(8).fill(res)]));
+  try { return { g, c, xu, out: G.search(g, jing, c.officers[0]) }; } finally { D.search_outcomes = rows; }
+}
+test('D50: a 下野 徐庶 found nearby joins free, his loyalty set by the ruler\'s 人德, whoever he favours', () => {
+  for (let seed = 0; seed < 40; seed++) {
+    const { g, c, xu, out } = ronin(5, { seed });
+    assert.equal(out.joined, xu, `seed ${seed}: ${out.msg}`); assert.match(out.msg, /愿意出仕/); assert.doesNotMatch(out.msg, /仁德/);
+    assert.ok(c.officers.includes(xu)); assert.equal(g.officers[xu].status, G.SERVING);
+    assert.equal(g.officers[xu].loyalty, G.recruitLoyalty(g.officers[g.factions[c.faction].ruler].virtue, 60));
+  }
+});
+test('D50: a 下野 徐庶 drawn as result 6 asks his price instead of refusing', () => {
+  const { g, xu, out } = ronin(6), t = g.officers[xu];
+  assert.equal(out.offer, xu); assert.equal(out.price, Math.floor((t.hp + t.war + t.int) / 3)); assert.equal(out.refused, undefined);
+});
+test('D50: a 未登场 徐庶 at the head of the queue still goes by his preference', () => {
+  const { out } = ronin(5, { status: G.UNAPPEARED, year: 194 });
+  assert.match(out.msg, /仁德|拒绝/); assert.equal(out.offer, undefined);
+});

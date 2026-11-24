@@ -30,7 +30,16 @@ async function toWar(page, { stopAtDeploy = false } = {}) {
 // Both views: the shared page is the flat map (&flat); the 3D default has its own page, opened on first use.
 before(async () => { game = await startGame(); page = await game.open('&flat'); await toWar(page); });
 let page3d;
-const threeD = async () => { if (!page3d) { page3d = await game.open('', { clock: true }); await toWar(page3d); } return page3d; };
+// materialWarns: three.js's 「THREE.Material: parameter … has value of undefined」 and the like, heard from before the war is built.
+let materialWarns = [];
+const threeD = async () => {
+  if (!page3d) {
+    page3d = await game.open('', { clock: true });
+    page3d.on('console', (m) => { if (m.type() === 'warning' && /THREE\.Material/.test(m.text())) materialWarns.push(m.text()); });
+    await toWar(page3d);
+  }
+  return page3d;
+};
 const VIEWS = ['3D', 'flat'], pageOf = (v) => (v === 'flat' ? page : threeD());
 after(() => game?.close());
 
@@ -156,12 +165,12 @@ for (const v of VIEWS) test(`with mobility for one 计略, a second cannot be ca
       }
       if (!ok) { [e.x, e.y] = home; return null; }
     }
-    f.pool[f.human] = 6; w.clickCell(me.x, me.y);
+    f.pool[f.human] = 7; w.clickCell(me.x, me.y); // 7, not 6: at 0 the turn would pass by itself (src/war/play.js check())
     window.__t01 = { me, e };
     return { menu: [...document.querySelectorAll('.unitpanel:not(.compare) .acts button')].map((b) => b.textContent) };
   });
   assert.ok(setup, 'a 火计 target near the player\'s unit');
-  assert.ok(setup.menu.includes('计略'), 'the panel offers 计略 with 6 mobility');
+  assert.ok(setup.menu.includes('计略'), 'the panel offers 计略 with 7 mobility');
   await page.evaluate(() => { const w = window.__game.war, { e } = window.__t01; w.chooseStrategy(0); w.clickCell(e.x, e.y); });
   await page.locator('.actpanel .ap-go:not([disabled])').waitFor();
   const askedFoe = await page.evaluate(() => ({ card: document.querySelector('.unitpanel.compare h3')?.textContent, foe: window.__game.G.name(window.__t01.e.id) }));
@@ -185,8 +194,8 @@ for (const v of VIEWS) test(`with mobility for one 计略, a second cannot be ca
     (await import('./src/pace.js')).setPace(1);
     return { pool, cast, ok: res.ok, line: res.lines[0], spent: pool - f.pool[f.human], lost: soldiers - f.O(e.id).soldiers };
   });
-  assert.equal(after.pool, 0, 'the first 火计 spent all 6');
-  assert.equal(after.cast, null, 'the view does not pick a target with 0 mobility');
+  assert.equal(after.pool, 1, 'the first 火计 spent 6 of the 7');
+  assert.equal(after.cast, null, 'the view does not pick a target with too little mobility');
   assert.equal(after.ok, false, 'the rules refuse the cast');
   assert.equal(after.line, '机动力不足');
   assert.equal(after.spent, 0); assert.equal(after.lost, 0, 'nothing happens to the target');
@@ -758,6 +767,13 @@ for (const q of ['', '&flat']) test(`奇门 day beat${q}: a number rises over th
 });
 
 // war-3d Task 5: the war map is 3D by default; the flat painted map is ?flat and the 低 preset's.
+// The painted board's terrain keys (plate, far, tier) have no tile in the calm set: paintTerrain swaps them for the plates, so
+// buildTerrain must not hand three.js an undefined map first (three warnings a war in the 0.4.0 Mac app's log).
+test('building the 3D war board gives three.js no undefined material parameter', async () => {
+  await threeD();
+  assert.deepEqual(materialWarns, []);
+});
+
 test('the war map opens in 3D by default; ?flat and the 低 preset give the flat map', async () => {
   assert.ok(!await (await threeD()).evaluate(() => window.__game.war.flat), 'default: 3D');
   assert.ok(await page.evaluate(() => window.__game.war.flat), '?flat');

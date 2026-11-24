@@ -7,7 +7,9 @@
 // the spearman carries a 戟 towering over his head and a large shield, the archer a big bow held out clear of
 // his body with arrows over the shoulder (SHAPE), overriding the reference sprite where they differ.
 //   node hd2d-mvp/tools/troop_frame_prompts.mjs <attacker|defender>-<soldier|archer|cavalry> [--v2] [--turn]
+// The extended looks (elephant / hillman / ashigaru / steppe) take the same arguments; their cells are in troop_look_prompts.mjs.
 import { fileURLToPath } from 'node:url';
+import { isLook, lookPrompt, lookTurnPrompt } from './troop_look_prompts.mjs';
 
 export const FRAMES = {
   soldier: ['idle_a', 'idle_b', 'walk_1', 'walk_2', 'walk_3', 'walk_4', 'run', 'windup', 'strike', 'follow', 'guard', 'hurt', 'stagger', 'fall', 'dead', 'cheer'],
@@ -172,4 +174,9 @@ Reference image 1 is the approved single battle sprite of this ${v2 ? 'unit (ano
 Make the poses strongly readable in silhouette: the weapon, the upper body and the ${kind === 'cavalry' ? "horse's legs" : 'legs'} must clearly change between cells.`;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) process.stdout.write((process.argv.includes('--turn') ? turnPrompt : troopPrompt)(process.argv[2], process.argv.includes('--v2')));
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  // An extended look (troop_look_prompts.mjs) borrows an original kind's frames but has its own cells.
+  const ext = isLook(String(process.argv[2]).split('-')[1]), turn = process.argv.includes('--turn');
+  const f = ext ? (turn ? lookTurnPrompt : lookPrompt) : (turn ? turnPrompt : troopPrompt);
+  process.stdout.write(f(process.argv[2], process.argv.includes('--v2')));
+}

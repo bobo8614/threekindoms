@@ -5,6 +5,7 @@
 //   … --natural    the 白兵 runs at 4× until the two generals meet on their own; the HUD's buttons fight the duel
 //   … --campaign   new game as 曹操 → 出阵 → war map, the commander rides to the nearest enemy and attacks →
 //                  白兵 → (a duel if the generals meet) → back to the war map
+// --pre "<js>" runs in each page right after it loads (e.g. "__game.G.data().officers[38].art = 'f-spear'").
 // --bare turns the duel's sparks, arcs, flashes, shake, dust and numbers off, to judge the motion alone.
 // Needs the dev server (python3 hd2d-mvp/tools/serve.py) and Playwright (global @playwright/mcp works).
 import { launchChrome } from './headless.mjs';
@@ -40,6 +41,7 @@ async function session(name, fn) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.error(name, 'pageerror', e.message));
   await page.goto(URL + (URL.includes('mute') ? '' : (URL.includes('?') ? '&' : '?') + 'mute')); await page.waitForFunction(() => window.__game?.debug);
+  if (arg('--pre')) await page.evaluate(arg('--pre'));
   await fn(page, mark);
   const v = page.video(); await ctx.close(); renameSync(await v.path(), join(out, `${name}.webm`));
 }

@@ -297,7 +297,14 @@ export function makePlay(wv) {
     removeGone();
     await tellLevelUps();
   }
-  function check() { if (field.over && wv.done) { const d = wv.done; wv.done = null; clearMarks(); setTimeout(() => d(field.over), 900); } }
+  // Called after each of the player's actions has played out (a move, an attack back from the 白兵, a 计略 after its window).
+  // An action that leaves the shared mobility at 0 ends his turn, as in the original (research/war-ai-evidence.md: A05E/A068
+  // take 0 or less as the end of the side's turn), so he need not press 待机 with nothing left (霸王之王@devblog, 2026-11-23).
+  // The 退却 and the village's shop and clinic cost nothing, but at 0 the original gives no chance for them either.
+  function check() {
+    if (field.over) { if (wv.done) { const d = wv.done; wv.done = null; clearMarks(); setTimeout(() => d(field.over), 900); } return; }
+    if (human && field.turn === human && field.pool[human] <= 0 && wv.endHuman && !st.busy) { ui.log('机动力用尽，本日行动结束'); endTurn(); }
+  }
 
   // The AI takes its turn one cell at a time, unit after unit (the original dispatcher, 10 frames a cell).
   // Runs of plain steps are gathered and played as one march with the camera on the group, so the camera

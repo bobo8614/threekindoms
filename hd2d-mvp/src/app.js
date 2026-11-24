@@ -1,5 +1,7 @@
 // Game shell: renderer and screens (title → setup → strategy ⇄ war ⇄ cut-in), the HUD, and the
 // io bridge the rules core (core/game.js run loop) calls for events, AI turns, wars and the player turn.
+// lang.js first: in 繁體 it patches the page's text sinks before any module below writes to them.
+import { zh, toHans, lang, savedLang, setLang, LANGS, rawText } from './lang.js';
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { terrainTextures } from './pixel.js';
@@ -21,6 +23,7 @@ import { createDuelView } from './duelview.js';
 import { runTactical, resetFormations } from './tacticalhud.js';
 import { createWarView } from './warview.js';
 import { createWarNav } from './warnav.js';
+import { createWarRoster } from './warroster.js';
 import { loadWarGround } from './warplate.js';
 import { FLAT_INSET } from './warmap2d.js';
 import { PHONE, hint } from './phone.js';
@@ -37,7 +40,7 @@ import { MONTH_NAMES, SEASON_OF, WEATHER_OF } from './seasons.js';
 import { ORIGINAL, PACES, paceSpeed, paceLabel, setPace, paced, hold } from './pace.js';
 import { shakeLevel, setShakeLevel, onShake } from './fx.js';
 import { labelSizeText, cycleLabelSize } from './labelsize.js';
-import { uiSizeOn, uiSizeText, cycleUiSize } from './uiscale.js';
+import { uiSizeOn, uiSizeLabel, uiSizeNote, onUiZoom, cycleUiSize } from './uiscale.js';
 import { RECORD_ACTIONS, recordAction, recordKey, configureRecordButton, resetRecordButtons } from './padrecords.js';
 import { controls, quickSaveKey } from './controls.js';
 import { createPad, sendKey, walk, focusFirst, firstIn, focusables, isControl, shown, glyphOf } from './pad.js';
@@ -100,7 +103,7 @@ const loadMarch = async (key) => {
 const marchStrips = Array.isArray(marchList) ? marchList : [];
 // A pack's officer rides in the strips of the officer he borrows his pictures from (core/pack.js `like`): loaded under that one's
 // key, then known by his own as well, so every lookup by id finds them.
-const loadOfficerMarch = (ids) => Promise.all(ids.map((id) => [id, G.artOf(id)]).filter(([, a]) => marchStrips.includes(String(a)))
+const loadOfficerMarch = async (ids) => Promise.all((await Promise.all(ids.map(async (id) => [id, await battleArt(id)]))).filter(([, a]) => marchStrips.includes(String(a)))
   .map(async ([id, a]) => { if (!sprites[`march-${a}`]) await loadMarch(a); if (id !== a && sprites[`march-${a}`]) sprites[`march-${id}`] = sprites[`march-${a}`]; }));
 // 白兵 troop action strips (tools/slice_troop_frames.py): <side>-<soldier|archer|cavalry>[-v2], each with its -turn strip.
 const loadTroops = async () => {
@@ -110,6 +113,19 @@ const loadTroops = async () => {
     await Promise.all(troopList.map(async (k) => { try { sprites[`troop-${k}`] = { ...(await strip(k)), turn: await strip(`${k}-turn`).catch(() => null) }; } catch {} }));
   } catch {}
 };
+// A pack faction's troop looks (core/pack.js TROOP_LOOKS: 战象, 蛮兵, 足轻, 铁骑), loaded for the 白兵 that needs them: the strips of
+// each side's colours under troop-<attacker|defender>-<look>, as the original kinds'. Their list (troops/looks.json) and strips are
+// not in the release packages (desktop/build-app.mjs); there, or when one will not load, the squads wear the original kinds.
+let troopLookList;
+async function loadTroopLooks(looks, wear) {
+  const want = ['a', 'd'].flatMap((s) => Object.values(wear[s] ?? {}).map((l) => `${looks[s]}-${l}`)).filter((k) => !sprites[`troop-${k}`]);
+  if (!want.length) return;
+  troopLookList ??= await optional(json('assets/ai/sprites/troops/looks.json')) ?? [];
+  const strip = async (k) => ({ meta: await (await fetch(`assets/ai/sprites/troops/${k}.json`)).json(), tex: await loadPixelTexture(`assets/ai/sprites/troops/${k}.png`) });
+  await Promise.all([...new Set(want)].flatMap((k) => [k, `${k}-v2`]).filter((k) => troopLookList.includes(k)).map(async (k) => {
+    try { sprites[`troop-${k}`] = { ...(await strip(k)), turn: await strip(`${k}-turn`).catch(() => null) }; } catch (e) { console.warn('troop look', k, e); }
+  }));
+}
 // The generic generals and troops, the two sides' march strips and the 白兵 strips, all at once; a generic sprite that will not load
 // still stops the boot, as before.
 await Promise.all([
@@ -117,14 +133,29 @@ await Promise.all([
     .filter(([, f]) => files.sprites[f]).map(async ([key, f]) => { sprites[key] = await loadPixelTexture(files.sprites[f]); }),
   ...['attacker', 'defender'].map(loadMarch), loadTroops(),
 ]);
+// A pack officer's woman-general look (core/pack.js HEROINE_LOOKS) rides in its own sprite, 单挑 and march strips, listed in
+// sprites/heroines.json rather than the index lists and left out of the release packages (desktop/build-app.mjs): the look's key
+// joins the three lists once the list says it is there, and an officer whose look is missing fights as his `like` officer.
+let heroineList = null;
+async function battleArt(id) {
+  const look = G.lookOf(id);
+  if (!look) return G.artOf(id);
+  heroineList ??= optional(json('assets/ai/sprites/heroines.json')).then((l) => {
+    const have = Array.isArray(l) ? l : [];
+    for (const k of have) for (const list of [officerSprites, duelStrips, marchStrips]) if (!list.includes(k)) list.push(k);
+    return have;
+  });
+  return (await heroineList).includes(look) ? look : G.artOf(id);
+}
 async function loadOfficerSprites(ids) {
-  for (const id of ids) {
-    const a = G.artOf(id);
+  const arts = await Promise.all(ids.map(battleArt));
+  for (const [i, id] of ids.entries()) {
+    const a = arts[i];
     if (officerSprites.includes(a) && !sprites[`officer-${a}`]) sprites[`officer-${a}`] = await loadPixelTexture(`assets/ai/sprites/officers/${a}.png`);
     if (a !== id && sprites[`officer-${a}`]) sprites[`officer-${id}`] = sprites[`officer-${a}`];
   }
-  await Promise.all([...ids.map(G.artOf), 'attacker', 'defender'].map(loadDuelStrip));
-  for (const id of ids) { const a = G.artOf(id); if (a !== id && sprites[`duel-${a}`]) sprites[`duel-${id}`] = sprites[`duel-${a}`]; }
+  await Promise.all([...arts, 'attacker', 'defender'].map(loadDuelStrip));
+  for (const [i, id] of ids.entries()) { const a = arts[i]; if (a !== id && sprites[`duel-${a}`]) sprites[`duel-${id}`] = sprites[`duel-${a}`]; }
 }
 
 // ---------- Renderer ----------
@@ -183,6 +214,7 @@ const toggleHd2d = () => { post.setEnabled(!post.enabled); writeFlag(PREF.hd2d, 
 // mouse leaving the canvas during the boot threw from war.hoverCell).
 let mode, g = null, sel = null, war = null;
 let warNav = null; // the 3D war map's minimap, edge markers and edge scrolling (src/warnav.js); none on the flat map
+let warRoster = null; // the war map's friendly general roster on the left (src/warroster.js), both 3D and flat
 // The 战略地图's UI colours turn with the map's month (ui.css body[data-season]): a new season eases in with it, unless the
 // map jumps to it. Other screens keep their own colours, whatever is set here.
 let seasonTurn = 0;
@@ -472,6 +504,7 @@ addEventListener('keydown', (e) => {
   if (k === 'g' && mode === strategy && document.body.dataset.screen === 'strategy') toggleRoads();
   if (mode === war && k === 'z') war.undo();
   if (mode === war && (e.key === '[' || e.key === ']') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) keyCycle(e.key === ']' ? 1 : -1);
+  if (mode === war && k === 'n' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !blocking()) warRoster?.toggle();
   if (mode === war && k === 'm' && !e.repeat && !blocking()) warNav?.toggleMini();
   // F: the selected general's 计略 list; X: 再施, the 计略 he cast last; L: 定位目标 while a 计略's target is chosen. They press the
   // buttons, so they do what the buttons do, when they do.
@@ -492,7 +525,7 @@ addEventListener('keydown', (e) => {
     // Enter ends the day on a new press only: not one held through the 白兵's report or the enemy's turn (D32 §9.3, S09).
     else if (freshInput(e)) war.endTurn();
   }
-  if (mode === war && k === 'escape') war.cancel?.();
+  if (mode === war && k === 'escape') { if (PHONE && warRoster?.close?.()) return; war.cancel?.(); }
   // ← →: the count of a 计略 cast several times in a row, while its confirmation is up (the panel's rows walk with ↑ ↓).
   if (mode === war && (k === 'arrowleft' || k === 'arrowright') && war.st?.confirm && !blocking() && war.runCount?.(k === 'arrowright' ? 1 : -1)) e.preventDefault();
   // 1–5: a group of the city's commands. Not while a command is being carried out (its map pick and windows have no
@@ -926,7 +959,7 @@ renderer.setAnimationLoop((t) => {
   const dt = Math.min(0.05, clock.getDelta());
   if (held.size) { const v = dt * 14, k = (c) => (held.has(c) ? 1 : 0); mode.pan?.((k('d') - k('a')) * v, (k('s') - k('w')) * v); }
   mode.update(dt); setProfile();
-  if (mode === war) warNav?.update(dt, { blocked: blocking() || dialogOpen() });
+  if (mode === war) { warNav?.update(dt, { blocked: blocking() || dialogOpen() }); warRoster?.update(); }
   if (mode === war && ++insetTick % 15 === 0) frameWar();
   if (mode === war && !war.flat) for (const el of $$('.unitacts')) el.place?.(false); // the 3D camera moves: the commands follow their general
   if (mode === strategy && document.body.dataset.screen === 'title') strategy.orbit(-dt * 18, 0);
@@ -1007,6 +1040,98 @@ let sysTab = null; // the phone's 系统 menu: the tab last looked at
 // 全屏 is the same switch as F11 / Alt+Enter: fullscreen has no title bar and the game no menu bar, so players who found
 // their way in could not find the way out, nor a way to leave the game at all (2026-11-17).
 const desk = window.desktop ?? null;
+// 退出游戏 where a shell can close the game: the desktop window, or the Android package (window.NativeShell,
+// apk/.../MainActivity.java; kofwinner@devblog #641). Read when drawn, not at load: the shell adds it as the page loads.
+const shellQuit = () => desk ? () => desk.quit() : window.NativeShell?.quit ? () => window.NativeShell.quit() : null;
+// ---------- 更新 (online updates: desktop/updater.js; docs/在线增量更新方案与开发交接_2026-11-23.md) ----------
+// The shell's updater, where there is one: the desktop release build (desktop/preload.js). Android (Phase 2) will give the same
+// calls under window.BawangUpdater. Nothing here goes online by itself: the shell checks only when asked here, or after the
+// title when the player turned 启动时自动检查更新 on, and tells every step (onEvent).
+const updater = (() => { const u = desk?.updater ?? window.BawangUpdater ?? null; return u?.enabled ? u : null; })();
+let updState = { phase: 'idle' };
+const updListeners = new Set();
+updater?.onEvent((st) => { updState = st; for (const f of updListeners) f(st); });
+const mb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+// Switching the version reloads the page: only on the title with no game on (the shell checks this again).
+const canSwitch = () => !g && document.body.dataset.screen === 'title';
+// The title's 发现新版本: shown once a check found something, and never in the way (a corner button, no dialog of its own).
+function updateBadge() {
+  const b = h('button', { class: 'btn tt-update', hidden: true, onclick: () => updateDialog() });
+  const show = (st) => {
+    if (!b.isConnected && b.dataset.on) return updListeners.delete(show);
+    const text = st.phase === 'update' ? `发现新版本 ${st.version}` : st.phase === 'downloading' ? `正在下载 ${st.version}（${Math.floor((st.done / st.bytes) * 100)}%）`
+      : st.phase === 'ready' ? `新版本 ${st.version} 已下载` : st.phase === 'shell-required' ? `新版本 ${st.version} 需下载完整包` : '';
+    b.hidden = !text; b.textContent = text; b.dataset.on = '1';
+  };
+  if (updater) { updListeners.add(show); show(updState); }
+  return b;
+}
+function updateDialog({ check = false } = {}) {
+  if (!updater) return;
+  const body = h('div', { class: 'update-body' }), foot = h('div', { class: 'foot' });
+  const now = h('p', { class: 'update-now' }), auto = h('input', { type: 'checkbox' });
+  const revertRow = h('div', { class: 'update-revert' });
+  let info = null, close = null;
+  const versionLine = () => { now.textContent = info ? `当前版本 ${info.active ?? info.base}${info.active ? `（在 ${info.base} 完整包上更新）` : ''}` : ''; };
+  const btn = (text, onclick, primary = false) => h('button', { class: `btn${primary ? ' primary' : ''}`, onclick }, text);
+  const notes = (st) => (st.notes?.length ? h('ul', { class: 'update-notes' }, st.notes.map((n) => h('li', {}, n))) : null);
+  const head = (st, tail = '') => h('p', { class: 'update-head' }, `${st.version}${st.releasedAt ? `（${st.releasedAt.slice(0, 10)}）` : ''}${tail}`);
+  const shut = btn('关闭', () => close(null));
+  const render = (st) => {
+    body.replaceChildren(); foot.replaceChildren();
+    revertRow.hidden = st.phase === 'downloading' || st.phase === 'checking';
+    const put = (...xs) => body.append(...xs.filter(Boolean));
+    if (st.phase === 'checking') { put(h('p', {}, '正在检查更新…')); foot.append(shut); }
+    else if (st.phase === 'latest' || st.phase === 'idle') { put(h('p', {}, st.phase === 'latest' ? '已是最新版本。' : '尚未检查。')); foot.append(btn('检查更新', () => updater.check()), shut); }
+    else if (st.phase === 'skip') { put(h('p', {}, `新版本 ${st.version} 上次在这台电脑上未能正常启动，已退回，自动检查不再提示。`)); foot.append(btn('仍要查看', () => updater.check()), shut); }
+    else if (st.phase === 'update') {
+      put(h('p', { class: 'update-kicker' }, st.cancelled ? '下载已取消。' : '发现新版本'), head(st), notes(st),
+        st.bad ? h('p', { class: 'hint update-warn' }, '这个版本上次在这台电脑上未能正常启动，已自动退回。可以再试一次；若仍不行，会再次自动退回。') : null,
+        h('p', { class: 'update-size' }, `需下载 ${mb(st.bytes)}，下载期间可以照常游玩。`));
+      foot.append(btn('稍后', () => close(null)), btn('下载', () => updater.download(), true));
+    } else if (st.phase === 'downloading') {
+      const k = st.bytes ? st.done / st.bytes : 0;
+      put(h('p', { class: 'update-kicker' }, `正在下载 ${st.version}`), h('div', { class: 'update-bar', role: 'progressbar', 'aria-valuenow': Math.round(k * 100), 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('i', { style: { width: `${(k * 100).toFixed(1)}%` } })),
+        h('p', { class: 'update-size' }, `${mb(st.done)} ／ ${mb(st.bytes)}`), h('p', { class: 'hint' }, '关闭这个窗口不会中断下载。'));
+      foot.append(btn('取消下载', () => updater.cancel()), shut);
+    } else if (st.phase === 'ready') {
+      put(h('p', { class: 'update-kicker' }, '新版本已下载'), head(st), notes(st),
+        h('p', { class: 'hint' }, canSwitch() ? '「立即生效」会重新载入游戏画面（不关闭窗口，记录不受影响）；选「稍后」则下次启动时生效。' : '正在游戏中：下次启动时生效，或回到标题画面后在这里选「立即生效」。'));
+      foot.append(btn('稍后', () => close(null)));
+      if (canSwitch()) foot.append(btn('立即生效', async (e) => { e.currentTarget.disabled = true; if (!(await updater.apply())) { toast('<em>请在标题画面、没有进行中的游戏时生效</em>', 3000); render(updState); } }, true));
+    } else if (st.phase === 'shell-required') {
+      put(h('p', { class: 'update-kicker' }, '新版本需要下载完整包'), head(st), notes(st),
+        h('p', { class: 'hint' }, `这个版本改动了程序本身，不能在现有的 ${info?.base ?? ''} 完整包上在线更新。请在下载页面取得新的完整版本，解压后运行；记录保存在本机，不受影响。`));
+      foot.append(shut, btn('打开下载页面', () => updater.openDownloadPage(), true));
+    } else if (st.phase === 'error') {
+      put(h('p', {}, `${st.error}。`), h('p', { class: 'hint' }, st.retry === 'download' ? '已下载的部分已丢弃，游戏不受影响。' : '可能是网络暂时不通；游戏不受影响，可以照常离线游玩。'),
+        st.detail ? h('p', { class: 'update-detail' }, st.detail) : null);
+      foot.append(shut, btn('重试', () => (st.retry === 'download' ? updater.check().then((x) => x?.phase === 'update' && updater.download()) : updater.check()), true));
+    }
+  };
+  const revert = () => {
+    revertRow.replaceChildren();
+    if (!info?.canRevert) return;
+    revertRow.append(h('button', { class: 'btn update-revert-btn', disabled: !canSwitch(), title: canSwitch() ? '' : '在标题画面、没有进行中的游戏时可用', onclick: async () => {
+      if (!(await confirmBox('回退到原始版本', `不再使用在线更新的 ${info.active}，退回到完整包自带的 ${info.base}，并重新载入游戏画面。记录保存在本机，不受影响；之后可以在这里手动检查更新，重新安装最新版本。`))) return;
+      if (!(await updater.revert())) toast('<em>请在标题画面、没有进行中的游戏时回退</em>', 3000);
+    } }, `回退到原始版本 ${info.base}`));
+  };
+  const listen = (st) => { if (!body.isConnected) return updListeners.delete(listen); render(st); };
+  updListeners.add(listen);
+  auto.onchange = () => updater.setAutoCheck(auto.checked);
+  const opts = h('div', { class: 'update-opts' }, h('label', { class: 'update-auto', title: '开启后，每次启动游戏、进入标题画面一会儿后联网检查一次；关闭时只有在这里检查才联网' }, auto, '启动时自动检查更新'), revertRow);
+  modal('更新', (c) => { close = c; return [now, body, opts, foot]; }, { label: '更新' }).then(() => updListeners.delete(listen));
+  render(updState);
+  updater.getState().then((s) => {
+    if (!s) return;
+    info = s.info; auto.checked = !!info.autoCheck; versionLine(); revert();
+    updState = s.status ?? updState;
+    if (check && !['downloading', 'checking', 'ready'].includes(updState.phase)) updater.check(); else render(updState);
+  });
+}
+
+const quitKeys = () => desk ? (desk.mac ? '⌘Q' : 'Alt+F4') : '返回键';
 let fullscreen = false;
 const fullscreenText = () => `全屏 ${fullscreen ? '开' : '关'}`;
 const fullscreenKeys = desk?.mac ? '⌥Enter' : 'F11 或 Alt+Enter';
@@ -1018,6 +1143,8 @@ if (desk) {
   };
   Promise.resolve(desk.isFullscreen()).then((on) => set(on, false), () => {});
   desk.onFullscreen((on) => set(on, true));
+  // 界面大小's row names the zoom in use, which the window changes too (maximize, full screen, another screen).
+  onUiZoom(() => { for (const b of $$('.uisize-row')) b.textContent = uiSizeLabel(); });
 }
 function syncPadHints() {
   document.body.dataset.padRecordKeys = ['x', 'view'].filter(recordAction).join(' ');
@@ -1164,10 +1291,11 @@ function sysButtons() {
     // 界面大小 shares 全屏's row: both are the desktop window's, and a row of its own would run the column past a 1024x600 window.
     desk ? h('div', { class: 'sysmenu-pair' },
       (() => { const b = item(fullscreenText, () => desk.toggleFullscreen(), `铺满整个屏幕，再选一次恢复窗口（${fullscreenKeys}）`); b.classList.add('fullscreen-row'); return b; })(),
-      uiSizeOn() ? item(() => `界面大小 ${uiSizeText()}`, (b) => {
-        cycleUiSize().then((k) => { if (k) toast(`界面大小 ${uiSizeText()}：按 ${Math.round(k * 100)}% 显示${k !== 1 ? '' : uiSizeText() === '小' ? '（不放大，与 0.4.1 及以前相同）' : '（窗口不够大，不再放大）'}`, 3000); });
-        b.textContent = `界面大小 ${uiSizeText()}`;
-      }, '整个画面（面板、菜单、文字与地图）按屏幕分辨率放大　标准：1920×1080 的屏幕按 125%、2560×1440 按 175% 显示　大：再大一档　小：不放大，与 0.4.1 及以前相同。窗口模式下放大到窗口放得下为止，窗口较小时不放大') : '') : '',
+      uiSizeOn() ? (() => {
+        const b = item(uiSizeLabel, () => { cycleUiSize().then((z) => { if (z) toast(uiSizeNote(), 3500); }); b.textContent = uiSizeLabel(); },
+          '整个画面（面板、菜单、文字与地图）按屏幕分辨率放大，依次为标准、大、小、中　标准：1920×1080 的屏幕按 125%、2560×1440 按 175% 显示　大：再大一档　小：不放大，与 0.4.1 及以前相同　中：2560×1440 按 150%（0.4.2 的大小）、1920×1080 不放大。窗口模式下放大到窗口放得下为止，窗口较小时不放大');
+        b.classList.add('uisize-row'); return b;
+      })() : '') : '',
     // 地图标签 shares 帧率's row: a row of its own ran the column 9px past a 1024x600 window in a war (tests/desktopwindow.test.mjs).
     h('div', { class: 'sysmenu-pair' },
       item(() => `地图标签 ${labelSizeText()}`, (b) => { cycleLabelSize(); b.textContent = `地图标签 ${labelSizeText()}`; },
@@ -1219,10 +1347,12 @@ function sysButtons() {
       g ? recordItem('quickSave',
         `存入独立的快捷记录，不占八个普通位置；消耗遵循「记录消耗」设置，己方回合、战略地图上可用（${quickSaveKey}）`) : '',
       recordItem('quickLoad', '读取快捷记录，当前未记录的进度将不保留（F8）')) : '',
-    // 退出游戏 shares 回到标题's row in a game: the right column is at its height in a 1024x600 window (tests/sysmenu.test.mjs).
-    g || desk ? h('div', { class: 'sysmenu-pair' },
+    // 退出游戏 shares 回到标题's row in a game, 检查更新's on the title (an update is applied there only, so that is where it is
+    // looked for): the right column is at its height in a 1024x600 window (tests/sysmenu.test.mjs).
+    g || shellQuit() ? h('div', { class: 'sysmenu-pair' },
       g ? item(() => '回到标题', () => { close(); backToTitle(); }, '结束本局回到标题画面（记录编辑在那里打开）。未记录的进度会丢失，可先记录', '其他') : '',
-      desk ? item(() => '退出游戏', () => { close(); quitGame(); }, `关闭游戏${g ? '。未记录的进度会丢失，可先记录' : ''}（${desk.mac ? '⌘Q' : 'Alt+F4'}）`, '其他') : '') : '',
+      !g && updater ? item(() => '检查更新', () => { close(); updateDialog({ check: true }); }, '联网查看有没有新版本，并在这里下载、生效或回退；也可以打开「启动时自动检查更新」', '其他') : '',
+      shellQuit() ? item(() => '退出游戏', () => { close(); quitGame(); }, `关闭游戏${g ? '。未记录的进度会丢失，可先记录' : ''}（${quitKeys()}）`, '其他') : '') : '',
     ), group('其他',
     // 地名 shares a row (with 欣赏模式 in a game, 记录编辑 on the title): the right column is at its height in a war in a 1024x600
     // window (tests/sysmenu.test.mjs).
@@ -1243,7 +1373,8 @@ function sysButtons() {
       !g ? item(() => '记录编辑', () => { close(); try { sessionStorage.setItem('hd2d-title-seen', '1'); } catch {} location.replace(`save-editor.html${location.search}`); },
       '修改记录中武将、城市与同盟的数值，或为某份记录打开原版漏洞（阿会喃复制）。改完「写回记录」，回到游戏「读取记录」接着玩', '常用') : ''),
     PHONE && g ? item(() => '战报', () => { close(); logBook(); }, '最近的战报') : '',
-    item(() => '说明', () => { close(); help(); })))), tabs());
+    // 文字 shares 说明's row: the right column is at its height in a 1024x600 window (tests/sysmenu.test.mjs).
+    h('div', { class: 'sysmenu-pair' }, item(langText, (b) => switchLang(b), langTitle()), item(() => '说明', () => { close(); help(); }))))), tabs());
   list.refreshPages = fill;
   const wrap = h('div', { class: 'sysbtns' },
     h('button', { class: 'btn sysmenu-btn', 'aria-haspopup': 'menu', title: '系统（镜头复位、画面、声音、音乐、演出、说明）', onclick: () => { if (list.hidden) { fill(); list.hidden = false; addEventListener('pointerdown', outside, true); } else close(); } }, '☰ 系统', h('kbd', { class: 'pad-only', 'data-glyph': 'start' })),
@@ -1353,17 +1484,55 @@ async function leaveGame(heading, question, go) {
   }
   return true;
 }
+// 系统 → 文字: 简体 ⇄ 繁體（台湾标准，src/lang.js）. The page is converted as it loads, so the choice applies by reloading: at
+// once on the title, where nothing is lost; in a game it is kept and applies at 回到标题 (which reloads), so a switch never
+// throws away a game the player has not recorded.
+const langText = () => `文字 ${LANGS[savedLang()]}${savedLang() !== lang ? '（回到标题后）' : ''}`;
+const langTitle = () => '简体或繁体（台湾标准）。在标题画面切换立即生效；游戏中切换，回到标题画面后生效，不影响进度与记录';
+function switchLang(b) {
+  setLang(savedLang() === 'hant' ? 'hans' : 'hant');
+  // ?lang= (tests, shots) would hold the old choice over the reload: it goes.
+  if (!g) { try { sessionStorage.setItem('hd2d-title-seen', '1'); } catch {} const u = new URL(location.href); u.searchParams.delete('lang'); location.replace(u.href); return; }
+  b.textContent = langText();
+  toast(savedLang() === lang ? `文字仍为${LANGS[lang]}` : `回到标题画面后改为${LANGS[savedLang()]}`, 3000);
+}
 async function backToTitle() {
   if (!(await leaveGame('回到标题', '未记录的进度会丢失。确定回到标题画面吗？', '不记录，回到标题'))) return;
   try { sessionStorage.setItem('hd2d-title-seen', '1'); } catch {}
   await fade(true); location.reload();
 }
-// 退出游戏 (the desktop game): with a game on it asks as 回到标题 does; from the title there is nothing to lose.
-// The window's own ✕ asks too, in the shell (desktop/main.js), where it also works over a page that is busy.
-async function quitGame() {
-  if (g && !(await leaveGame('退出游戏', '未记录的进度会丢失。确定退出游戏吗？', '不记录，退出'))) return;
-  desk.quit();
+// 退出游戏 (the desktop game, the Android package): with a game on it asks as 回到标题 does; from the title there is
+// nothing to lose. The window's own ✕ asks too, in the shell (desktop/main.js), where it also works over a page that is busy.
+// asked: from the Android back key, which may be pressed by accident, so the title asks as well.
+async function quitGame({ asked = false } = {}) {
+  const quit = shellQuit(); if (!quit) return;
+  if (g) { if (!(await leaveGame('退出游戏', '未记录的进度会丢失。确定退出游戏吗？', '不记录，退出'))) return; }
+  else if (asked && (await modal('退出游戏', (close) => [h('p', {}, '确定退出游戏吗？'),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => close(null) }, '取消'), h('button', { class: 'btn primary', onclick: () => close('quit') }, '退出游戏'))])) !== 'quit') return;
+  quit();
 }
+// The Android back key (BACK_JS in apk/.../MainActivity.java, after the ☰ menu and the phone's open card): Esc, one step back
+// as before, and where there is nothing left to step back from, 退出游戏？ (kofwinner@devblog #641: back did nothing, and the
+// only way out was the home key). Nothing left: no window, picture or command under way, and the title's menu up; on the
+// strategy map the player's turn with no command list open (a picked city is put away first, as the pad's B does, except on a phone, where one is always chosen); on the war map the player's day, idle, with
+// nothing for 返回 to put away. A second back press closes the question (its Esc), never quits.
+window.__nativeBack = () => {
+  const esc = () => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+  const screen = document.body.dataset.screen;
+  if (blocking() || $('.shade, .vig, .panel.msg, .aiturn') || scenic || busy || mapPick || !shellQuit()) return esc();
+  if (screen === 'title' && $('.tt.menu-on')) return quitGame({ asked: true });
+  if (screen === 'setup') return [...document.querySelectorAll('.setup-foot .btn')].find((b) => b.textContent === zh('返回'))?.click(); // 返回 to the title, where Esc had no answer
+  if (screen === 'strategy' && mode === strategy && g && g.current === g.player && !tabOpen) {
+    if (sel != null && !PHONE) { onCity(null); return; } // the city put away, as the pad's B (padCancel); a phone always has one chosen (onCity)
+    return quitGame({ asked: true });
+  }
+  if (screen === 'war' && mode === war && war) {
+    if (PHONE && warRoster?.close?.()) return;
+    if (war.cancel?.()) return; // what Esc does here: one step back
+    if (war.myTurn && !war.st?.busy && !war.st?.deploying) return quitGame({ asked: true });
+  }
+  esc();
+};
 async function pendingLoad() {
   let raw = null;
   try { raw = sessionStorage.getItem(LOAD_KEY); } catch { return null; }
@@ -1450,12 +1619,13 @@ async function title() {
       h('button', { class: 'btn', onclick: () => { audio.unlock(); setup(); } }, '新的征程'),
       // 数据包 is still exploration (not in 0.3.7's notes): the button shows only with ?packs, or while a pack is on so it can be turned off.
       packMenu() ? h('button', { class: 'btn', onclick: () => { audio.unlock(); pickPack(); } }, '数据包', h('small', {}, G.data().pack ? `${G.data().pack.name} · ${G.data().pack.version}` : '本体')) : null,
-      desk ? h('button', { class: 'btn', onclick: () => quitGame() }, '退出游戏') : null],
+      shellQuit() ? h('button', { class: 'btn', onclick: () => quitGame() }, '退出游戏') : null],
     footnote: [h('p', { class: 'free' }, ['本游戏免费发布，', '仅供爱好者交流，', '请勿付费购买'].map((t) => h('span', {}, t))),
-      h('p', { class: 'maker' }, '制作　tianlin ', h('small', {}, '@GitHub')),
+      h('p', { class: 'maker' }, '制作　', rawText('tianlin'), ' ', h('small', {}, '@GitHub')),
       h('p', {}, '原作《三国志II 霸王的大陆》© 1992 NAMCO · 以FC日版规则为准 · 立绘由AI生成 · ' +
         (audio.sets.length > 1 ? `曲目可在「☰ 系统 → 曲目」切换 ${audio.sets.map((t) => t.label).join('／')}` : `音乐：${audio.sets[0]?.label ?? '合成音'}`))] });
   titleSeen = true;
+  if (updater) screen.el.append(updateBadge());
   root().append(screen.el);
   packNotice(screen.el);
 }
@@ -1866,13 +2036,13 @@ async function roster({ city = null } = {}) {
     h('option', { value: 'all' }, '全部势力'), ...g.factions.map((x) => h('option', { value: x.id }, `${factionName(x.id)}${x.ruler == null ? '（已灭）' : ''}`)));
   const csel = h('select', { 'aria-label': '城市', onchange: (e) => { f.city = e.target.value === 'all' ? 'all' : Number(e.target.value); draw(); } },
     h('option', { value: 'all' }, '全部城市'), ...D.cities.map((c) => h('option', { value: c.id, selected: c.id === city ? true : null }, c.name)));
-  const q = h('input', { type: 'search', placeholder: '武将名', 'aria-label': '查找武将', oninput: (e) => { f.q = e.target.value.trim(); draw(); } });
+  const q = h('input', { type: 'search', placeholder: '武将名', 'aria-label': '查找武将', oninput: (e) => { f.typed = e.target.value.trim(); f.q = toHans(f.typed); draw(); } });
   const draw = () => {
     chips.replaceChildren(...STATES.filter(([k]) => counts[k] || k === f.st).map(([k, t]) => h('button', { class: `btn ${f.st === k ? 'on' : ''}`, onclick: () => { f.st = k; draw(); } }, t, h('small', {}, counts[k]))));
     let ids = all.filter((id) => (f.st === 'all' || statusOf(id) === f.st)
       && (f.fac === 'all' || (statusOf(id) === G.SERVING && G.factionOf(g, id) === Number(f.fac)) || (statusOf(id) === G.UNAPPEARED && G.debutInfo(id).faction === Number(f.fac)))
       && (f.city === 'all' || placeOf(id) === f.city || (debutShown(id) && debutCity(id) === f.city))
-      && (!f.q || name(id).includes(f.q) || D.officers[id].jp?.includes(f.q)));
+      && (!f.q || name(id).includes(f.q) || D.officers[id].jp?.includes(f.typed)));
     ids = sortBy == null ? ids.sort((a, b) => rank(a) - rank(b) || D.officers[a].year - D.officers[b].year || a - b)
       : ids.sort((a, b) => COLS[sortBy][1](b) - COLS[sortBy][1](a) || a - b);
     const cols = COLS.filter((c) => !c[3] || c[3]());
@@ -1997,7 +2167,7 @@ const FREE = new Set(['分兵', '任命']);
 const freeAct = (a) => FREE.has(a) || (a === '记录' && g.freeSave);
 // The switch sits in 系统, which stays open over the dock: only the 记录 row's 免 changes (when the 城 list is open).
 function markFreeSave() {
-  const b = $$('.dock .acts .cmd').find((x) => x.firstChild?.textContent === '记录'); if (!b) return;
+  const b = $$('.dock .acts .cmd').find((x) => x.firstChild?.textContent === zh('记录')); if (!b) return;
   const em = b.querySelector('em.free');
   if (freeAct('记录') && !em) b.append(h('em', { class: 'free' }, '免'));
   else if (!freeAct('记录') && em) em.remove();
@@ -2005,7 +2175,7 @@ function markFreeSave() {
 // 武将不能读书 is switched the same way, in 系统 over the dock: the 书馆 row (when its list is open) and the 町
 // group's dimming follow at once, without drawing the dock again.
 function markNoStudy() {
-  const cid = tabCity, b = $$('.dock .acts .cmd').find((x) => x.firstChild?.textContent === '书馆');
+  const cid = tabCity, b = $$('.dock .acts .cmd').find((x) => x.firstChild?.textContent === zh('书馆'));
   if (cid == null || !g.cities[cid]) return;
   const why = blocked(cid, '书馆');
   if (b) { b.disabled = !!why; b.title = why ? `${DESC['书馆']}（${why}）` : DESC['书馆']; b.querySelector('small').textContent = why ?? DESC['书馆']; }
@@ -2080,8 +2250,11 @@ function commandDock(cid) {
     }), preview);
     acts.hidden = !tabOpen; acts.setAttribute('aria-label', tab);
     hide(); unwatch(); if (tabOpen) addEventListener('pointerdown', outside, true);
-    placeFly();
+    placeFly(); more();
   };
+  // Whether rows are left below the list's edge (a short phone screen): its foot fades then (phone.css).
+  const more = () => acts.classList.toggle('more', !acts.hidden && acts.scrollTop + acts.clientHeight < acts.scrollHeight - 2);
+  acts.addEventListener('scroll', more, { passive: true });
   // focus: the keys go into the list (its first command that can be done; the group's button when none can).
   commandDock.open = (t, { focus = false } = {}) => {
     if (!TABS[t]) return;
@@ -2718,7 +2891,7 @@ const nextWarLabel = () => (nextWarFlat() ? '平面' : '3D');
 function syncQualityRows() {
   for (const b of $$('.sysmenu-list button')) {
     const t = b.textContent;
-    if (t.startsWith('战场 ')) b.textContent = warViewText(); else if (t.startsWith('画质 ')) b.textContent = qualityText();
+    if (t.startsWith(zh('战场 '))) b.textContent = warViewText(); else if (t.startsWith(zh('画质 '))) b.textContent = qualityText();
   }
 }
 function flatInfo() {
@@ -2802,6 +2975,7 @@ async function fieldWar(w, humanSide, { after = { kind: humanSide === 'att' ? 'a
   warFlat = nextWarFlat();
   war = createWarView({ T, audio, ui, sprites, flat: warFlat, yaw, onSkirmish: (a, d, res, terrain) => cutIn(field, a, d, res, terrain) }, field);
   warNav?.dispose(); warNav = war.flat ? null : createWarNav(war, document.body); // on <body>: a HUD redraw clears #ui
+  warRoster?.dispose(); warRoster = createWarRoster(war, document.body, { blocking: () => blocking() || dialogOpen() });
   await prewarm(war); // under the fade
   terrainPinned = false; terrainView(); // each battle opens with its generals shown
   // The 威胁 pin as the player left it (src/prefs.js), on the 3D map, where its button is: the flat map has only R held (and a
@@ -2834,7 +3008,7 @@ async function fieldWar(w, humanSide, { after = { kind: humanSide === 'att' ? 'a
     h('p', { class: 'hint', style: { textAlign: 'center' } }, `${cityName(w.city)}归属：${factionName(g.cities[w.city].faction)}`),
     h('div', { class: 'foot' }, h('button', { class: 'btn primary', onclick: () => close(true) }, '返回大地图'))], { wide: true, label: win ? '胜利' : '败北' });
   await fade(true);
-  warNav?.dispose(); warNav = null; war?.dispose?.(); war = null; document.body.dataset.screen = 'strategy'; setMode(strategy);
+  warNav?.dispose(); warNav = null; warRoster?.dispose(); warRoster = null; war?.dispose?.(); war = null; document.body.dataset.screen = 'strategy'; setMode(strategy);
   strategy.refresh(g); sel = w.city; strategy.select(w.city); strategy.focusCity(w.city); audio.playBgm('bgm-strategy'); hud();
   // No save until the faction check: res.adrift lives only here, and a record taken in between (the phone's autosave
   // on hide, during this fade) would come back with the 下野 ruler still heading his house, for a later check to kill.
@@ -2994,7 +3168,7 @@ function warUi(field) {
       // (greyed, with the reason), so the thumb finds each in the same place for every general. What a place offers (退却, 治疗, the
       // shops) and the answer to a move stand in the row above them, which comes and goes without moving the four.
       if (PHONE && stage === 'cmds' && ours && !asking) {
-        const is = (b, t) => b.firstChild?.textContent === t, take = (t) => { const i = acts.findIndex((b) => is(b, t)); return i < 0 ? null : acts.splice(i, 1)[0]; };
+        const is = (b, t) => b.firstChild?.textContent === zh(t), take = (t) => { const i = acts.findIndex((b) => is(b, t)); return i < 0 ? null : acts.splice(i, 1)[0]; };
         const off = (t, why) => h('button', { class: 'btn slot', disabled: true, title: why }, t, ask ? null : h('small', {}, why));
         const extra = ask ? [acts[1], acts[0]] : null; // 取消 on the left, 确认移动 under the right thumb
         if (ask) acts = [];
@@ -3267,7 +3441,7 @@ function besideUnit(u, acts, label = `${name(u.id)}的命令`, dock = null) {
     const busy = [...(fs?.marks ?? []).map((m) => (m.kind === 'move' || m.kind === 'path' ? { ...tile(war.screenOf(m.x, m.y), 0.7), w: plain } : { ...tile(war.screenOf(m.x, m.y)), w: 1 })),
       ...(fs?.units ?? []).filter((x) => x.visible && x.u !== u).flatMap((x) => stand(war.screenOf(Math.round(x.x), Math.round(x.y))).map((b) => ({ ...b, w: 1 })))];
     const mine = stand(c);
-    const hud = $$('.warbar, .unitpanel, .wardock, .turnpair, .logbox, .sysbtns, .deploybtn, .unitacts').filter((e) => e !== el && e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return { x0: b.left, x1: b.right, y0: b.top, y1: b.bottom }; });
+    const hud = $$('.warbar, .unitpanel, .wardock, .turnpair, .logbox, .sysbtns, .deploybtn, .unitacts, .warroster').filter((e) => e !== el && e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return { x0: b.left, x1: b.right, y0: b.top, y1: b.bottom }; });
     const top = three ? ($('.warbar')?.getBoundingClientRect().bottom ?? 0) + 6 : FLAT_INSET.top + 6, bottom = three ? innerHeight - 8 : innerHeight - FLAT_INSET.bottom - 6;
     const at = (sd, k) => {
       const x = sd === 'r' ? c.x + c.cw * k : sd === 'l' ? c.x - c.cw * k - r.width : c.x - r.width / 2;
@@ -3352,6 +3526,7 @@ async function cutIn(field, a, d, res, terrain) {
   if (!battle) return;
   const look = (u) => (u.side === human || (!human && u.side === 'att') ? 'attacker' : 'defender');
   const looks = { a: look(a), d: look(d) }, hs = battle.human;
+  const troopLooks = { a: G.factionTroops(field.faction(a.side)), d: G.factionTroops(field.faction(d.side)) }; // a pack faction's 战象, 足轻 …
   const cine = $('#cine');
   cine.innerHTML = `<div class="bar top"></div><div class="bar bot"></div><div class="vsmark">白兵</div><div class="speed"></div><div class="flash"></div>`;
   cine.className = ''; cine.hidden = false; document.body.classList.add('cine');
@@ -3360,7 +3535,7 @@ async function cutIn(field, a, d, res, terrain) {
   try { // a throw in the cut must not leave the close-up on: it locks Q / E / Tab for the rest of the battle
     cine.classList.add('enter'); cineFlash(); audio.sfx('sfx-horn');
     await sleep(600);
-    await loadOfficerSprites([battle.side.a.id, battle.side.d.id]);
+    await Promise.all([loadOfficerSprites([battle.side.a.id, battle.side.d.id]), loadTroopLooks(looks, troopLooks)]);
     const where = { month: g.month, city: field.war.city }; tview.setPlace(where); // same season and place as the war map
     await tview.ready(); // its painted ground (src/tacticalground.js)
     // Under the walls when either general is within two cells of the castle: the 单挑 is fought before the gate.
@@ -3369,7 +3544,7 @@ async function cutIn(field, a, d, res, terrain) {
     const back = mode; setMode(tview); audio.playBgm('bgm-skirmish');
     // The cut-in's bars stay up while the field just laid compiles its shaders (prewarm).
     const shown = async () => { await prewarm(tview); cine.hidden = true; };
-    await runTactical({ battle, hs, looks, view: tview, duel: duelStage(), audio, face, name, D, banner, message, profiles: (list) => battleProfiles(list, { [a.id]: field.faction(a.side), [d.id]: field.faction(d.side) }), warm: shown });
+    await runTactical({ battle, hs, looks, troopLooks, view: tview, duel: duelStage(), audio, face, name, D, banner, message, profiles: (list) => battleProfiles(list, { [a.id]: field.faction(a.side), [d.id]: field.faction(d.side) }), warm: shown });
     res.settle();
     cine.hidden = false; cine.className = 'enter'; cineFlash();
     restore(); setMode(back); await sleep(300); cine.hidden = true; document.body.classList.remove('cine'); audio.playBgm('bgm-battle');
@@ -3593,8 +3768,9 @@ async function ending() {
 // Debug: open a 白兵 directly (no war map) — window.__game.debug.quickTactical(38, 51, 2)
 // month / city: the season and place to stage it in (default: the current month at 洛阳); siege: the castle
 // holder's { color, look } to fight the 单挑 before the city gate (default: on 城 terrain); human: the side the
-// player commands ('d' to defend; the player's side wears the blue 'attacker' look, as from the war map).
-async function quickTactical(aId = 38, dId = 51, terrain = 2, { month = g?.month ?? 2, city = 12, siege = terrain === 5 ? { color: '#5a5a66', look: 'defender' } : null, human = 'a' } = {}) {
+// player commands ('d' to defend; the player's side wears the blue 'attacker' look, as from the war map); troopLooks: each side's
+// pack troop looks ({ a: { soldier: 'ashigaru' }, d: … }; default: those of the faction holding the general's city).
+async function quickTactical(aId = 38, dId = 51, terrain = 2, { month = g?.month ?? 2, city = 12, siege = terrain === 5 ? { color: '#5a5a66', look: 'defender' } : null, human = 'a', troopLooks = null } = {}) {
   const { Tactical } = await import('./core/tactical.js');
   g ||= G.newGame(4, 1, 3);
   const battle = new Tactical(g, aId, dId, terrain, G.rng(g), { human });
@@ -3605,10 +3781,13 @@ async function quickTactical(aId = 38, dId = 51, terrain = 2, { month = g?.month
   document.body.dataset.screen = 'war';
   setMode(tview); document.body.classList.add('cine'); clear(); audio.playBgm('bgm-skirmish');
   const looks = human === 'a' ? { a: 'attacker', d: 'defender' } : { a: 'defender', d: 'attacker' };
-  const res = await runTactical({ battle, hs: human, looks, view: tview, duel: duelStage(), audio, face, name, D, banner, message, profiles: battleProfiles, warm: () => prewarm(tview) });
+  const held = (id) => G.factionTroops(g.cities.find((c) => c.officers.includes(id))?.faction);
+  troopLooks ??= { a: held(aId), d: held(dId) };
+  await loadTroopLooks(looks, troopLooks);
+  const res = await runTactical({ battle, hs: human, looks, troopLooks, view: tview, duel: duelStage(), audio, face, name, D, banner, message, profiles: battleProfiles, warm: () => prewarm(tview) });
   document.body.classList.remove('cine'); return res;
 }
-window.__game = { qualityIdle, get g() { return g; }, get mode() { return document.body.dataset.screen; }, io, G, audio, strategy, tview, get war() { return war; }, get warNav() { return warNav; }, pad: { get state() { return { zone: (z => z instanceof Element ? z.className || z.tagName : z)(padZone()), cur: { ...cur, hit: undefined }, input: document.body.dataset.input, family: pad.family, confirm: pad.confirm }; } }, debug: { renderer, quality, hud: () => hud(), addLog: (x) => addLog(x), cycleDock: (d) => commandDock.cycle?.(d), holdCommand: (on) => { busy = !!on; }, setupWar, fieldWar, cutIn, quickTactical, settleMenu, duelView: dview, post, show: (k) => setMode({ strategy, tview, dview }[k]) } };
+window.__game = { qualityIdle, get g() { return g; }, get mode() { return document.body.dataset.screen; }, io, G, audio, strategy, tview, get war() { return war; }, get warNav() { return warNav; }, get warRoster() { return warRoster; }, pad: { get state() { return { zone: (z => z instanceof Element ? z.className || z.tagName : z)(padZone()), cur: { ...cur, hit: undefined }, input: document.body.dataset.input, family: pad.family, confirm: pad.confirm }; } }, debug: { renderer, quality, hud: () => hud(), addLog: (x) => addLog(x), cycleDock: (d) => commandDock.cycle?.(d), holdCommand: (on) => { busy = !!on; }, setupWar, fieldWar, cutIn, quickTactical, settleMenu, duelView: dview, post, show: (k) => setMode({ strategy, tview, dview }[k]) } };
 // A fresh start shows the boot splash first (not a record loading, nor back from 记录编辑); the title, and its music, start
 // when it is over. Pages driven by Playwright (navigator.webdriver: the tests and capture tools, which go straight to their
 // scene through the debug hooks) start at the title unless they ask for the splash with window.__splash = true.

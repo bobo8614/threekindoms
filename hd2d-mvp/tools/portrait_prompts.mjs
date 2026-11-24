@@ -100,6 +100,7 @@ const FACTION_ACCENT = ['black and dark gold', 'crimson', 'violet', 'amber orang
 const FREE_ACCENT = ['ochre', 'slate grey', 'indigo', 'burgundy', 'olive green', 'copper brown', 'ice blue', 'plum purple', 'sand gold'];
 const cityFaction = (o) => (o.city != null ? DATA.cities[o.city].faction : null);
 export function accent(o) {
+  if (o.accent) return o.accent; // a woman general's look (heroine_prompts.mjs)
   const f = o.faction ?? cityFaction(o);
   return f != null && f < 7 ? FACTION_ACCENT[f] : FREE_ACCENT[o.id % FREE_ACCENT.length];
 }

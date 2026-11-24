@@ -16,6 +16,7 @@ body.phone .btn { min-height: 36px; }
 .turn-phone { display: none; }
 @media (orientation: portrait) {
   body.phone:not([data-screen="startup-error"])::after { content: '请把手机横过来游玩'; position: fixed; inset: 0; z-index: 999; display: grid; place-items: center; background: #0c0907f2; color: #fff3d6; font: 22px var(--brush); letter-spacing: 4px; }
+  :lang(zh-Hant) body.phone:not([data-screen="startup-error"])::after { content: '請把手機橫過來遊玩'; }
 }
 
 /* ---------- ☰ 系统 ---------- */
@@ -71,6 +72,7 @@ body.phone .citypanel header h2 { font-size: 21px; letter-spacing: 1px; }
    the 说明 lists the pairs. */
 body.phone .citypanel header .origname { display: none; }
 body.phone .citypanel header::after { content: '详情 ▴'; margin-left: auto; font-size: 12px; color: var(--dim); }
+:lang(zh-Hant) body.phone .citypanel header::after { content: '詳情 ▴'; }
 body.phone.city-open .citypanel { overflow-y: auto; overscroll-behavior: contain; width: min(340px, 46vw); z-index: 5; }
 body.phone.city-open .citypanel header::after { content: '收起 ▾'; }
 
@@ -122,6 +124,14 @@ body.phone .unitpanel .acts .movego { grid-column: 1; }
 
 /* 计略 and 攻击: the panel takes the left side (the card folds away under it); its commit button is a full thumb high. */
 body.phone .actpanel { left: var(--g); top: auto; bottom: var(--gb); width: 264px; height: auto; max-height: calc(var(--vh) - var(--gt) - 40px - var(--gb)); padding: 6px 8px 8px; gap: 4px; }
+/* Battlefield general roster on a phone: compact pull-down button under the top bar; open, a 2-column translucent drawer. */
+body.phone .warroster, body.phone.flat2d .warroster { left: var(--g); top: calc(var(--gt) + 38px); z-index: 6; width: min(296px, calc(100vw - var(--g) - var(--gr))); max-height: calc(var(--vh) - var(--gt) - var(--gb) - 46px); padding: 6px; background: var(--lacquer-95); }
+body.phone .warroster.shut, body.phone.flat2d .warroster.shut { width: auto; padding: 0; }
+body.phone .warroster .wr-list, body.phone.flat2d .warroster .wr-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+body.phone .warroster.shut .wr-list, body.phone.flat2d .warroster.shut .wr-list { display: none; }
+body.phone .warroster.shut .wr-head, body.phone.flat2d .warroster.shut .wr-head { min-height: 32px; padding: 2px 10px; font-size: 13px; }
+body.phone .warroster .wr-row, body.phone.flat2d .warroster .wr-row { min-height: 38px; padding: 5px 7px; font-size: 13.5px; }
+body.phone[data-screen="war"]:has(.warroster:not([hidden])) .toast { left: calc(var(--g) + var(--roster-w, 0px) + 8px); max-width: calc(100vw - var(--g) - var(--roster-w, 0px) - 8px - var(--gr)); }
 body.phone:has(.actpanel) .unitpanel:not(.compare) { display: none; }
 body.phone .actpanel .ap-head > b { font-size: 18px; }
 body.phone .actpanel .ap-body .btn { min-height: 40px; font-size: 15px; padding: 2px 8px; }
@@ -342,6 +352,12 @@ body.phone .wardock > .btn { padding: 0 9px; }
 body.phone .wardock > .btn.primary { margin-left: 10px; } /* 结束本日 stands a little apart from what the thumb taps all turn */
 /* 战略地图: the last command of a long list ran under 结束本月行动 */
 body.phone .dock .acts { max-height: calc(var(--vh) - var(--gt) - 44px - var(--gb) - var(--hit) - 12px); }
+/* The longest lists (军, 町) are six rows: on a short screen (360 px high: a phone's 显示大小 one step up) the sixth, 任命,
+   fell below the list's edge, and a WebView shows no scrollbar, so it looked gone (0.4.3). The rows grow shorter first, to
+   34 px at most: the max-height above, less the list's 12 px padding, five 2 px gaps and its 2 px border, over six rows. */
+body.phone .dock .acts .cmd { --cmd-h: clamp(34px, calc((var(--vh) - var(--gt) - 44px - var(--gb) - var(--hit) - 12px - 24px) / 6), var(--hit)); }
+/* Shorter still, the list scrolls: its foot fades while there is more below (.more, commandDock in app.js). */
+body.phone .dock .acts.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 30px), transparent); mask-image: linear-gradient(#000 calc(100% - 30px), transparent); }
 /* 战报 (☰ 系统 → 战报) */
 body.phone .logbook { max-height: calc(var(--vh) - 130px); overflow-y: auto; overscroll-behavior: contain; font-size: 13.5px; line-height: 1.5; min-width: min(520px, 80vw); }
 body.phone .logbook p { margin: 0; padding: 3px 2px; border-bottom: 1px dashed #ffffff14; } body.phone .logbook em { color: var(--bad); font-style: normal; } body.phone .logbook strong { color: var(--good); font-weight: 600; }

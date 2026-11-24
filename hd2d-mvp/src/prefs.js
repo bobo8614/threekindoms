@@ -12,5 +12,6 @@ export const PREF = {
   territory: 'hd2d-territory', // 战略地图: 势力范围
   logFold: 'hd2d-log-fold', // 战略地图: the log box folded to its newest line
   threat: 'hd2d-threat', // 战场: 敌军威胁范围, pinned (and the pad's Y)
+  warRoster: 'hd2d-war-roster', // 战场: 我军武将点将栏展开／收起（N）
   setup: 'hd2d-setup-options', // the new-game screen's rule switches, as last left: a JSON object of booleans
 };

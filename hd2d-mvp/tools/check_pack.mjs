@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { withBaseMap, mergePack, PACK_FILES } from '../src/core/pack.js';
+import { withBaseMap, mergePack, PACK_FILES, HEROINE_LOOKS, weaponClassOf } from '../src/core/pack.js';
 import { regionHeights, gridHeightAt } from '../src/regionseam.js';
 
 const MVP = fileURLToPath(new URL('..', import.meta.url)), MODS = path.join(MVP, 'mods');
@@ -84,6 +84,11 @@ export function checkPack(dir) {
   // Pictures: a borrowed officer without his own painted portrait falls back to 阿会喃's; say so.
   const portraits = new Set((fs.existsSync(path.join(MVP, 'assets/ai/portraits/index.json')) ? json(path.join(MVP, 'assets/ai/portraits/index.json')) : []).map(Number));
   for (const o of data.officers.slice(base.officers.length)) if (!portraits.has(o.art)) warnings.push(`武将 ${o.name}：借用的 ${base.officers[o.art].name} 没有画好的头像，会显示默认头像`);
+  // A woman general's look draws her 单挑 moves for one weapon class; the officer's own weapon (his rules) is not changed by it.
+  for (const o of data.officers.slice(base.officers.length)) {
+    const cls = o.look && HEROINE_LOOKS[o.look];
+    if (cls && weaponClassOf(o.weapon) !== cls) warnings.push(`武将 ${o.name}：外观 ${o.look} 在单挑里用${{ sword: '剑', blade: '刀', spear: '枪' }[cls]}，兵器却是${base.equipment[o.weapon].name}；想对上的话写 "weapon"（剑 0–7、刀 8–15、枪 16–23）`);
+  }
   return { errors, warnings, data };
 }
 

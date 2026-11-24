@@ -76,7 +76,9 @@ export function createWarNav(war, host) {
   let band = { top: 56, bottom: 96, left: 12, right: 12 };
   function measure() {
     const bar = document.querySelector('.warbar'), lows = [...document.querySelectorAll('.unitpanel:not(.compare), .wardock')].filter((e) => e.offsetParent);
-    band = { top: (bar?.offsetParent ? bar.getBoundingClientRect().bottom : 40) + 10, bottom: (lows.length ? innerHeight - Math.min(...lows.map((e) => e.getBoundingClientRect().top)) : 0) + 10, left: 12, right: 12 };
+    const roster = document.querySelector('.warroster:not([hidden])');
+    const left = roster?.offsetParent && roster.getBoundingClientRect().width ? Math.round(roster.getBoundingClientRect().right + 10) : 12;
+    band = { top: (bar?.offsetParent ? bar.getBoundingClientRect().bottom : 40) + 10, bottom: (lows.length ? innerHeight - Math.min(...lows.map((e) => e.getBoundingClientRect().top)) : 0) + 10, left, right: 12 };
   }
   // The minimap stands just over the turn pair (or the dock), wherever the window's size puts them.
   function place() {

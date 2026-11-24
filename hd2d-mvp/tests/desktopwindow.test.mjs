@@ -15,7 +15,13 @@ const shell = (ctx) => ctx.addInitScript(() => {
     toggleFullscreen() { d.calls.push('fullscreen'); d.on = !d.on; d.tell?.(d.on); },
     isFullscreen: async () => d.on, onFullscreen(f) { d.tell = f; },
     setUnsaved(on) { d.calls.push(`unsaved:${on}`); }, quit() { d.calls.push('quit'); },
-    setUiSize: async (size) => { d.firstUi ??= size; d.calls.push(`ui:${size}`); return size === 'small' ? 1 : 1.25; } };
+    // 界面大小 as the shell answers it in a 2560x1377 window on a 2560x1440 screen: the window holds 大 back to 标准's 175%
+    setUiSize: async (size) => { d.firstUi ??= size; d.calls.push(`ui:${size}`);
+      return { small: { zoom: 1, screen: 1 }, medium: { zoom: 1.5, screen: 1.5 }, normal: { zoom: 1.75, screen: 1.75 }, large: { zoom: 1.75, screen: 2 } }[size]; },
+    onUiZoom(f) { d.zoom = f; },
+    // 更新 as the release build has it: 检查更新 then shares 退出游戏's row on the title, measured with the rest below.
+    updater: { enabled: true, getState: async () => ({ info: { base: '0.4.4', active: null, canRevert: false, autoCheck: false }, status: { phase: 'idle' } }), check: async () => ({ phase: 'latest' }),
+      download: async () => null, cancel() {}, apply: async () => false, revert: async () => false, setAutoCheck: async () => null, openDownloadPage() {}, onEvent() {} } };
   sessionStorage.setItem('hd2d-title-seen', '1');
   // A pad, untouched until the war below: once one has been used the menu's left column has two more rows (小地图, 确定键).
   const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, mapping: 'standard', connected: true, timestamp: 0, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
@@ -80,27 +86,38 @@ test('the title\'s 系统 menu has 全屏 and 退出游戏, all rows in the wind
   await openMenu();
   assert.equal(await row('全屏 关').count(), 1);
   assert.equal(await row('退出游戏').count(), 1);
+  assert.deepEqual(await page.locator('.sysmenu-pair:has(button:text-is("退出游戏")) button').allTextContents(), ['检查更新', '退出游戏'], '检查更新 beside 退出游戏, no row of its own');
   await closeMenu();
   await menuFits('title');
 });
 
-test('系统 → 界面大小 sits beside 全屏 and cycles 标准 → 大 → 小, told to the shell and remembered', async () => {
+test('系统 → 界面大小 sits beside 全屏, names its zoom and cycles 标准 → 大 → 小 → 中, told to the shell and remembered', async () => {
   // The page told the shell its size as it loaded, before the first paint (src/uiscale.js).
   assert.equal(await page.evaluate(() => window.__desk.firstUi), 'normal');
   await calls();
   await openMenu();
-  const [fs, ui] = await Promise.all([row('全屏 关').boundingBox(), row('界面大小 标准').boundingBox()]);
+  const [fs, ui] = await Promise.all([row('全屏 关').boundingBox(), row('界面大小 标准 175%').boundingBox()]);
   assert.ok(Math.abs(fs.y - ui.y) < 1 && ui.x > fs.x, 'one row');
+  // 大 held back to 标准's zoom by the window: the row shows it, and the toast says why and what full screen gives
+  // (一光年的距离@devblog #643: both read 175% with no word of the window)
   await row('界面大小 标准').click();
-  assert.equal(await row('界面大小 大').count(), 1);
-  await page.locator('.toast', { hasText: '按 125% 显示' }).waitFor();
+  await page.locator('.toast', { hasText: '按 175% 显示（窗口放不下更大；全屏或窗口更大时为 200%）' }).waitFor();
+  assert.equal(await row('界面大小 大 175%').count(), 1);
   await row('界面大小 大').click();
   // 小 is never zoomed (desktop/uiscale.js): its toast says it is 0.4.1's size, not that the window is too small
-  await page.locator('.toast', { hasText: '不放大，与 0.4.1 及以前相同' }).waitFor(); // the stand-in shell answers 1 for 小
-  assert.deepEqual(await calls(), ['ui:large', 'ui:small']);
-  assert.equal(await page.evaluate(() => localStorage.getItem('hd2d-ui-size')), 'small');
+  await page.locator('.toast', { hasText: '不放大，与 0.4.1 及以前相同' }).waitFor();
+  assert.equal(await row('界面大小 小 100%').count(), 1);
   await row('界面大小 小').click();
+  await page.locator('.toast', { hasText: '界面大小 中：按 150% 显示' }).waitFor(); // 0.4.2's size on a 27" 2560x1440
+  assert.equal(await row('界面大小 中 150%').count(), 1);
+  assert.deepEqual(await calls(), ['ui:large', 'ui:small', 'ui:medium']);
+  assert.equal(await page.evaluate(() => localStorage.getItem('hd2d-ui-size')), 'medium');
+  // The window changes the zoom (maximized, full screen): the open menu's row follows
+  await page.evaluate(() => window.__desk.zoom({ zoom: 1.25, screen: 1.5 }));
+  assert.equal(await row('界面大小 中 125%').count(), 1);
+  await row('界面大小 中').click();
   assert.deepEqual(await calls(), ['ui:normal']);
+  assert.equal(await row('界面大小 标准 175%').count(), 1);
   await closeMenu();
 });
 
@@ -222,12 +239,13 @@ test('back on the title nothing is at risk any more', async () => {
 
 test('no page errors', () => assert.deepEqual(page.errors, []));
 
-test('a browser has neither row, nor the button on the title, nor the keys', async () => {
+test('a browser has neither row (nor 检查更新), nor the button on the title, nor the keys', async () => {
   const p = await game.open();
   await skipIntro(p);
   assert.equal(await p.locator('.tt-menu .btn', { hasText: '退出游戏' }).count(), 0);
   await p.click('.sysmenu-btn');
-  assert.equal(await p.locator('.sysmenu-list button', { hasText: /全屏|退出游戏/ }).count(), 0);
+  assert.equal(await p.locator('.sysmenu-list button', { hasText: /全屏|退出游戏|检查更新/ }).count(), 0);
+  assert.equal(await p.locator('.tt-update').count(), 0, 'no updates without the release shell');
   await p.locator('.sysmenu-list button', { hasText: '说明' }).click();
   assert.ok(!(await p.locator('.modal').textContent()).includes('F11'));
   assert.deepEqual(p.errors, []);

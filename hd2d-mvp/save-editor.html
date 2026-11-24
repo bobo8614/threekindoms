@@ -342,10 +342,11 @@ body[data-input=pad] .stat:focus-within { box-shadow: inset 0 0 0 2px var(--gold
 </div>
 <div id="ui-top"></div>
 <script type="module">
+import { toHans } from './src/lang.js'; // first: 繁體 converts this page's text as the game does (系统 → 文字)
 import { createPad, firstIn, walk, sendKey, shown } from './src/pad.js';
 import * as G from './src/core/game.js';
 import { h, modal, toast, avatar, figure, setPortraits, setFaces, setHalfbody } from './src/ui.js';
-import { OFFICER_FIELDS, CITY_FIELDS, ALLIANCE_MAX, hpText, setOfficer, setCity, setAlliance, checkRecord, setBug, setPhantomOwner } from './src/core/saveedit.js';
+import { OFFICER_FIELDS, officerFields, CITY_FIELDS, ALLIANCE_MAX, hpText, setOfficer, setCity, setAlliance, checkRecord, setBug, setPhantomOwner } from './src/core/saveedit.js';
 import { PHANTOM_ROADS } from './src/core/ahuinan.js';
 
 // The editor works on the data the game plays (?pack= is passed on from the game's menu); a record of another pack is refused by checkRecord.
@@ -365,7 +366,8 @@ const STATUS = { [G.SERVING]: '仕官', [G.RONIN]: '在野', [G.UNAPPEARED]: '�
 const STATUS_ORDER = [G.SERVING, G.RONIN, G.UNAPPEARED, G.DEAD];
 const WEAPONS = D.equipment.filter((e) => e.kind === 'weapon'), ARMORS = D.equipment.filter((e) => e.kind === 'armor');
 const icon = (id) => `assets/ai/icon/equip/${id}.webp`;
-const STATS = OFFICER_FIELDS.filter(([k]) => k !== 'weapon' && k !== 'armor');
+const STATS = officerFields().filter(([k]) => k !== 'weapon' && k !== 'armor'); // after loadWithPack: a pack's 100 (D172)
+const hiOf = (key) => STATS.find(([k]) => k === key)[3];
 const color = (f) => (f == null || f === G.NONE ? '#5a5a66' : G.FACTION_COLORS[f]);
 const dot = (f) => h('i', { class: 'dot', style: { background: color(f) } });
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -533,7 +535,7 @@ function gearPicker(o) {
 const placeOf = (o) => (o.status === G.SERVING ? G.officerCity(g, o.id)?.id ?? null : o.status === G.RONIN ? o.loc : null);
 const rankOf = (o) => { const f = G.factionOf(g, o.id); return (o.status === G.SERVING ? (f === g.player ? 0 : 1 + f) - (G.isRuler(g, o.id) ? 0.5 : 0) : o.status === G.RONIN ? 10 : o.status === G.UNAPPEARED ? 20 : 30); };
 function officerRows() {
-  const q = filt.q.trim();
+  const q = toHans(filt.q.trim()); // 繁體 typed meets the 简体 names
   return g.officers.filter((o) => (!q || G.name(o.id).includes(q) || String(o.id) === q)
     && (filt.status === 'all' || o.status === filt.status)
     && (filt.faction === 'all' || G.factionOf(g, o.id) === filt.faction))
@@ -568,10 +570,11 @@ function officerDetail(id) {
           G.isRuler(g, id) ? h('span', { class: 'se-tag gold' }, '君主') : null,
           capTag, h('span', { class: 'se-tag' }, `${d.year}年登场`))),
       h('div', { class: 'se-acts' }, backBtn(),
-        h('button', { class: 'btn', disabled: dead, title: '武力、知力、人德、体力（连同上限）99，忠诚 100，兵 1000', onclick: () => {
-          for (const [k, v] of [['war', 99], ['int', 99], ['virtue', 99], ['hp', 99], ['loyalty', 100], ['soldiers', 1000]]) setOfficer(g, id, k, v);
+        h('button', { class: 'btn', disabled: dead, title: `武力、知力、人德、体力（连同上限）${hiOf('war')}，忠诚 100，兵 1000`, onclick: () => {
+          for (const k of ['war', 'int', 'virtue', 'hp', 'loyalty', 'soldiers']) setOfficer(g, id, k, hiOf(k));
           repaint(); } }, '能力拉满'),
-        h('button', { class: 'btn', onclick: () => { for (const [k] of OFFICER_FIELDS) if (!(dead && k === 'hp')) setOfficer(g, id, k, base.officers[id][k]); if (base.officers[id].maxHp == null) delete o.maxHp; else o.maxHp = base.officers[id].maxHp; o.hp = base.officers[id].hp; repaint(); } }, '还原此人'))),
+        // 还原此人 copies the record as loaded, not through the ranges, so a legal value is never lowered (D172)
+        h('button', { class: 'btn', onclick: () => { const b = base.officers[id]; for (const [k] of OFFICER_FIELDS) o[k] = b[k]; if (b.maxHp == null) delete o.maxHp; else o.maxHp = b.maxHp; g.edited = true; repaint(); } }, '还原此人'))),
     h('div', { class: 'sec' }, h('h4', {}, '能力'), h('div', { class: 'stats-ed' }, rows)),
     h('div', { class: 'sec' }, h('h4', {}, '装备'), gear));
 }

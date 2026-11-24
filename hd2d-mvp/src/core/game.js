@@ -11,6 +11,8 @@ export const DEAD = 3, SERVING = 2, UNAPPEARED = 1, RONIN = 0;
 export const FACTION_COLORS = ['#5a5a66', '#c8402f', '#7a4ad0', '#e0a020', '#3f8f4f', '#c060a0', '#2f9fb0'];
 // A faction's banner colour: the original seven's, a pack faction's own (core/pack.js).
 export const factionColor = (f) => D?.factions[f]?.colors?.flag ?? FACTION_COLORS[f];
+// A pack faction's 白兵 troop looks ({ soldier: 'ashigaru', … }, core/pack.js TROOP_LOOKS), or null: the original kinds' looks.
+export const factionTroops = (f) => D?.factions[f]?.troops ?? null;
 
 let D = null, BASE = null; // static data (data/game-data.json with data/base-map.json, and a pack's when one is in use); BASE without the pack
 export const data = () => D;
@@ -68,6 +70,8 @@ export async function loadRegions() {
 const fetchOptional = async (u) => { const r = await fetch(u, { cache: 'no-store' }); if (r.status === 404) return undefined; if (!r.ok) throw Error(`${u}: ${r.status}`); return r.json(); };
 // The officer whose pictures and sprites an officer uses: a pack's officer borrows a whole set (core/pack.js `like`), an 阿会喃
 // copy is 阿会喃's own.
+// A pack officer's woman-general battle look (core/pack.js HEROINE_LOOKS), or null: he fights in his art officer's look.
+export const lookOf = (id) => D?.officers[id]?.look ?? null;
 export const artOf = (id) => D?.officers[id]?.art ?? (D?.officers[id]?.clone ? 0 : id);
 // The original city whose painted battlefield a city's war uses (a pack's city borrows one whole, core/pack.js `like`).
 export const fieldArtOf = (cid) => D?.cities[cid]?.like ?? cid;
@@ -170,7 +174,8 @@ export function disaster(g, kind) {
     const c = g.cities[cid];
     if (c.faction === NONE) continue;
     const k = disasterK(c, r);
-    if (k === 10) { hit.push([cid, 0]); continue; }
+    // 防灾 99 holds: no loss, and the event says so with k = 10 (0 is 防灾 0, the worst loss; tests/disaster.test.mjs).
+    if (k === 10) { hit.push([cid, 10]); continue; }
     c.pop -= qLoss(c.pop, k);
     if (kind === 'drought') { c.land -= qLoss(c.land, k); for (const id of c.officers) g.officers[id].soldiers -= qLoss(g.officers[id].soldiers, k); }
     else { c.industry -= qLoss(c.industry, k); c.rice -= hLoss(c.rice, k); }
@@ -673,7 +678,8 @@ export function search(g, cid, executor) {
   if (!full && (res === 5 || res === 6)) {
     cand = searchCandidate(g, cid);
     if (cand == null) { do res = [1, 1, 2, 2, 8, 8, 8, 8][r(8)]; while (res >= 5); }
-    else if (Object.entries(D.rules.search_preference).some(([f, ids]) => ids.includes(cand))) res = 7;
+    // Only an entry of the city's table meets the preference table; a 下野 officer from the ronin scan keeps 5 or 6 (D50)
+    else if (g.officers[cand].status === UNAPPEARED && Object.entries(D.rules.search_preference).some(([f, ids]) => ids.includes(cand))) res = 7;
   }
   if (full) while (res >= 5) res = row[r(8)];
   const extra = () => { let v; do v = r(256); while (v >= 41); return v; };

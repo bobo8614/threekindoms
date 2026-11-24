@@ -3,6 +3,7 @@
 // beforeunload without a dialog), and the title's opening is not replayed on the way back.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { startGame, skipIntro, newCampaign } from './game.mjs';
 
 let game, page;
@@ -288,6 +289,40 @@ test('in the Android package 导出 and 导入 use the shell\'s file sheets and 
   await p.locator('body > .toast', { hasText: '无法导入' }).waitFor();
   assert.equal(await p.evaluate(() => window.__calls.filter((c) => c.open).length), 2);
   assert.equal(downloads, 0, 'no browser download in the package');
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
+});
+
+// D172: on a data pack the editor's 武力、智力、人德、体力 reach the pack's 100, which the game keeps. The test pack
+// (tools/fixtures/packs/test-faction, served as mods/test-faction) gives 关羽 武力 100: the slider and box go to 100,
+// 还原此人 keeps it, 能力拉满 gives 100 with 体力上限 100, and the write-back reads back as written.
+const FIX = new URL('../tools/fixtures/packs/test-faction/', import.meta.url);
+const servePack = (ctx) => ctx.route(/\/mods\/test-faction\/[a-z]+\.json$/, (r) => {
+  const f = new URL(r.request().url().split('/').pop(), FIX);
+  return fs.existsSync(f) ? r.fulfill({ path: f.pathname, contentType: 'application/json' }) : r.fulfill({ status: 404 });
+});
+test('on a data pack the editor sets and keeps 100 in 武力、智力、人德、体力', async () => {
+  const p = await game.open('&pack=test-faction', { setup: servePack });
+  const guan = await p.evaluate(() => { const { G } = window.__game, g = G.newGame(4, 1, 1); G.save(g, 1); return G.data().officers.findIndex((o) => o.name === '关羽'); });
+  await p.goto(new URL('save-editor.html?mute&pack=test-faction', p.url()).href);
+  await p.waitForFunction(() => window.__editor?.g, null, { timeout: 30000 });
+  const stat = (id) => p.evaluate((id) => { const o = window.__editor.g.officers[id]; return [o.war, o.int, o.virtue, o.hp, o.maxHp ?? null]; }, id);
+  await p.getByLabel('搜索武将').fill('关羽');
+  await p.locator('.rows .row', { hasText: '关羽' }).first().click();
+  assert.equal(await p.getByLabel('武力数值').inputValue(), '100', 'the pack\'s 100 as loaded');
+  for (const l of ['武力', '智力', '人德', '体力']) assert.equal(await p.getByLabel(l, { exact: true }).getAttribute('max'), '100', `${l} slider to 100`);
+  await p.getByLabel('智力数值').fill('100'); await p.getByLabel('智力数值').press('Enter');
+  assert.equal((await stat(guan))[1], 100, 'a typed 100 stays 100');
+  await p.locator('.se-acts .btn', { hasText: '还原此人' }).click();
+  assert.equal((await stat(guan))[0], 100, '还原此人 keeps 武力 100');
+  assert.equal(await p.evaluate(() => window.__editor.changes().length), 0, 'restored means unchanged');
+  await p.locator('.se-acts .btn', { hasText: '能力拉满' }).click();
+  assert.deepEqual(await stat(guan), [100, 100, 100, 100, 100], '能力拉满 on a pack');
+  await p.locator('#write').click();
+  await p.locator('.modal .foot button', { hasText: '写回' }).click();
+  await p.waitForFunction(() => window.__editor.changes().length === 0);
+  await p.reload(); await p.waitForFunction(() => window.__editor?.g, null, { timeout: 30000 });
+  assert.deepEqual(await stat(guan), [100, 100, 100, 100, 100], 'kept after the write-back and a reload');
   assert.deepEqual(p.errors, []);
   await p.context().close();
 });

@@ -14,6 +14,18 @@ export const TIERS = ['capital', 'major', 'county', 'pass'];
 // The building style a new city's sand-table model is drawn in (docs/城池风格模型_方案_2026-11-22.md): looks only, no rule
 // reads it, so it is not in the save format. han is the default and is left out of the merged record.
 export const STYLES = ['han', 'japan', 'korea'];
+// The troop looks a new faction's 白兵 squads may wear in place of an original kind's (docs/扩展兵种_方案_2026-11-24.md): looks only,
+// each borrows its kind's rules, frames and clips, so no rule reads it and it is not in the save format. The pictures
+// (assets/ai/sprites/troops/<side>-<look>[-v2][-turn]) ship with the open-source repository, not in the release packages
+// (desktop/build-app.mjs): without them a squad wears its original kind's look.
+export const TROOP_LOOKS = { soldier: ['hillman', 'ashigaru'], cavalry: ['elephant', 'steppe'] };
+// The women generals' battle looks a new officer may wear in place of his `like` officer's 白兵 sprite, 单挑 strips and war-map
+// march strip (tools/heroine_prompts.mjs, one per weapon class): looks only, no rule reads them and they are not in the save
+// format; the portrait, faces and every number still come from `like`. The pictures (assets/ai/sprites/{officers,duel,march}/
+// <look>*, listed in sprites/heroines.json) ship with the open-source repository, not in the release packages
+// (desktop/build-app.mjs): without them the officer fights in his `like` officer's look.
+export const HEROINE_LOOKS = { 'f-spear': 'spear', 'f-blade': 'blade', 'f-sword': 'sword' };
+export const weaponClassOf = (weapon) => ['sword', 'blade', 'spear'][Math.floor(weapon / 8)];
 export const MIN_CITY_GAP = 0.9; // board units between two seats (the closest original pair, 兖州–豫州, is 1.13 apart as drawn)
 
 // The map fields of the original 30 (data/base-map.json) go onto game-data.json's cities by id.
@@ -28,13 +40,13 @@ export function withBaseMap(d, base) {
 const SAFE_NAME = /^[^<>&"'`\\\u0000-\u001f\u007f]{1,12}$/u, SAFE_TEXT = /^[^<>&"'`\\\u0000-\u001f\u007f]{0,200}$/u;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/, VERSION = /^\d{1,4}\.\d{1,4}(\.\d{1,4})?$/, COLOR = /^#[0-9a-fA-F]{6}$/;
 const CITY_NUM = { gold: [0, 9999], rice: [0, 9999], pop: [0, 9999], land: [0, 999], industry: [0, 999], disaster: [0, 99], gov: [0, 100], reserve: [0, 10000], treasure: [0, 99] };
-const OFFICER_NUM = { hp: [1, 100], war: [1, 100], int: [1, 100], loyalty: [1, 100], virtue: [1, 100], exp: [0, 49999], soldiers: [0, 1000],
+export const OFFICER_NUM = { hp: [1, 100], war: [1, 100], int: [1, 100], loyalty: [1, 100], virtue: [1, 100], exp: [0, 49999], soldiers: [0, 1000],
   weapon: [0, 23], armor: [0, 7], level: [1, 8], year: [189, 300], death: [189, 400] };
 const CITY_ADD = new Set(['name', 'lon', 'lat', 'seat', 'tier', 'style', 'like', 'calamity', 'faction', 'search', ...Object.keys(CITY_NUM), 'facilities', 'rice_rate', 'shop', 'field_shop', 'ai_shop', 'note']);
 const CITY_EDIT = new Set(['city', 'faction', ...Object.keys(CITY_NUM), 'note']);
-const OFFICER_ADD = new Set(['name', 'like', 'city', 'appear', 'faction', 'army', ...Object.keys(OFFICER_NUM), 'note']);
+const OFFICER_ADD = new Set(['name', 'like', 'look', 'city', 'appear', 'faction', 'army', ...Object.keys(OFFICER_NUM), 'note']);
 const OFFICER_EDIT = new Set(['officer', 'city', ...Object.keys(OFFICER_NUM), 'army', 'note']);
-const FACTION_ADD = new Set(['name', 'ruler', 'like', 'colors', 'succession', 'join', 'prefer', 'note']);
+const FACTION_ADD = new Set(['name', 'ruler', 'like', 'colors', 'troops', 'succession', 'join', 'prefer', 'note']);
 const META = new Set(['id', 'name', 'version', 'author', 'game', 'regions', 'description']);
 
 // The longitude and latitude a seat may take: the original board (src/worldmap.js LON0…LAT1), or a declared region's box.
@@ -109,6 +121,11 @@ export function mergePack(base, pack, opts = {}) {
     else if (factionByName.has(f.name)) err(where, `势力名「${f.name}」重复`);
     else factionByName.set(f.name, FIRST_MOD_FACTION + i);
     if (!isObj(f.colors) || !COLOR.test(f.colors.flag ?? '') || !COLOR.test(f.colors.land ?? '')) err(where, 'colors 应为 { "flag": "#rrggbb", "land": "#rrggbb" }（旗帜色、领地色）');
+    if (f.troops != null) {
+      const how = Object.entries(TROOP_LOOKS).map(([k, v]) => `"${k}": ${v.map((x) => `"${x}"`).join(' / ')}`).join('，');
+      if (!isObj(f.troops) || !Object.keys(f.troops).length) err(where, `troops 应为 { 兵种: 外观 }，可写 ${how}`);
+      else for (const [k, v] of Object.entries(f.troops)) if (!TROOP_LOOKS[k]?.includes(v)) err(where, `troops 的 "${k}": ${JSON.stringify(v)} 不认识，可写 ${how}`);
+    }
   });
   const factionCount = addFactions.length ? FIRST_MOD_FACTION + Math.min(addFactions.length, MAX_MOD_FACTIONS) : nFactions;
   const factionRef = (where, v) => (v == null ? NONE : ref(where, '势力', v, factionByName, factionCount, {}));
@@ -146,7 +163,7 @@ export function mergePack(base, pack, opts = {}) {
       if (!isObj(f)) return;
       const like = f.like == null ? null : ref(where, '势力', f.like, factionByName, nFactions, { orig: true, origCount: nFactions });
       if (f.like == null) err(where, 'like 必填：借用哪个原版势力的 AI 参数（0–6 或君主名）');
-      d.factions.push({ id, name: f.name, ruler: null, like: like ?? 0, colors: { flag: f.colors?.flag, land: f.colors?.land } });
+      d.factions.push({ id, name: f.name, ruler: null, like: like ?? 0, colors: { flag: f.colors?.flag, land: f.colors?.land }, ...(isObj(f.troops) ? { troops: { ...f.troops } } : {}) });
       const L = like ?? 0;
       for (const row of d.rules.turn_orders) row.push(id); // after the originals, by number (design §5.2)
       for (const e of base.rules.ai_dispatch) if (e.faction_id === L) d.rules.ai_dispatch.push({ ...structuredClone(e), faction_id: id });
@@ -163,6 +180,7 @@ export function mergePack(base, pack, opts = {}) {
     const L = base.officers[like], appear = o.appear ?? 'initial';
     if (!['initial', 'search', 'join'].includes(appear)) err(where, 'appear 只能是 initial（开局在城中）、search（搜索出现）、join（自动出仕）');
     if (o.army != null && !['平', '山', '水'].includes(o.army)) err(where, 'army 只能是 平、山、水');
+    if (o.look != null && !Object.hasOwn(HEROINE_LOOKS, o.look)) err(where, `look ${JSON.stringify(o.look)} 不认识，可写 ${Object.keys(HEROINE_LOOKS).map((k) => `"${k}"`).join(' / ')}`);
     const pick = (k) => (o[k] !== undefined ? o[k] : L[k]);
     const rec = {
       id, name: o.name, jp: o.name, hp: pick('hp'), war: pick('war'), int: pick('int'), loyalty: pick('loyalty'), virtue: pick('virtue'), exp: pick('exp'),
@@ -170,6 +188,7 @@ export function mergePack(base, pack, opts = {}) {
       appear: { initial: 'initial', search: 'search_city', join: 'automatic_faction' }[appear] ?? 'initial',
       year: o.year ?? 189, city: null, faction: null, death: pick('death'), portrait: L.portrait, profile: L.profile, art: L.art ?? like, mod: true,
     };
+    if (Object.hasOwn(HEROINE_LOOKS, o.look ?? '')) rec.look = o.look; // looks only: no rule reads it
     if (rec.death < rec.year) err(where, `death（${rec.death}）早于登场年 year（${rec.year}）`);
     if (appear === 'join') { if (o.city != null) err(where, 'appear 为 join 时不写 city：他出仕到势力君主所在城'); rec.faction = factionRef(where, o.faction ?? null); if (o.faction == null) err(where, 'appear 为 join 时 faction 必填'); }
     else { if (o.faction != null) err(where, 'faction 只用于 appear 为 join；开局所属由所在城决定'); rec.city = o.city == null ? (err(where, 'city 必填'), null) : cityRef(where, o.city); }

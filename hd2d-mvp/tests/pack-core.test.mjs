@@ -100,6 +100,55 @@ test('a new city\'s building style is looks only: kept on the record when not ha
   assert.equal(P.PACK_FORMAT, 1);
 });
 
+test("a new officer's woman-general look is a look only: kept on his record, every number and picture else from like", () => {
+  // tools/heroine_prompts.mjs: the 白兵 sprite, 单挑 and march strips app.js battleArt loads; portraits and rules stay like's.
+  const plain = merge(FIX).data, n = BASE.officers.length;
+  const dressed = edit((p) => { p.officers.add[0].look = 'f-spear'; });
+  assert.deepEqual(dressed.errors, []);
+  const o = dressed.data.officers[n];
+  assert.equal(o.look, 'f-spear');
+  const { look, ...rest } = o;
+  assert.deepEqual(rest, plain.officers[n]);
+  assert.ok(plain.officers.every((x) => !('look' in x)), 'no look written, none on the record');
+  G.setData(dressed.data); assert.equal(G.lookOf(n), 'f-spear'); assert.equal(G.lookOf(0), null); assert.equal(G.artOf(n), plain.officers[n].art);
+  const bad = edit((p) => { p.officers.add[0].look = 'f-axe'; });
+  assert.ok(bad.errors.some((e) => e.includes('look "f-axe" 不认识')), bad.errors.join(' | '));
+  // Every look has its whole set, listed for the game, with the 单挑 moves of its weapon class.
+  assert.deepEqual(json('assets/ai/sprites/heroines.json').sort(), Object.keys(P.HEROINE_LOOKS).sort());
+  const extra = json('assets/ai/sprites/duel/extra.json'), spin = json('assets/ai/sprites/duel/spin.json'), leap = json('assets/ai/sprites/duel/leap.json');
+  for (const [k, cls] of Object.entries(P.HEROINE_LOOKS)) {
+    for (const f of [`officers/${k}.png`, `duel/${k}.png`, `march/${k}.png`, ...['', '-turn', '-wheel', '-c', '-spin', '-leap'].map((v) => `duel/${k}${v}.json`)]) assert.ok(fs.existsSync(`${MVP}assets/ai/sprites/${f}`), f);
+    assert.equal(json(`assets/ai/sprites/duel/${k}.json`).weapon, cls, k);
+    assert.ok(extra.includes(k) && spin.includes(k) && leap.includes(k), k);
+    for (const l of ['officers', 'duel', 'march']) assert.ok(!json(`assets/ai/sprites/${l}/index.json`).includes(k), `${k} kept out of ${l}/index.json`);
+  }
+});
+
+test("a new house's troop looks are looks only: kept on its faction, checked against the kinds they dress", () => {
+  // docs/扩展兵种_方案_2026-11-24.md: the 白兵 view reads them (G.factionTroops); the squads keep the rules of the kind they dress.
+  const wear = { soldier: 'ashigaru', cavalry: 'steppe' };
+  const plain = merge(FIX).data, dressed = edit((p) => { p.factions[0].troops = wear; });
+  assert.deepEqual(dressed.errors, []);
+  const yue = dressed.data.factions.find((f) => f.name === '越');
+  assert.deepEqual(yue.troops, wear);
+  const { troops, ...rest } = yue;
+  assert.deepEqual(rest, plain.factions.find((f) => f.name === '越'));
+  assert.ok(plain.factions.every((f) => !('troops' in f)), 'no troops written, none on the record');
+  G.setData(dressed.data); assert.deepEqual(G.factionTroops(yue.id), wear); assert.equal(G.factionTroops(0), null);
+  const has = (r, s) => assert.ok(r.errors.some((e) => e.includes(s)), `${s} in ${r.errors.join(' | ')}`);
+  has(edit((p) => { p.factions[0].troops = {}; }), 'troops 应为');
+  has(edit((p) => { p.factions[0].troops = ['ashigaru']; }), 'troops 应为');
+  has(edit((p) => { p.factions[0].troops = { archer: 'ashigaru' }; }), 'troops 的 "archer"');
+  has(edit((p) => { p.factions[0].troops = { soldier: 'elephant' }; }), 'troops 的 "soldier": "elephant"'); // an elephant is cavalry
+  // Every strip of a look keeps its borrowed kind's pixel scale (ref, tacticalview.js card), or the elephant shrinks to a horse.
+  const idle = (k) => json(`assets/ai/sprites/troops/attacker-${k}.json`).figH;
+  for (const [kind, looks] of Object.entries(P.TROOP_LOOKS)) for (const l of looks) for (const side of ['attacker', 'defender']) for (const v of ['', '-v2', '-turn', '-v2-turn']) {
+    const f = `assets/ai/sprites/troops/${side}-${l}${v}`;
+    assert.ok(fs.existsSync(`${MVP}${f}.png`), f);
+    assert.equal(json(`${f}.json`).ref, idle(kind), f);
+  }
+});
+
 test('the AI plays twenty years on a pack with a new house', async () => {
   const { data: D } = merge(FIX);
   let houseWon = 0;

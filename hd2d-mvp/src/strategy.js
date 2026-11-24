@@ -18,6 +18,7 @@ import { TIER_KIND } from './packgeo.js';
 import { createStrategySky } from './strategysky.js';
 import { createStrategyMarks } from './strategymarks.js';
 import { createStrategyWar } from './strategywar.js';
+import { zh } from './lang.js'; // 繁體: text shown through CSS attr() is not reached by lang.js's patches
 export { COMPOUND, surnameOf, paintBanner } from './strategywar.js';
 
 // A world-depth band keeps the playable neighbourhood sharp at any zoom; low tilt retains a soft far rim.
@@ -176,7 +177,7 @@ export function createStrategy(ctx) {
     announce(cid, text, color, ms) {
       for (const d of [0, 0.45, 0.9]) { this.pulse(cid, color); visualMarks.lastPulse().userData.t0 = time + d; }
       const el = marks[cid].el; clearTimeout(el.newsT);
-      el.dataset.news = text; el.style.setProperty('--news', color); el.classList.add('news');
+      el.dataset.news = zh(text); el.style.setProperty('--news', color); el.classList.add('news');
       el.newsT = setTimeout(() => el.classList.remove('news'), ms);
     },
     // Point at a city from outside the map (e.g. while a city list is hovered) without changing the selection.

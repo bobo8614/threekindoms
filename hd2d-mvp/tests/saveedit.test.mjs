@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as G from '../src/core/game.js';
-import { setOfficer, setCity, setAlliance, checkRecord, hpText } from '../src/core/saveedit.js';
+import { setOfficer, setCity, setAlliance, checkRecord, hpText, officerFields } from '../src/core/saveedit.js';
+import { mergePack, withBaseMap } from '../src/core/pack.js';
 import { aiTurn } from '../src/core/ai.js';
 const D = JSON.parse(readFileSync(new URL('../data/game-data.json', import.meta.url)));
 G.setData(D);
@@ -62,4 +63,28 @@ test('a maxed-out record survives a JSON round trip and a month of AI turns', as
   const io = new Proxy({}, { get: () => async () => true });
   for (const f of back.factions) if (f.id !== back.player && f.ruler != null) await aiTurn(back, f.id, io);
   for (const c of back.cities) assert.ok(c.gold >= 0 && c.gold <= 9999 && c.officers.every((id) => back.officers[id]), `city ${c.id}`);
+});
+
+// D172: a data pack may give 武力、智力、人德、体力 100 (core/pack.js OFFICER_NUM), and the game keeps them through a new
+// game and every save. The editor held all four to the base scenario's 99, so 还原此人 or a typed 100 lowered a legal
+// pack officer and the write-back saved it. The ranges now follow the data in play. Here the test-faction fixture gives 关羽 武力 100.
+test('on a pack that allows 100, the editor sets, keeps and restores 100', () => {
+  const MVP = new URL('..', import.meta.url), json = (f) => JSON.parse(readFileSync(new URL(f, MVP)));
+  const rd = (f) => { try { return json(`tools/fixtures/packs/test-faction/${f}`); } catch { return undefined; } };
+  const pack = { meta: rd('pack.json'), cities: rd('cities.json'), roads: rd('roads.json'), factions: rd('factions.json'), officers: rd('officers.json') };
+  const { data: PD, errors } = mergePack(withBaseMap(json('data/game-data.json'), json('data/base-map.json')), pack);
+  assert.deepEqual(errors, []);
+  G.setData(PD);
+  try {
+    const g = G.newGame(4, 1, 1), guan = PD.officers.findIndex((o) => o.name === '关羽'), o = g.officers[guan];
+    assert.equal(o.war, 100, 'the pack\'s 100 comes through a new game');
+    assert.deepEqual(officerFields().filter(([k]) => ['war', 'int', 'virtue', 'hp'].includes(k)).map(([, , , hi]) => hi), [100, 100, 100, 100]);
+    assert.equal(setOfficer(g, guan, 'war', 100), 100, 'restoring his own value keeps it');
+    assert.equal(setOfficer(g, guan, 'int', 250), 100);
+    assert.equal(setOfficer(g, guan, 'virtue', 100), 100);
+    assert.equal(setOfficer(g, guan, 'hp', 100), 100); assert.equal(G.maxHp(o), 100); assert.equal(hpText(o), '100/100');
+    const back = JSON.parse(JSON.stringify(g)).officers[guan];
+    assert.deepEqual([back.war, back.int, back.virtue, back.hp, G.maxHp(back)], [100, 100, 100, 100, 100], 'kept in the record');
+  } finally { G.setData(D); }
+  assert.equal(setOfficer(G.newGame(4, 1, 1), 0, 'war', 100), 99, 'the base scenario stays at 99');
 });

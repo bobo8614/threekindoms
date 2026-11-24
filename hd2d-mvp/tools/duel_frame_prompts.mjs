@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ICONIC, accent, weaponRule, officer } from './portrait_prompts.mjs';
+import { heroine, isHeroine, feminize } from './heroine_prompts.mjs';
 
 const DATA = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../data/game-data.json'), 'utf8'));
 export const FRAMES = ['idle_a', 'idle_b', 'gallop_1', 'gallop_2', 'gallop_3', 'gallop_4', 'windup', 'strike', 'follow', 'hurt', 'taunt', 'fall', 'dodge', 'downed', 'loose_1', 'loose_2'];
@@ -178,12 +179,12 @@ const TURN_STRIKE = {
 };
 function turnPrompt(key) {
   const generic = key === 'attacker' || key === 'defender';
-  const o = generic ? null : officer(Number(key));
+  const o = generic ? null : (heroine(key) || officer(Number(key)));
   const cls = generic ? 'blade' : weaponClass(o);
   const cart = !generic && CARRIAGE.has(o.name);
   const look = generic
     ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm)`
-    : (ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
+    : (o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
   const [wind, strike] = TURN_STRIKE[cls];
   const mount = cart ? 'his four-wheeled war carriage' : 'his horse';
   const poses = cart ? [
@@ -236,11 +237,11 @@ CART.c = (a) => [
 ];
 function wheelPrompt(key) {
   const generic = key === 'attacker' || key === 'defender';
-  const o = generic ? null : officer(Number(key));
+  const o = generic ? null : (heroine(key) || officer(Number(key)));
   const cart = !generic && CARRIAGE.has(o.name);
   const look = generic
     ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm)`
-    : (ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
+    : (o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
   const front = cart ? "the front of the carriage and his face and chest, with the carriage's right-hand side receding" : "the horse's face, chest and near flank at once, with the rider's face and chest";
   const back = cart ? 'the back of the carriage and his back, with its side receding' : "the horse's rump, tail and near flank at once, with the rider's back and cloak";
   const legs = cart ? [
@@ -380,10 +381,10 @@ const SHEET_LAYOUT = (cart) => `Layout (critical):
 - Detailed 16-bit SNES/Octopath-style pixel art matching reference image 1 exactly: same pixel scale, crisp pixel clusters, dark outlines, 3-tone shading, light from the upper left.`;
 function spinLeapPrompt(key, kind) {
   const generic = key === 'attacker' || key === 'defender';
-  const o = generic ? null : officer(Number(key));
+  const o = generic ? null : (heroine(key) || officer(Number(key)));
   const look = generic
     ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm)`
-    : (ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
+    : (o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
   const base = generic ? 'blade' : DRAWN_AS[o.name] || weaponClass(o);
   const cls = base === 'spear' && TWIN.test(look) ? 'twin' : base;
   const cart = !generic && CARRIAGE.has(o.name);
@@ -431,16 +432,18 @@ ${rows.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 ${notes} Exactly two hands in every cell.`;
 }
 
-export function framePrompt(key, sheet = 'a') {
+// A woman general's look (heroine_prompts.mjs) gets the same sheets with every pronoun turned.
+export const framePrompt = (key, sheet = 'a') => isHeroine(key) ? feminize(riderPrompt(key, sheet)) : riderPrompt(key, sheet);
+function riderPrompt(key, sheet = 'a') {
   if (sheet === 'turn') return turnPrompt(key);
   if (sheet === 'wheel') return wheelPrompt(key);
   if (sheet === 'spin' || sheet === 'leap') return spinLeapPrompt(key, sheet);
   const generic = key === 'attacker' || key === 'defender';
-  const o = generic ? null : officer(Number(key));
+  const o = generic ? null : (heroine(key) || officer(Number(key)));
   const cls = generic ? 'blade' : weaponClass(o);
   const look = generic
     ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm) — exactly as in reference image 1`
-    : `${ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`} — exactly as in reference image 1`;
+    : `${o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`} — exactly as in reference image 1`;
   const s = STRIKE[cls], w = SWING[cls];
   const cart = !generic && CARRIAGE.has(o.name);
   const rowsB = cart ? CART.b(w) : [
@@ -490,7 +493,7 @@ Layout (critical):
 ${sheet === 'b' ? 'This is the SECOND sheet of the same rider: the scale, ground line, rendering and colours must match reference image 1 exactly.\n' : sheet === 'c' ? 'This is the THIRD sheet of the same rider: the scale, ground line, rendering and colours must match reference image 1 exactly. Exceptions to the shared ground line: the LEAP and SMEAR cells are airborne (' + (cart ? 'wheels' : 'hooves') + ' clearly above the ground line), the THROWN man is high in the air, and the WEAPON ALONE lies across the middle of its cell. Cells that show the man, the ' + (cart ? 'carriage' : 'horse') + ' or the weapon ALONE must show ONLY that part, at the same scale as in the mounted cells. Everything he wears — helmet, plume, cloak, and any banner on his back — stays on him in every cell where he appears, mounted or alone.\n' : ''}Cells in reading order (left to right, top row first):
 ${rows.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
-${sheet === 'b' || sheet === 'c' ? 'Reference image 1 is the approved FIRST pose sheet of this exact rider and horse: copy his face, costume, horse, weapon, pixel scale and rendering precisely.' : 'Reference image 1 is the approved single battle sprite of this exact rider and horse: copy his face, costume, horse and weapon precisely and keep its pixel-art rendering style.'} ${generic ? '' : 'Reference image 2 is his approved portrait for the face.'}
+${sheet === 'b' || sheet === 'c' ? 'Reference image 1 is the approved FIRST pose sheet of this exact rider and horse: copy his face, costume, horse, weapon, pixel scale and rendering precisely.' : 'Reference image 1 is the approved single battle sprite of this exact rider and horse: copy his face, costume, horse and weapon precisely and keep its pixel-art rendering style.'} ${generic || o.heroine ? '' : 'Reference image 2 is his approved portrait for the face.'}
 Make the poses strongly readable in silhouette: the weapon, the rider's upper body and the ${cart ? "carriage's tilt and wheel spokes" : "horse's legs"} must clearly change between cells.`;
 }
 

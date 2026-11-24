@@ -1,0 +1,33 @@
+{
+  "_": "简体 → 繁體（台湾标准）: what wins over OpenCC s2twp in tools/zh_hant_table.mjs. phrases: whole words, matched longest first; chars: one character wherever no phrase covers it. Checked against the names list (node hd2d-mvp/tools/zh_hant_table.mjs --names) and the original ROM's kanji (game-data.json jp).",
+  "phrases": {
+    "_names": "人名、地名：史书与台湾通行写法",
+    "凌统": "凌統",
+    "文丑": "文醜",
+    "并州": "并州",
+    "_terms": "游戏用语：原版命令名不改成台湾 IT 用语；回复是体力回復",
+    "搜索": "搜索",
+    "搜索结果": "搜索結果",
+    "搜索队": "搜索隊",
+    "回复": "回復",
+    "全局": "全局",
+    "_fixes": "OpenCC 在这些句子里切错了词",
+    "是只": "是只",
+    "后王": "後王",
+    "选择对象": "選擇對象",
+    "全部项目": "全部項目",
+    "声明": "聲明",
+    "发布": "發布",
+    "扩展": "擴充",
+    "参数": "參數",
+    "刷新率": "更新率",
+    "宫之浦岳": "宮之浦岳",
+    "地图标签": "地圖標籤",
+    "标签": "標籤",
+    "占城": "佔城",
+    "滚屏": "捲動",
+    "征人": "征人",
+    "全屏": "全螢幕"
+  },
+  "chars": {}
+}

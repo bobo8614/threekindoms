@@ -65,6 +65,8 @@ def turn_clips(kind):
         if kind == 'archer': c[f'{d}:volley'] = [[f('windup'), 370], [f('strike'), 50, 'loose'], [f('strike'), 180]]
     return c
 
+LOOK_KIND = {'elephant': 'cavalry', 'hillman': 'soldier', 'ashigaru': 'soldier', 'steppe': 'cavalry'}  # = BORROW in troop_sprite_prompts.mjs
+
 ap = argparse.ArgumentParser()
 ap.add_argument('key'); ap.add_argument('--height', type=int); ap.add_argument('--colors', type=int)
 ap.add_argument('--duel', action='store_true', help="key is a 单挑 rider (officer id / attacker / defender): slice its -turn sheet")
@@ -79,17 +81,26 @@ if a.duel:
     a.height = a.height or side_meta['figH']; a.colors = a.colors or 48
     SRC, OUT = 'assets/ai/sprites/source/duel', 'assets/ai/sprites/duel'
 else:
-    kind = a.key.split('-')[1]; turn = a.key.endswith('-turn')
-    a.height = a.height or {'soldier': 69, 'archer': 57, 'cavalry': 73}[kind]; a.colors = a.colors or 40
+    look = a.key.split('-')[1]; turn = a.key.endswith('-turn')
+    # An extended look (troop_look_prompts.mjs) borrows an original kind's frame order and clips; its idle height is its own:
+    # the war elephant towers over a horse, the ashigaru's height counts his upright spear and banner, the hillman crouches (his head
+    # sits a little below a standing spearman's helmet); checked against the original strips' idle frames on one baseline.
+    kind = LOOK_KIND.get(look, look)
+    IDLE_H = {'soldier': 69, 'archer': 57, 'cavalry': 73, 'elephant': 100, 'hillman': 47, 'ashigaru': 72, 'steppe': 76}
+    a.height = a.height or IDLE_H[look]; a.colors = a.colors or 40
     SRC, OUT = 'assets/ai/sprites/source/troops', 'assets/ai/sprites/troops'
 names = WHEEL_FRAMES if wheel else TURN_FRAMES if turn else FRAMES[kind]
+ext = not a.duel and look != kind
 
 def bg(p): r, g, b, _ = p; return r > 140 and b > 140 and g < 130 and abs(r - b) < 100
+# The extended looks' sheets sometimes come with a thin dark-purple ground shadow under the feet (magenta in shade); it
+# must not survive as a stripe under the figure. Only for them: the original strips are never re-sliced (docs/dev/art.md).
+def shade(p): r, g, b, _ = p; return r > 50 and b > 50 and g < min(r, b) * 0.35 and abs(r - b) < 50
 def load(path):
     sheet = Image.open(path).convert('RGBA'); W, H = sheet.size; px = sheet.load()
     for y in range(H):
         for x in range(W):
-            if bg(px[x, y]): px[x, y] = (0, 0, 0, 0)
+            if bg(px[x, y]) or (ext and shade(px[x, y])): px[x, y] = (0, 0, 0, 0)
             else:
                 r, g, b, al = px[x, y]
                 if r > 120 and b > 120 and g < r - 60 and g < b - 60: px[x, y] = (40, 24, 32, 255)  # pink fringe → outline
@@ -194,10 +205,20 @@ for i, (s, ax) in enumerate(zip(small, anchors)):
     strip.alpha_composite(s, (i * cellW + A - round(ax), cellH - s.height))
 out = os.path.join(MVP, OUT); os.makedirs(out, exist_ok=True)
 strip.save(os.path.join(out, f'{a.key}.png'))
-meta = {'kind': kind, 'frames': names, 'cell': [cellW, cellH], 'anchor': A, 'figH': small[0].height,
+meta = {'kind': kind, **({'look': look} if not a.duel and look != kind else {}), 'frames': names, 'cell': [cellW, cellH], 'anchor': A, 'figH': small[0].height,
+        # an extended look is drawn at its borrowed kind's pixel scale (tacticalview.js card): ref is that kind's idle height, so the
+        # elephant stands taller than a horse and the hillman shorter than a spearman, as drawn
+        **({'ref': IDLE_H[kind]} if ext else {}),
         'rest': 0 if turn else rest_px(small[names.index('dead')]), 'clips': {} if wheel else turn_clips(kind) if turn else clips(kind)}
 json.dump(meta, open(os.path.join(out, f'{a.key}.json'), 'w'), ensure_ascii=False, indent=1)
 if not a.duel:  # the duel index belongs to slice_duel_frames.py
-    keys = sorted(f[:-5] for f in os.listdir(out) if f.endswith('.json') and f != 'index.json' and not f.endswith('-turn.json'))
+    # The boot loads every strip in the index; an extended look stays out of it (loaded only for a pack that uses it).
+    keys = sorted(f[:-5] for f in os.listdir(out) if f.endswith('.json') and f not in ('index.json', 'looks.json') and not f.endswith('-turn.json')
+                  and f[:-5].split('-')[1] in FRAMES)
     json.dump(keys, open(os.path.join(out, 'index.json'), 'w'))
+    # The extended looks have their own list, read only when a pack's faction wears one (src/app.js loadTroopLooks); the
+    # release packages leave it and the strips out (desktop/build-app.mjs), so there the squads wear the original kinds.
+    looks = sorted(f[:-5] for f in os.listdir(out) if f.endswith('.json') and f not in ('index.json', 'looks.json') and not f.endswith('-turn.json')
+                   and f[:-5].split('-')[1] in LOOK_KIND)
+    if looks: json.dump(looks, open(os.path.join(out, 'looks.json'), 'w'))
 print(a.key, len(names), 'frames', 'cell', cellW, cellH, 'figH', small[0].height)

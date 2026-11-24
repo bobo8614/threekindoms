@@ -16,12 +16,13 @@ root = Path(__file__).resolve().parents[2]
 mods = root / 'hd2d-mvp/desktop/node_modules'
 VENDOR = '/hd2d-mvp/vendor/'
 # The families and weights the game uses, as in desktop/build-app.mjs.
-FACES = [('noto-serif-sc', (400, 600, 900)), ('ma-shan-zheng', (400,))]
+FACES = [('noto-serif-sc', (400, 600, 900)), ('ma-shan-zheng', (400,)), ('lxgw-wenkai-tc', (700,))]  # the last: 繁體's brush face
 
 def fonts_css():
     # @fontsource's per-weight sheets, woff2 only; their url(./files/…) resolve under vendor/fonts/files/.
+    # A face not installed yet (a checkout from before it was added: run npm install again) is left out, not the others with it.
     return ''.join(re.sub(r",\s*url\([^)]*\.woff\) format\('woff'\)", '', (mods / '@fontsource' / pkg / f'{w}.css').read_text()) + '\n'
-                   for pkg, weights in FACES for w in weights)
+                   for pkg, weights in FACES for w in weights if (mods / '@fontsource' / pkg / f'{w}.css').exists())
 
 class NoCache(SimpleHTTPRequestHandler):
     def end_headers(self):
