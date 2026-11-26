@@ -180,6 +180,36 @@ for (const [t, name] of [[2, '平原'], [3, '河'], [5, '城']]) {
   });
 }
 
+// 城战 as the original draws it (2026-11-25): the wall cells rim two raised towers (城楼) and the defending archers'
+// set (formation 4) stands on their decks to shoot down at the yard; the rim's gaps are stairs halfway up. Before,
+// the walls stood on flat ground and the archers sat inside them, cut off at the waist.
+test('on 城战 the defending archers stand on the towers\' decks', async () => {
+  const page = await game.open();
+  await page.evaluate(() => { window.__game.debug.quickTactical(153, 191, 5, { human: 'a' }); });
+  await page.waitForSelector('.tq-form', { timeout: 60000 });
+  await page.locator('.tq-form').first().click(); await page.locator('.tq-deploy:not(.arming)').click();
+  await page.waitForSelector('.tq-start button', { timeout: 30000 });
+  const r = await page.evaluate(async () => {
+    const { towersOf, TOWER } = await import('./src/tacticalground.js'), b = window.__tq, T = towersOf(b.map, 16, 10);
+    const kinds = Object.fromEntries(['deck', 'stair', 'wall'].map((k) => [k, [...T].filter(([, c]) => c.kind === k).map(([key]) => key)]));
+    // each archer's figure by its tag (at its feet), matched to its cell by the board's x and y in world units
+    const v = window.__game.tview, feet = [];
+    v.scene.traverse((o) => { if (o.isCSS2DObject && o.element.matches('.tk.defender.arc')) feet.push(o.parent.position.clone()); });
+    const archers = b.live.filter((u) => u.side === 'd' && u.kind === 'arc').map((u) => {
+      const f = feet.find((p) => Math.abs(p.x - (u.x - 7.5)) < 0.01 && Math.abs(p.z - (u.y - 4.5)) < 0.01);
+      return { at: `${u.x},${u.y}`, kind: T.get(`${u.x},${u.y}`)?.kind ?? 'yard', y: f?.y };
+    });
+    return { stairs: kinds.stair.sort(), deckH: TOWER.deck, archers };
+  });
+  assert.deepEqual(r.stairs, ['10,3', '10,7', '6,1', '6,9'], 'the rim\'s gaps are the stairs');
+  const up = r.archers.filter((a) => a.kind === 'deck');
+  assert.ok(up.length >= 6, `archers on the decks: ${JSON.stringify(r.archers)}`);
+  for (const a of up) assert.ok(Math.abs(a.y - r.deckH) < 0.01, `archer at ${a.at} stands on the deck (${a.y})`);
+  for (const a of r.archers.filter((x) => x.kind === 'yard')) assert.ok(a.y < 0.5, `archer at ${a.at} stands in the yard (${a.y})`);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 // The 单挑 plates stand over their riders as the 白兵 cards do: the attacker rides in from the left, so the
 // player's plate is on the left when attacking and on the right when defending.
 for (const human of ['a', 'd']) {
@@ -494,7 +524,8 @@ for (const human of ['a', 'd']) test(`the 攻击, 牵制 and 舍身 buttons show
 test('every 单挑 rider has the strips his horse wheels round through', () => {
   const dir = new URL('../assets/ai/sprites/duel/', import.meta.url), read = (f) => JSON.parse(readFileSync(new URL(f, dir)));
   const keys = read('index.json'), views = ['quarter_front_1', 'quarter_back_1', 'quarter_flee_1', 'loose_quarter_1', 'loose_front_1'];
-  assert.ok(keys.length && keys.every((k) => !k.includes('-')), 'the index holds side strips only');
+  // Side strips only, never the sheets beside one; a key may itself hold a '-' (attacker-spear, defender-sword: the armed generic looks).
+  assert.ok(keys.length && keys.every((k) => !/-(turn|wheel|c|spin|leap)$/.test(k)), 'the index holds side strips only');
   for (const k of keys) {
     for (const f of views) assert.ok(read(`${k}-wheel.json`).frames.includes(f), `${k}-wheel: ${f}`);
     for (const f of ['front_walk_1', 'back_walk_1']) assert.ok(read(`${k}-turn.json`).frames.includes(f), `${k}-turn: ${f}`);

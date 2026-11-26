@@ -7,6 +7,7 @@ import { unitTex, canvasTex } from '../pixel.js';
 import { litSprite, shadowCaster, sunYaw, silhouetteNormals } from '../sprite3d.js';
 import { xraySprite } from '../seethrough.js';
 import { name, data } from '../core/game.js';
+import { genericArt } from '../core/pack.js';
 import { markFigure, tween } from './shared.js';
 import { labelK } from '../labelsize.js';
 
@@ -66,7 +67,8 @@ export function makeUnits(wv) {
   // his heading relative to the camera, mirrored for leftward headings, walking frames stepped by distance.
   // Without one he is the single side sprite, flipped left or right.
   function addUnit(u) {
-    const g = new THREE.Group(), lk = look(u.side), march = sprites[`march-${u.id}`] || sprites[`march-${lk}`];
+    // Without a strip of his own he rides as his side's general in the weapon class he holds now (core/pack.js genericArt).
+    const g = new THREE.Group(), lk = look(u.side), march = sprites[`march-${u.id}`] || sprites[`march-${genericArt(lk, field.O(u.id)?.weapon)}`] || sprites[`march-${lk}`];
     let tex, ntex = null, frames = null, aspect, bh, n = 1;
     if (march) {
       const { meta } = march; frames = meta.frames;

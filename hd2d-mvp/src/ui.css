@@ -228,7 +228,7 @@ body.season-turning { transition: --panel 2.5s, --lacquer 2.5s, --lacquer-95 2.5
 .off { display: grid; grid-template-columns: 40px 1fr auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 3px; cursor: pointer; }
 .off:hover, .off.on { background: #ffffff10; }
 .off img { width: 40px; height: 48px; object-fit: cover; object-position: 50% 12%; border: 1px solid var(--rule); border-radius: 2px; background: #000; }
-.off .nm { font-weight: 600; } .off .nm em { font-style: normal; font-size: 14px; color: var(--gold); margin-left: 4px; }
+.off .nm { font-weight: 600; } .off .nm em { font-style: normal; font-size: 14px; color: var(--gold); margin-left: 4px; } .off .nm .army { font-weight: 400; font-size: 13px; color: var(--dim); margin-left: 6px; }
 .off .sub { display: grid; grid-template-columns: repeat(4, max-content); gap: 0 7px; font-size: 14px; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .off .sub b { font-weight: 500; color: #d8ccb4; margin-left: 1px; }
 .off .tr { text-align: right; font-size: 14px; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; } .off .tr b { color: var(--ink); font-size: 16px; }
@@ -315,10 +315,16 @@ body.picking #ui > :is(.endturn, .dock, .sysbtns, .citypanel) { opacity: .45; fi
 /* ...but the open command list steps out of the way: it stood over 江夏's road to 交州 when 调遣 picked (2026-11-20), and a glowing
    city under it could be neither seen nor clicked, now that the mouse has no list of names to fall back on. */
 body.picking #ui > .dock .acts { visibility: hidden; }
+/* 侦察 (app.js pickOnMap session): the city panel is the report, so it stays bright and its officers open their cards. */
+body.picking.scouting #ui > .citypanel { opacity: 1; filter: none; }
+body:not(.phone).scouting .mappick { left: calc(var(--kept-right, 0px) + 12px); transform: none; max-width: min(760px, calc(100vw - var(--kept-right, 0px) - 24px)); }
+.citypanel .scouting-tag { margin-left: auto; color: #ffe7a8; border-color: #c9a04a; }
+.mappick .btn.ghost.end { color: var(--ink); border-color: #c9a04a; }
+body:not([data-input=pad]) .mappick .keep-in kbd { display: none; }
 .btn.ghost { background: transparent; border-color: #8a6a3470; color: var(--dim); }
 /* Officer lists: the original's one-line table, numbers in aligned columns. */
 .otable-wrap { max-height: min(62vh, 640px); overflow: auto; }
-/* Keep both scouting choices in view even when a city has ten officers in a short window. */
+/* The phone's 侦察 window: both scouting choices stay in view even when a city has ten officers in a short window. */
 .scout-roster { max-height: min(40vh, max(80px, calc(88vh - 280px))); }
 .otable { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 15px; }
 .otable th { position: sticky; top: 0; z-index: 1; background: var(--th-bg); color: var(--dim); font-weight: 500; text-align: right; padding: 4px 9px; border-bottom: 1px solid #8a6a3466; cursor: pointer; user-select: none; white-space: nowrap; }

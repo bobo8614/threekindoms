@@ -33,13 +33,13 @@ after(() => game?.close());
 
 // 勾践 of 越 (the pack's house, troops 足轻 and 铁骑) attacks 文丑 (191, an original house) on open ground; the strips each
 // side's men are drawn from, once the formation is picked.
-async function fight(setup) {
+async function fight(setup, att = '勾践', def = 191) {
   const page = await game.open('&pack=test-troops', { setup });
   await newCampaign(page, '刘备');
-  await page.evaluate(() => {
-    const { g, G } = window.__game, ruler = g.cities[30].officers.find((id) => G.name(id) === '勾践');
-    window.__game.debug.quickTactical(ruler, 191, 2, { human: 'a' });
-  });
+  await page.evaluate(([att, def]) => {
+    const { g, G } = window.__game, who = (n) => (typeof n === 'number' ? n : g.officers.findIndex((_, id) => G.name(id) === n));
+    window.__game.debug.quickTactical(who(att), who(def), 2, { human: 'a' });
+  }, [att, def]);
   await pickFormation(page);
   const strips = await drawn(page);
   return { page, strips };
@@ -52,6 +52,18 @@ test("the pack's house fights in its own troop looks; the other side in the orig
   assert.ok(mine.every((s) => /-(ashigaru|steppe|archer)(-v2)?(-turn)?$/.test(s)), `越: ${mine.join(' ')}`);
   assert.ok(mine.some((s) => /ashigaru|steppe/.test(s)), `越: ${mine.join(' ')}`);
   assert.ok(theirs.every((s) => /-(soldier|archer|cavalry)(-v2)?(-turn)?$/.test(s)), `文丑: ${theirs.join(' ')}`);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+// officers.json troops: 范蠡 of 越 (山岳蛮兵 over his house's 足轻; his 铁骑 from the house) against 关羽 of 刘备, an original
+// officer of an original house the pack dressed as 山岳蛮兵 and 战象: the looks go with the officer, not with a pack house.
+test("an officer's own troop looks, over his house's or in an original house", async () => {
+  const { page, strips } = await fight(servePack, '范蠡', '关羽');
+  const mine = strips.filter((s) => s.startsWith('attacker-')), theirs = strips.filter((s) => s.startsWith('defender-'));
+  assert.ok(mine.length && theirs.length, strips.join(' '));
+  assert.ok(mine.every((s) => /-(hillman|steppe|archer)(-v2)?(-turn)?$/.test(s)) && mine.some((s) => /hillman/.test(s)), `范蠡: ${mine.join(' ')}`);
+  assert.ok(theirs.every((s) => /-(hillman|elephant|archer)(-v2)?(-turn)?$/.test(s)) && theirs.some((s) => /hillman|elephant/.test(s)), `关羽: ${theirs.join(' ')}`);
   assert.deepEqual(page.errors, []);
   await page.context().close();
 });

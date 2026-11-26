@@ -6,7 +6,7 @@
 # --turn the front / back sheet for the 白兵 board, also from the first sheet; --wheel the three-quarter views
 # that a horse wheels round through in the duel, from the first sheet and the turn sheet; --spin / --leap the 3×2
 # 普通攻击 overhead spin and 舍身 high leap sheets, from the first sheet and 关羽's approved 38-spin / 38-leap (layout only).
-#   hd2d-mvp/tools/gen_duel_frames_codex.sh <officer_id|attacker|defender> [--b|--c|--turn|--wheel|--spin|--leap] [take]
+#   hd2d-mvp/tools/gen_duel_frames_codex.sh <officer_id|attacker|defender>[-spear|-sword] [--b|--c|--turn|--wheel|--spin|--leap] [take]
 # Output: assets/ai/sprites/source/duel/<key>.png (or <key>-b.png / <key>-c.png / <key>-turn.png / <key>-wheel.png); then run
 # slice_duel_frames.py <key> (a -turn sheet: slice_troop_frames.py --duel <key>; a -wheel one: --wheel <key>;
 # -spin / -leap: slice_duel_spin.py <key> spin|leap).
@@ -14,7 +14,7 @@ set -e
 MVP=${0:A:h:h}; ROOT=${MVP:h}
 key=$1; b=$2
 work=$(mktemp -d); trap 'rm -rf $work' EXIT
-if [[ $key == attacker || $key == defender ]]; then
+if [[ $key =~ ^(attacker|defender)(-spear|-sword)?$ ]]; then  # the generic generals, in each weapon class (duel_frame_prompts.mjs genericOf)
   ref=$MVP/assets/ai/sprites/source/$key-general.webp; refs=(-i $work/ref.png)
 else
   ref=$MVP/assets/ai/sprites/source/officers/$key.webp; refs=(-i $work/ref.png -i $work/portrait.png)

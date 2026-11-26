@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { ICONIC, accent, weaponRule, officer } from './portrait_prompts.mjs';
 import { readFileSync } from 'node:fs';
 import { heroine, feminize } from './heroine_prompts.mjs';
+import { genericOf, GENERIC_WEAPON } from './duel_frame_prompts.mjs';
 import { dirname, join } from 'node:path';
 
 const DATA = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../data/game-data.json'), 'utf8'));
@@ -47,7 +48,28 @@ Format (critical):
 ${o.heroine ? 'Reference image 1' : 'Reference image 1 is this officer\'s approved character portrait: match his face, hair, beard, headwear, armour colours and weapon exactly.\nReference image 2'} is an approved sprite of a different officer: match ONLY its pixel-art rendering style, proportions and side-view framing, not its colours or costume.`;
 }
 
+// A generic general in another weapon class (<side>-spear / <side>-sword, duel_frame_prompts.mjs genericOf): his side's approved
+// glaive sprite redrawn with only the weapon changed, so the three read as one rider (gen_sprites_codex.sh).
+export function genericSpritePrompt({ side, cls }) {
+  const look = `a generic ${side === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${side === 'attacker' ? 'brown' : 'black'} warhorse, ${GENERIC_WEAPON[cls]}`;
+  const hold = cls === 'sword'
+    ? 'the sword held up and ready in his weapon hand, blade angled upward and forward, the other hand on the reins'
+    : 'the spear held upright and ready in his near hand, its head high above him with the red tassel just below it';
+  return `Game sprite source art for an HD-2D remake of the 1992 Famicom strategy game "Sangokushi II: Haou no Tairiku".
+Subject: ${look}.
+Reference image 1 is the approved battle sprite of this exact general, who carries a glaive (guandao) there. Redraw THE SAME rider and horse — the same face, helmet, armour, cloak, the banner on his back, the horse and its tack, every colour value for value, the same side-view pose, framing, scale and pixel-art rendering — and change ONLY his weapon: no glaive anywhere; ${hold}.
+${weaponRule(look)}
+
+Format (critical):
+- Full-body side view, the whole figure and horse facing RIGHT, nothing cropped, feet and hooves visible.
+- Detailed 16-bit SNES/Octopath-style pixel art with crisp pixel clusters, dark outlines and 3-tone shading; no anti-aliased painterly blur.
+- One single figure, centred, filling about 85% of the canvas height; square 1024x1024 canvas.
+- Background: one perfectly flat solid magenta (#FF00FF) colour everywhere around the figure — no ground, no shadow, no gradient, no scenery, no text. Do not use magenta or pink anywhere on the figure.`;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const gk = genericOf(process.argv[2]);
+  if (gk && gk.cls !== 'blade') { process.stdout.write(genericSpritePrompt(gk)); process.exit(0); }
   if (process.argv[2] === '--stars') { process.stdout.write(DATA.officers.filter(hasSprite).map((o) => o.id).join(' ')); process.exit(0); }
   const h = heroine(process.argv[2]);
   if (h) { process.stdout.write(feminize(spritePrompt(h))); process.exit(0); }

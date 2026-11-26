@@ -29,6 +29,7 @@ import { FLAT_INSET } from './warmap2d.js';
 import { PHONE, hint } from './phone.js';
 import { unitCard } from './warcard.js';
 import * as G from './core/game.js';
+import { genericArt } from './core/pack.js';
 import * as B from './core/batch.js';
 import { aiTurn, aiDomestic } from './core/ai.js';
 import { suspend, peekSuspend, takeSuspend, dropSuspend, withSuspendLock } from './core/suspend.js';
@@ -103,8 +104,12 @@ const loadMarch = async (key) => {
 const marchStrips = Array.isArray(marchList) ? marchList : [];
 // A pack's officer rides in the strips of the officer he borrows his pictures from (core/pack.js `like`): loaded under that one's
 // key, then known by his own as well, so every lookup by id finds them.
-const loadOfficerMarch = async (ids) => Promise.all((await Promise.all(ids.map(async (id) => [id, await battleArt(id)]))).filter(([, a]) => marchStrips.includes(String(a)))
-  .map(async ([id, a]) => { if (!sprites[`march-${a}`]) await loadMarch(a); if (id !== a && sprites[`march-${a}`]) sprites[`march-${id}`] = sprites[`march-${a}`]; }));
+// The generic generals' spear and sword sets (core/pack.js genericArt) come along for every war, all four: a general who buys a
+// weapon of another class at the field's 武器店 changes his look on the spot (war/interact.js shop).
+const GENERIC_ARMED = ['attacker', 'defender'].flatMap((s) => [0, 16].map((w) => genericArt(s, w))); // 0 a sword, 16 a spear
+const loadOfficerMarch = async (ids) => Promise.all([...(await Promise.all(ids.map(async (id) => [id, await battleArt(id)]))).filter(([, a]) => marchStrips.includes(String(a)))
+  .map(async ([id, a]) => { if (!sprites[`march-${a}`]) await loadMarch(a); if (id !== a && sprites[`march-${a}`]) sprites[`march-${id}`] = sprites[`march-${a}`]; }),
+  ...GENERIC_ARMED.filter((k) => marchStrips.includes(k) && !sprites[`march-${k}`]).map(loadMarch)]);
 // 白兵 troop action strips (tools/slice_troop_frames.py): <side>-<soldier|archer|cavalry>[-v2], each with its -turn strip.
 const loadTroops = async () => {
   try {
@@ -154,7 +159,11 @@ async function loadOfficerSprites(ids) {
     if (officerSprites.includes(a) && !sprites[`officer-${a}`]) sprites[`officer-${a}`] = await loadPixelTexture(`assets/ai/sprites/officers/${a}.png`);
     if (a !== id && sprites[`officer-${a}`]) sprites[`officer-${id}`] = sprites[`officer-${a}`];
   }
-  await Promise.all([...arts, 'attacker', 'defender'].map(loadDuelStrip));
+  // One without strips of his own rides as the generic general in the weapon class he holds (core/pack.js genericArt): that class's
+  // set for both sides, the side being the view's to say.
+  const plain = ids.filter((id, i) => !duelStrips.includes(String(arts[i])) && !officerSprites.includes(arts[i]));
+  const armed = plain.flatMap((id) => ['attacker', 'defender'].map((s) => genericArt(s, g?.officers[id]?.weapon)));
+  await Promise.all([...new Set([...arts, 'attacker', 'defender', ...armed])].map(loadDuelStrip));
   for (const [i, id] of ids.entries()) { const a = arts[i]; if (a !== id && sprites[`duel-${a}`]) sprites[`duel-${id}`] = sprites[`duel-${a}`]; }
 }
 
@@ -552,6 +561,8 @@ const inBattle = () => mode === tview || mode === dview;
 function padZone() {
   if ($('.ending') || $('.vig.floating')) return 'keys';
   const top = layer().lastElementChild;
+  // 侦察: the city panel's officers, reached from the picker (看武将), are walked as their own zone; B goes back (padCancel).
+  if (top && top === mapPick?.panel && mapPick.keep && $(mapPick.keep)?.contains(document.activeElement)) return $(mapPick.keep);
   if (top) return top;
   const sys = $('.sysmenu-list:not([hidden])'); if (sys) return sys;
   if (inBattle()) return $('.tq') ?? document.body;
@@ -793,6 +804,7 @@ function padCancel(zone) {
   if (zone === root() && mode === strategy && tabOpen && $('.dock')?.contains(document.activeElement)) { commandDock.close?.({ focus: true }); return; }
   if (zone === root()) { cmdFocus = null; document.activeElement?.blur?.(); cursorShow(); return; } // out of the HUD, back to the map
   if (zone instanceof Element && zone.matches('.sysmenu-list')) { $('.sysmenu-btn')?.click(); $('.sysmenu-btn')?.blur(); return; }
+  if (zone instanceof Element && mapPick?.keep && zone.matches(mapPick.keep)) { focusFirst(mapPick.panel); return; } // 侦察: back to the picker
   if (zone === 'map' && mode === strategy && sel != null && !mapPick) { onCity(null); return; } // the city put away
   sendKey('Escape');
 }
@@ -2073,7 +2085,7 @@ async function roster({ city = null } = {}) {
 }
 
 // 武将 and 正规军 (the soldiers his officers lead, 预备兵 apart) close the list (阿拉神丁@qq, 2026-11-19): a city's strength at a
-// glance, one's own and a scouted rival's alike, as the 侦察 window shows the same list.
+// glance, one's own and a scouted rival's alike (off the phone the panel is 侦察's report; the phone's 侦察 window shows the same list).
 function cityStats(c) {
   return h('div', { class: 'stats' },
     ...[['金', c.gold], ['米', c.rice], ['宝', c.treasure], ['人口', c.pop * 100], ['土地', c.land], ['产业', c.industry], ['统治', c.gov], ['防灾', c.disaster], ['预备兵', c.reserve],
@@ -2090,7 +2102,8 @@ function cityPanel(cid) {
   const ruler = c.faction !== NONE ? g.factions[c.faction].ruler : null;
   const panel = h('div', { class: 'panel citypanel' },
     h('header', {}, h('h2', {}, cityName(cid)), G.cityOrigName(cid) ? h('span', { class: 'hint origname', title: '「☰ 系统 → 地名」为考据时，城名旁注原版的名字' }, `原版 ${G.cityOrigName(cid)}`) : null, h('span', { class: 'owner', style: { background: colorOf(c.faction) } }, factionName(c.faction)),
-      ruler != null && c.officers.includes(ruler) ? h('span', { class: 'hint' }, '君主所在') : null),
+      ruler != null && c.officers.includes(ruler) ? h('span', { class: 'hint' }, '君主所在') : null,
+      document.body.classList.contains('scouting') ? h('span', { class: 'tagc scouting-tag' }, '侦察中') : null),
     // A rival's numbers wait for 侦察, on the phone too: the map no longer gives his officer count (citytags.js tagHtml).
     showDetail ? cityStats(c) : h('p', { class: 'hint', style: { padding: '8px 14px' } }, '敌方城市。使用「侦察」可查看详细情报。'),
     // 市集 is the original's 商店 (rice and treasure are traded there); its prices are in the 买米 / 卖米 window, and on the tag's
@@ -2345,40 +2358,55 @@ let mapPick = null;
 // required: the pick cannot be put off (a forced retreat), so there is no 取消 and Esc does nothing.
 // list: false keeps the names out of a mouse player's way (阿拉神丁@qq, 2026-11-19: 侦察, 出阵, 运输 said each glowing city
 // twice); they are still the way in for the keys, the pad and a phone's finger (ui.css .mappick.nolist), so they stay in the panel.
-function pickOnMap(title, cids, describe = () => '', { from = null, note = '点选地图上发光的城市', required = false, list = true } = {}) {
+// session: the picker stays up and each pick goes to session.pick(cid, setNote) (侦察, 霸王之王@devblog 2026-11-25: the city panel
+// on the left is the report, so no window repeats it over the map); session.end names the button that closes it, session.esc
+// asks before Esc does, and session.keep is the HUD that stays live (the city panel's officers open their cards).
+function pickOnMap(title, cids, describe = () => '', { from = null, note = '点选地图上发光的城市', required = false, list = true, session = null } = {}) {
   return new Promise((resolve) => {
     strategy.pickMode(cids, from); strategy.frame(from != null ? [...cids, from] : cids);
     const ui = root(), before = document.activeElement, blockedEvents = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'];
     // The HUD remains visible over the map, so it must absorb a click rather than passing it through to a city.
-    const blockHud = (e) => { e.preventDefault(); e.stopPropagation(); };
+    const blockHud = (e) => { if (session?.keep && e.target.closest?.(session.keep)) return; e.preventDefault(); e.stopPropagation(); };
+    const pick = (v) => { if (v != null && session) { session.pick(v, (t) => { noteEl.textContent = t; }); strategy.pickMode(cids, from); dockBy(); return; } done(v); };
     const done = (v) => {
-      mapPick = null; document.body.classList.remove('picking'); strategy.pickMode(null); strategy.highlight(null); panel.remove();
+      mapPick = null; document.body.classList.remove('picking', 'scouting'); removeEventListener('resize', dockBy); strategy.pickMode(null); strategy.highlight(null); panel.remove();
       removeEventListener('keydown', keys, true); for (const type of blockedEvents) ui.removeEventListener(type, blockHud, true);
       if (before?.isConnected && !before.disabled) before.focus?.({ preventScroll: true }); resolve(v);
     };
     const keys = (e) => {
       if (panel !== layer().lastElementChild) return; // a dialog above the picker gets its own Esc and Tab
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (!required) done(null); return; }
+      if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        if (!required) session?.esc ? session.esc().then((yes) => { if (yes && mapPick?.done === pick) done(null); }) : done(null);
+        return;
+      }
+      const kept = session?.keep ? $(session.keep) : null;
       if (e.key === 'Tab') {
-        const buttons = $$('button:not(:disabled)', panel).filter((b) => b.offsetParent), i = buttons.indexOf(document.activeElement);
+        const buttons = [...$$('button:not(:disabled)', panel), ...(kept ? $$('[role="button"]', kept) : [])].filter((b) => b.offsetParent), i = buttons.indexOf(document.activeElement);
         e.preventDefault(); e.stopPropagation();
         if (buttons.length) buttons[e.shiftKey ? (i <= 0 ? buttons.length - 1 : i - 1) : (i + 1) % buttons.length].focus();
         else panel.focus({ preventScroll: true });
-      } else if (ui.contains(e.target)) { e.preventDefault(); e.stopPropagation(); panel.focus({ preventScroll: true }); }
+      } else if (ui.contains(e.target) && !kept?.contains(e.target)) { e.preventDefault(); e.stopPropagation(); panel.focus({ preventScroll: true }); }
     };
     const point = (c) => ({ onmouseenter: () => strategy.highlight(c), onmouseleave: () => strategy.highlight(null), onfocus: () => strategy.highlight(c), onblur: () => strategy.highlight(null) });
+    const noteEl = h('span', { class: 'hint' }, note);
     const panel = h('div', { class: `panel mappick ${list ? '' : 'nolist'}`, role: 'dialog', tabindex: '-1', 'aria-label': title },
-      h('div', { class: 'mp-head' }, h('h4', {}, title), h('span', { class: 'hint' }, note)),
-      h('div', { class: 'chips' }, ...cids.map((c) => h('button', { class: 'btn', onclick: () => done(c), ...point(c) }, cityName(c), describe(c) ? h('small', {}, describe(c)) : null)),
-        required ? null : h('button', { class: 'btn ghost', onclick: () => done(null) }, '取消', h('kbd', { 'data-glyph': 'b' }, 'Esc'))));
-    mapPick = { cids: new Set(cids), done }; document.body.classList.add('picking');
+      h('div', { class: 'mp-head' }, h('h4', {}, title), noteEl),
+      h('div', { class: 'chips' }, ...cids.map((c) => h('button', { class: 'btn', onclick: () => pick(c), ...point(c) }, cityName(c), describe(c) ? h('small', {}, describe(c)) : null)),
+        // The keys and the pad reach the kept panel's officers from here (the mouse clicks them; hidden for it with the names, ui.css).
+        session?.keep ? h('button', { class: 'btn keep-in', 'data-pad': 'y', onclick: () => ($(`${session.keep} .roster [role="button"]`) ?? $(`${session.keep} [role="button"]`))?.focus() }, '看武将', h('kbd', { 'data-glyph': 'y' })) : null,
+        required ? null : h('button', { class: `btn ghost ${session?.end ? 'end' : ''}`, onclick: () => done(null) }, session?.end ?? '取消', h('kbd', { 'data-glyph': 'b' }, 'Esc'))));
+    mapPick = { cids: new Set(cids), done: pick, keep: session?.keep ?? null, panel }; document.body.classList.add('picking');
+    // Beside the report rather than centred over its edge (a short window put the picker over the panel's numbers).
+    const dockBy = () => { const r = session?.keep && $(session.keep)?.getBoundingClientRect(); if (r?.width) panel.style.setProperty('--kept-right', `${Math.round(r.right)}px`); };
+    if (session) { document.body.classList.add('scouting'); requestAnimationFrame(dockBy); addEventListener('resize', dockBy); }
     for (const type of blockedEvents) ui.addEventListener(type, blockHud, true);
     layer().append(panel); addEventListener('keydown', keys, true); panel.focus({ preventScroll: true });
   });
 }
 const pickCityMap = (title, cids, describe, opts) => pickOnMap(title, cids, describe, { from: sel, ...opts });
-// A scouting session remains open while the player reads a city and its officers. Esc/backdrop returns to
-// the city picker; only an explicit 结束侦察 ends the session (and, on the last book, the turn).
+// The phone's 侦察 window (elsewhere the city panel is the report, see the 侦察 command): the session remains open while the player
+// reads a city and its officers. Esc/backdrop returns to the city picker; only an explicit 结束侦察 ends the session (and, on the last book, the turn).
 async function scoutCity(cid) {
   const c = g.cities[cid], ruler = c.faction !== NONE ? g.factions[c.faction].ruler : null;
   const next = await modal(`侦察：${cityName(cid)}`, (close) => [
@@ -2682,16 +2710,26 @@ async function command(cid, act) {
     case '侦察': {
       if (!(await sure('侦察', '开始侦察，可连续查看各城。'))) return;
       await spend({ ok: true, msg: '开始侦察各城', quiet: true }, cid);
+      const look = (target) => {
+        if (g.cities[target].faction !== g.player && g.cities[target].faction !== NONE) { g.scouted ||= {}; g.scouted[target] = g.year * 12 + g.month; }
+        sel = target; strategy.select(target); hud();
+      };
+      const askEnd = () => confirmBox('结束侦察', '结束本次侦察？已消耗的命令书不会返还。');
+      // Off the phone the city panel on the left is the report: one pick shows a city there, the picker stays up for the next
+      // (霸王之王@devblog, 2026-11-25: a window repeating the panel's numbers and officers covered the map). The phone keeps its
+      // window, its city panel being folded away while a city is picked (phone.css).
+      if (!PHONE) {
+        await pickCityMap('侦察中', g.cities.map((x) => x.id), undefined, { list: false, note: '点选城市，左侧显示它的情报',
+          session: { end: '结束侦察', esc: askEnd, keep: '.citypanel', pick: (t, note) => { look(t); note(`${cityName(t)}的情报在左侧，可再点选别的城市`); } } });
+        hud(); return; // the panel without its 侦察中
+      }
       while (true) {
         const target = await pickCityMap('侦察哪座城？', g.cities.map((x) => x.id), undefined, { list: false });
         if (target == null) {
-          if (await confirmBox('结束侦察', '结束本次侦察？已消耗的命令书不会返还。')) return;
+          if (await askEnd()) return;
           continue;
         }
-        if (g.cities[target].faction !== g.player && g.cities[target].faction !== NONE) {
-          g.scouted ||= {}; g.scouted[target] = g.year * 12 + g.month;
-        }
-        sel = target; strategy.select(target); hud();
+        look(target);
         if (!(await scoutCity(target))) return;
       }
     }
@@ -3526,7 +3564,7 @@ async function cutIn(field, a, d, res, terrain) {
   if (!battle) return;
   const look = (u) => (u.side === human || (!human && u.side === 'att') ? 'attacker' : 'defender');
   const looks = { a: look(a), d: look(d) }, hs = battle.human;
-  const troopLooks = { a: G.factionTroops(field.faction(a.side)), d: G.factionTroops(field.faction(d.side)) }; // a pack faction's 战象, 足轻 …
+  const troopLooks = { a: G.officerTroops(a.id, field.faction(a.side)), d: G.officerTroops(d.id, field.faction(d.side)) }; // a pack's 战象, 足轻 …
   const cine = $('#cine');
   cine.innerHTML = `<div class="bar top"></div><div class="bar bot"></div><div class="vsmark">白兵</div><div class="speed"></div><div class="flash"></div>`;
   cine.className = ''; cine.hidden = false; document.body.classList.add('cine');
@@ -3769,7 +3807,7 @@ async function ending() {
 // month / city: the season and place to stage it in (default: the current month at 洛阳); siege: the castle
 // holder's { color, look } to fight the 单挑 before the city gate (default: on 城 terrain); human: the side the
 // player commands ('d' to defend; the player's side wears the blue 'attacker' look, as from the war map); troopLooks: each side's
-// pack troop looks ({ a: { soldier: 'ashigaru' }, d: … }; default: those of the faction holding the general's city).
+// pack troop looks ({ a: { soldier: 'ashigaru' }, d: … }; default: the general's own over those of the faction holding his city).
 async function quickTactical(aId = 38, dId = 51, terrain = 2, { month = g?.month ?? 2, city = 12, siege = terrain === 5 ? { color: '#5a5a66', look: 'defender' } : null, human = 'a', troopLooks = null } = {}) {
   const { Tactical } = await import('./core/tactical.js');
   g ||= G.newGame(4, 1, 3);
@@ -3781,7 +3819,7 @@ async function quickTactical(aId = 38, dId = 51, terrain = 2, { month = g?.month
   document.body.dataset.screen = 'war';
   setMode(tview); document.body.classList.add('cine'); clear(); audio.playBgm('bgm-skirmish');
   const looks = human === 'a' ? { a: 'attacker', d: 'defender' } : { a: 'defender', d: 'attacker' };
-  const held = (id) => G.factionTroops(g.cities.find((c) => c.officers.includes(id))?.faction);
+  const held = (id) => G.officerTroops(id, g.cities.find((c) => c.officers.includes(id))?.faction);
   troopLooks ??= { a: held(aId), d: held(dId) };
   await loadTroopLooks(looks, troopLooks);
   const res = await runTactical({ battle, hs: human, looks, troopLooks, view: tview, duel: duelStage(), audio, face, name, D, banner, message, profiles: battleProfiles, warm: () => prewarm(tview) });

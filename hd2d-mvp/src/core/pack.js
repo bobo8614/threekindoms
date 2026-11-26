@@ -26,6 +26,11 @@ export const TROOP_LOOKS = { soldier: ['hillman', 'ashigaru'], cavalry: ['elepha
 // (desktop/build-app.mjs): without them the officer fights in his `like` officer's look.
 export const HEROINE_LOOKS = { 'f-spear': 'spear', 'f-blade': 'blade', 'f-sword': 'sword' };
 export const weaponClassOf = (weapon) => ['sword', 'blade', 'spear'][Math.floor(weapon / 8)];
+// The battle look of an officer with no strips of his own: his side's generic general (`attacker` / `defender`, the glaive) in the
+// weapon class he holds at that moment — `<side>-spear` or `<side>-sword` for the other two (equipment 0–7 剑, 8–15 刀, 16–23 枪,
+// the groups the 单挑 hit table reads). A weapon he buys or wins changes it from the next view built; a missing set falls back to
+// the glaive in the views.
+export const genericArt = (look, weapon) => { const c = weaponClassOf(weapon); return c && c !== 'blade' ? `${look}-${c}` : look; };
 export const MIN_CITY_GAP = 0.9; // board units between two seats (the closest original pair, 兖州–豫州, is 1.13 apart as drawn)
 
 // The map fields of the original 30 (data/base-map.json) go onto game-data.json's cities by id.
@@ -44,8 +49,8 @@ export const OFFICER_NUM = { hp: [1, 100], war: [1, 100], int: [1, 100], loyalty
   weapon: [0, 23], armor: [0, 7], level: [1, 8], year: [189, 300], death: [189, 400] };
 const CITY_ADD = new Set(['name', 'lon', 'lat', 'seat', 'tier', 'style', 'like', 'calamity', 'faction', 'search', ...Object.keys(CITY_NUM), 'facilities', 'rice_rate', 'shop', 'field_shop', 'ai_shop', 'note']);
 const CITY_EDIT = new Set(['city', 'faction', ...Object.keys(CITY_NUM), 'note']);
-const OFFICER_ADD = new Set(['name', 'like', 'look', 'city', 'appear', 'faction', 'army', ...Object.keys(OFFICER_NUM), 'note']);
-const OFFICER_EDIT = new Set(['officer', 'city', ...Object.keys(OFFICER_NUM), 'army', 'note']);
+const OFFICER_ADD = new Set(['name', 'like', 'look', 'troops', 'city', 'appear', 'faction', 'army', ...Object.keys(OFFICER_NUM), 'note']);
+const OFFICER_EDIT = new Set(['officer', 'city', 'troops', ...Object.keys(OFFICER_NUM), 'army', 'note']);
 const FACTION_ADD = new Set(['name', 'ruler', 'like', 'colors', 'troops', 'succession', 'join', 'prefer', 'note']);
 const META = new Set(['id', 'name', 'version', 'author', 'game', 'regions', 'description']);
 
@@ -100,6 +105,14 @@ export function mergePack(base, pack, opts = {}) {
     for (const [k, [lo, hi]] of Object.entries(spec)) if (o[k] !== undefined && !(Number.isInteger(o[k]) && o[k] >= lo && o[k] <= hi)) err(where, `${k} 应为 ${lo}–${hi} 的整数`);
   };
 
+  // Troop looks ({ soldier: 'ashigaru', cavalry: 'steppe' }, TROOP_LOOKS) on a new faction or on an officer, new or original.
+  const checkTroops = (where, t) => {
+    if (t == null) return;
+    const how = Object.entries(TROOP_LOOKS).map(([k, v]) => `"${k}": ${v.map((x) => `"${x}"`).join(' / ')}`).join('，');
+    if (!isObj(t) || !Object.keys(t).length) err(where, `troops 应为 { 兵种: 外观 }，可写 ${how}`);
+    else for (const [k, v] of Object.entries(t)) if (!TROOP_LOOKS[k]?.includes(v)) err(where, `troops 的 "${k}": ${JSON.stringify(v)} 不认识，可写 ${how}`);
+  };
+
   // ---------- Names and references ----------
   const nOfficers = base.officers.length, nCities = base.cities.length, nFactions = base.factions.length;
   const cityByName = new Map(base.cities.map((c) => [c.name, c.id])), officerByName = new Map(base.officers.map((o) => [o.name, o.id]));
@@ -121,11 +134,7 @@ export function mergePack(base, pack, opts = {}) {
     else if (factionByName.has(f.name)) err(where, `势力名「${f.name}」重复`);
     else factionByName.set(f.name, FIRST_MOD_FACTION + i);
     if (!isObj(f.colors) || !COLOR.test(f.colors.flag ?? '') || !COLOR.test(f.colors.land ?? '')) err(where, 'colors 应为 { "flag": "#rrggbb", "land": "#rrggbb" }（旗帜色、领地色）');
-    if (f.troops != null) {
-      const how = Object.entries(TROOP_LOOKS).map(([k, v]) => `"${k}": ${v.map((x) => `"${x}"`).join(' / ')}`).join('，');
-      if (!isObj(f.troops) || !Object.keys(f.troops).length) err(where, `troops 应为 { 兵种: 外观 }，可写 ${how}`);
-      else for (const [k, v] of Object.entries(f.troops)) if (!TROOP_LOOKS[k]?.includes(v)) err(where, `troops 的 "${k}": ${JSON.stringify(v)} 不认识，可写 ${how}`);
-    }
+    checkTroops(where, f.troops);
   });
   const factionCount = addFactions.length ? FIRST_MOD_FACTION + Math.min(addFactions.length, MAX_MOD_FACTIONS) : nFactions;
   const factionRef = (where, v) => (v == null ? NONE : ref(where, '势力', v, factionByName, factionCount, {}));
@@ -189,6 +198,7 @@ export function mergePack(base, pack, opts = {}) {
       year: o.year ?? 189, city: null, faction: null, death: pick('death'), portrait: L.portrait, profile: L.profile, art: L.art ?? like, mod: true,
     };
     if (Object.hasOwn(HEROINE_LOOKS, o.look ?? '')) rec.look = o.look; // looks only: no rule reads it
+    checkTroops(where, o.troops); if (isObj(o.troops)) rec.troops = { ...o.troops }; // the squads he leads, looks only too
     if (rec.death < rec.year) err(where, `death（${rec.death}）早于登场年 year（${rec.year}）`);
     if (appear === 'join') { if (o.city != null) err(where, 'appear 为 join 时不写 city：他出仕到势力君主所在城'); rec.faction = factionRef(where, o.faction ?? null); if (o.faction == null) err(where, 'appear 为 join 时 faction 必填'); }
     else { if (o.faction != null) err(where, 'faction 只用于 appear 为 join；开局所属由所在城决定'); rec.city = o.city == null ? (err(where, 'city 必填'), null) : cityRef(where, o.city); }
@@ -269,6 +279,7 @@ export function mergePack(base, pack, opts = {}) {
     const rec = d.officers[id];
     if (o.army != null && !['平', '山', '水'].includes(o.army)) err(where, 'army 只能是 平、山、水');
     for (const k of [...Object.keys(OFFICER_NUM), 'army']) if (o[k] !== undefined && k !== 'year') rec[k] = o[k];
+    checkTroops(where, o.troops); if (isObj(o.troops)) rec.troops = { ...o.troops };
     if (o.year !== undefined) err(where, '不能改原版武将的登场年：按年份写死的原版事件会对不上');
     if (o.city !== undefined) {
       if (rec.appear !== 'initial') return err(where, '只能挪开局就在城中的武将（appear 为 initial）');

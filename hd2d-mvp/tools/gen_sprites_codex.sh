@@ -2,7 +2,7 @@
 # Generate one star officer's battle sprite through the Codex CLI's built-in imagegen (GPT image,
 # ChatGPT login, no API key). Prompt from sprite_prompts.mjs; the officer's portrait is the identity
 # reference and the attacker general sprite is the style anchor.
-#   hd2d-mvp/tools/gen_sprites_codex.sh <officer_id>
+#   hd2d-mvp/tools/gen_sprites_codex.sh <officer_id|f-<weapon>|attacker-spear|attacker-sword|defender-spear|defender-sword>
 # The magenta background is keyed out (flood fill from the border), then pixelize.py reduces it to
 # 128 px (a little taller than the side sprites, so star officers read as heroes in close-up).
 # Output: assets/ai/sprites/officers/<id>.png (game sprite) and sprites/source/officers/<id>.webp.
@@ -11,13 +11,18 @@ MVP=${0:A:h:h}; ROOT=${MVP:h}
 id=$1
 work=$(mktemp -d); trap 'rm -rf $work' EXIT
 # A woman general's look (heroine_prompts.mjs, key f-<weapon>) has no portrait: the prompt alone is her identity.
-refs=(-i $work/portrait.png -i $work/style.png)
-if [[ $id == f-* ]]; then refs=(-i $work/style.png)
+# A generic general in another weapon class (<side>-spear / <side>-sword, duel_frame_prompts.mjs genericOf) is his side's glaive
+# sprite redrawn with the new weapon: that sprite is his only reference, and the result is the source for his 单挑 sheets
+# (sprites/source/<key>-general.webp; the game itself rides him in those strips, so no game sprite is written).
+refs=(-i $work/portrait.png -i $work/style.png); generic=
+if [[ $id =~ ^(attacker|defender)-(spear|sword)$ ]]; then generic=1; refs=(-i $work/style.png)
+  python3 -c "from PIL import Image;im=Image.open('$MVP/assets/ai/sprites/source/${id%-*}-general.webp').convert('RGBA');bg=Image.new('RGBA',im.size,(255,0,255,255));bg.alpha_composite(im);bg.convert('RGB').save('$work/style.png')"
+elif [[ $id == f-* ]]; then refs=(-i $work/style.png)
 else
   portrait=$MVP/assets/ai/portraits/$id.png; [[ -f $portrait ]] || portrait=$MVP/assets/ai/portraits/$id.webp
   python3 -c "from PIL import Image;Image.open('$portrait').convert('RGB').save('$work/portrait.png')"
 fi
-python3 -c "from PIL import Image;Image.open('$MVP/assets/ai/sprites/source/attacker-general.webp').convert('RGBA').save('$work/style.png')"
+[[ -n $generic ]] || python3 -c "from PIL import Image;Image.open('$MVP/assets/ai/sprites/source/attacker-general.webp').convert('RGBA').save('$work/style.png')"
 raw=$work/raw.png
 body=$(node $MVP/tools/sprite_prompts.mjs $id)
 task="Use the \$imagegen skill with the built-in image_gen tool (not the CLI) to create ONE image from the spec below, then copy the final PNG to $raw. Do not modify any other file. Reply with only the saved path.
@@ -25,7 +30,8 @@ task="Use the \$imagegen skill with the built-in image_gen tool (not the CLI) to
 $body"
 codex exec --skip-git-repo-check -C $ROOT -s workspace-write --add-dir $work $refs -- "$task" < /dev/null
 mkdir -p $MVP/assets/ai/sprites/source/officers $MVP/assets/ai/sprites/officers
-python3 - $raw $MVP/assets/ai/sprites/source/officers/$id.webp $work/keyed.png <<'EOF'
+webp=$MVP/assets/ai/sprites/source/officers/$id.webp; [[ -n $generic ]] && webp=$MVP/assets/ai/sprites/source/$id-general.webp
+python3 - $raw $webp $work/keyed.png <<'EOF'
 import sys
 from collections import deque
 from PIL import Image
@@ -49,6 +55,7 @@ bbox = im.getchannel('A').getbbox(); im = im.crop(bbox)
 im.save(keyed)
 s = 512 / im.height; im.resize((round(im.width * s), 512), Image.LANCZOS).save(webp, quality=90)
 EOF
+[[ -n $generic ]] && { ls -la $webp; exit 0; }
 python3 $MVP/tools/pixelize.py $work/keyed.png $MVP/assets/ai/sprites/officers/$id.png --height 128 --colors 48
 # index.json lists the ids the game may load (src/app.js loadOfficerSprites).
 python3 -c "import os,json;d='$MVP/assets/ai/sprites/officers';json.dump(sorted(int(f[:-4]) for f in os.listdir(d) if f.endswith('.png') and f[:-4].isdigit()),open(d+'/index.json','w'))"

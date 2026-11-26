@@ -4,8 +4,8 @@
 // a faint grid on the 16×10 board, and the shadows of woods and knolls painted in. The relief is one smooth
 // heightfield: rock cells rise as rounded knolls whose steep flanks show the painted cliff band, water cells
 // sink into pools under a painted water plane, the country climbs gently away behind the board and stays low
-// in front of it (N09: nothing between the camera and the front row). Fortress walls (城战) are solid blocks
-// faced with a painted crenellated wall (tools/gen_tactical_codex.sh); woods are painted crowns on quads.
+// in front of it (N09: nothing between the camera and the front row). 城战's towers are raised stone decks rimmed
+// by a painted crenellated wall (tools/gen_tactical_codex.sh) over a paved yard; woods are painted crowns on quads.
 import * as THREE from 'three';
 import { data } from './core/game.js';
 import { plateKey } from './seasonenv.js';
@@ -47,7 +47,7 @@ export const tacticalGround = (month, city) => (loaded?.key === `${month}|${city
 // How many cells one repeat of a swatch spans.
 const SPAN = { grass: 5, snow: 5, dirt: 4.5, sand: 5, hilltop: 3, 'forest-floor': 4, paving: 2.6, bank: 2.5, water: 4 };
 const PX = 56, M = 8; // canvas texels and mask texels a cell
-export const WATER_Y = 0.25, KNOLL = 0.62, WALL_H = 0.95;
+export const WATER_Y = 0.25, KNOLL = 0.62, H0 = 0.32; // H0: the board's level ground
 const smooth = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // Box blur in place, r texels, twice (≈ a gaussian).
@@ -59,6 +59,9 @@ function blur(F, w, h, r) {
   }
   return F;
 }
+
+// Whether a point (board cell coordinates) lies on or at the edge of any of the towers' cells.
+const underTower = (T, x, y) => { for (const cx of new Set([Math.floor(x - 1e-6), Math.floor(x + 1e-6)])) for (const cy of new Set([Math.floor(y - 1e-6), Math.floor(y + 1e-6)])) if (T.has(`${cx},${cy}`)) return true; return false; };
 
 // The field for a board: map (GH rows of GW classes: 0 open, 1 wood, 2 rock, 3 deep water, 4 ford, 5 wall),
 // terrain (0 woods … 5 castle), apron (cells of country round the board). Returns the masks and the height
@@ -72,8 +75,8 @@ export function fieldOf({ map, terrain, GW, GH, apron, seed }) {
   const deep = blur(layer((x, y) => cls(x, y) === 3), w, h, 2), ford = blur(layer((x, y) => cls(x, y) === 4), w, h, 2);
   const wood = blur(layer((x, y) => cls(x, y) === 1), w, h, 2);
   const at = (F, i, j) => F[Math.min(h - 1, Math.max(0, j)) * w + Math.min(w - 1, Math.max(0, i))];
+  const towers = terrain === 5 ? towersOf(map, GW, GH) : null;
   const H = new Float32Array((w + 1) * (h + 1)), knoll = new Float32Array(w * h), pool = new Float32Array(w * h);
-  const H0 = 0.32;
   for (let j = 0; j <= h; j++) for (let i = 0; i <= w; i++) {
     const x = i / M - apron, y = j / M - apron, ii = Math.min(w - 1, i), jj = Math.min(h - 1, j), n = n1(x, y);
     // Rock cells: a rounded knoll, steep at its foot (the painted cliff band shows there), domed on top.
@@ -86,7 +89,9 @@ export function fieldOf({ map, terrain, GW, GH, apron, seed }) {
     const dd = Math.max(dx, back), roll = vnoise(x * 0.18, y * 0.18, seed + 9);
     const country = smooth(1.5, 9, dd) * (0.9 + roll * 1.6) - smooth(0.5, 4, front) * 0.06 + (vnoise(x * 0.5, y * 0.5, seed + 3) - 0.5) * 0.06 * smooth(1, 3, dd + front);
     // a knoll's top is broken into ledges and boulders rather than domed
-    H[j * (w + 1) + i] = H0 + k * (KNOLL * (0.72 + n * 0.32) + (crag - 0.5) * 0.22 * smooth(0.5, 1, k)) - p * 0.26 + country;
+    const v = H0 + k * (KNOLL * (0.72 + n * 0.32) + (crag - 0.5) * 0.22 * smooth(0.5, 1, k)) - p * 0.26 + country;
+    // under a tower's run off the board the rising country stays below its deck (it would come up through it)
+    H[j * (w + 1) + i] = towers && underTower(towers, x, y) ? Math.min(v, TOWER.deck - 0.06) : v;
     if (i < w && j < h) { knoll[j * w + i] = k; pool[j * w + i] = p; }
   }
   const height = (x, y) => { // board cell coordinates, continuous (cell centres at .5)
@@ -94,7 +99,50 @@ export function fieldOf({ map, terrain, GW, GH, apron, seed }) {
     const a = H[j * (w + 1) + i], b = H[j * (w + 1) + i + 1], c = H[(j + 1) * (w + 1) + i], d = H[(j + 1) * (w + 1) + i + 1];
     return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
   };
-  return { NX, NZ, w, h, apron, GW, GH, map, terrain, seed, cls, rock, wood, knoll, pool, height, n1 };
+  // Where a man stands at a board cell's centre: atop a tower's deck or halfway up its stair, else on the ground.
+  const stand = (x, y) => { const c = towers?.get(`${x},${y}`); return c ? c.h : height(x + 0.5, y + 0.5); };
+  return { NX, NZ, w, h, apron, GW, GH, map, terrain, seed, cls, rock, wood, knoll, pool, height, n1, towers, stand };
+}
+
+// 城战's towers (城楼), as the original draws them: each knot of wall cells (class 5) rims a raised stone deck,
+// and the defending archers' set (formation 4) stands on the deck to shoot down at the yard. The rules are the
+// board's: wall cells stay closed to men and open to arrows, the deck cells are open ground, and the gaps in the
+// rim (open cells on the rim's line with open ground outside) are stairs up to the deck. A tower that runs off the
+// board's edge carries on a cell or two beyond it, closed by a rim, so it is not cut off at the board.
+// Returns Map 'x,y' → { kind: 'wall' | 'deck' | 'stair', h (standing height), up ([dx, dy] the stair climbs) }.
+const NORTH_RUN = 6;
+export const TOWER = { deck: H0 + 0.5, rim: H0 + 0.58 }; // low enough that the yard row behind a tower keeps its feet in sight
+export function towersOf(map, GW, GH) {
+  const walls = [];
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if (map[y][x] === 5) walls.push([x, y]);
+  // knots: walls within two cells of each other (the rim's gaps are one cell wide)
+  const group = walls.map((_, i) => i), root = (i) => (group[i] === i ? i : (group[i] = root(group[i])));
+  for (let i = 0; i < walls.length; i++) for (let j = 0; j < i; j++) if (Math.max(Math.abs(walls[i][0] - walls[j][0]), Math.abs(walls[i][1] - walls[j][1])) <= 2) group[root(i)] = root(j);
+  const boxes = new Map();
+  walls.forEach(([x, y], i) => { const r = root(i), b = boxes.get(r) ?? { x0: x, x1: x, y0: y, y1: y }; b.x0 = Math.min(b.x0, x); b.x1 = Math.max(b.x1, x); b.y0 = Math.min(b.y0, y); b.y1 = Math.max(b.y1, y); boxes.set(r, b); });
+  const out = new Map(), on = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH, mid = (TOWER.deck + H0) / 2;
+  for (const b of boxes.values()) {
+    if (b.x1 - b.x0 < 2 || b.y1 - b.y0 < 1) continue; // a lone wall is no tower
+    for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+      if (map[y][x] === 5) { out.set(`${x},${y}`, { kind: 'wall', h: TOWER.rim }); continue; }
+      // a gap on the rim's line, open ground outside it: a stair climbing inward
+      const up = x === b.x0 ? [1, 0] : x === b.x1 ? [-1, 0] : y === b.y0 ? [0, 1] : y === b.y1 ? [0, -1] : null;
+      if (up && on(x - up[0], y - up[1]) && map[y - up[1]][x - up[0]] !== 5) out.set(`${x},${y}`, { kind: 'stair', h: mid, up });
+      else out.set(`${x},${y}`, { kind: 'deck', h: TOWER.deck });
+    }
+    // off the board's edge the tower runs on, its side walls and the deck between them. Behind the board (north) it
+    // runs out past the top of the view, open, as a stretch of the city's wall would; in front (south, under the HUD)
+    // two cells, closed by a rim.
+    for (const [edge, dy, run] of [[b.y0 === 0, -1, NORTH_RUN], [b.y1 === GH - 1, 1, 2]]) {
+      if (!edge) continue;
+      const y0 = dy < 0 ? -1 : GH;
+      for (let k = 0; k < run; k++) for (let x = b.x0; x <= b.x1; x++) {
+        const y = y0 + dy * k, side = x === b.x0 || x === b.x1 || (dy > 0 && k === run - 1);
+        out.set(`${x},${y}`, side ? { kind: 'wall', h: TOWER.rim } : { kind: 'deck', h: TOWER.deck });
+      }
+    }
+  }
+  return out;
 }
 
 // A tiled pattern of a swatch, aligned to the canvas's cell grid.
@@ -135,8 +183,10 @@ export function bakeGround(G, F, trees) {
     const [x, y] = xy(i, j), band = onBoard(x, y) ? smooth(4.5, 1.2, Math.abs(x - GW / 2)) * 0.35 : 0;
     return smooth(0.62, 0.74, n2(x, y, 7) * 0.8 + n1(x, y) * 0.3 + band) * (terrain === 1 ? 0.5 : 0.75);
   }, 1);
-  // a fortress yard: flagstones across the board, broken into the meadow at its rim
-  if (terrain === 5) lay(g, F, G, 'paving', (i, j) => { const [x, y] = xy(i, j), d = Math.max(-x, x - GW, -y, y - GH); return smooth(0.9, 0.2, d + (n1(x, y) - 0.5) * 0.9); }, 2);
+  // a fortress yard (as the original's 城战, paved wall to wall): flagstones across the board, broken into the
+  // meadow at its rim; swept of snow, which lies only on the country beyond
+  const yard = terrain === 5 ? (x, y) => smooth(0.9, 0.2, Math.max(-x, x - GW, -y, y - GH) + (n1(x, y) - 0.5) * 0.9) : () => 0;
+  if (terrain === 5) lay(g, F, G, 'paving', (i, j) => yard(...xy(i, j)), 2);
   // woods: their floor under and round the crowns
   lay(g, F, G, 'forest-floor', (i, j) => smooth(0.25, 0.45, wood[j * w + i] + (n1(...xy(i, j)) - 0.5) * 0.2), 3);
   for (const t of trees) if (!onBoard(t.x, t.y)) { /* the country's groves: floor painted under each */ }
@@ -151,7 +201,7 @@ export function bakeGround(G, F, trees) {
     // on the board: a thin, broken cover, trodden away where the lines meet; drifts lie deeper beyond it
     const [x, y] = xy(i, j), on = onBoard(x, y), b = on ? 0.2 + smooth(5, 1, Math.abs(x - GW / 2)) * 0.3 : 0;
     const v = n2(x * 2.2, y * 2.2, 31) * 0.55 + n1(x * 1.7, y * 1.7) * 0.45 + 0.3 - b;
-    return smooth(0.3, 0.7, v) * (on ? 0.75 : 1) * (1 - pool[j * w + i]);
+    return smooth(0.3, 0.7, v) * (on ? 0.75 : 1) * (1 - pool[j * w + i]) * (1 - yard(x, y));
   }, 7);
   // painted shadows: the woods' crowns throw theirs to the lower right (the sun is upper left), knolls darken at the foot
   g.save();
@@ -239,39 +289,76 @@ export function waterMesh(G, F, wx0, wz0) {
   return m;
 }
 
-// Fortress walls: a solid block per wall cell, its open sides faced with the painted crenellated wall (the
-// parapet's gaps cut out), the walk on top. wx / wz: cell → world centre.
-export function wallMeshes(G, F, wx, wz, H0) {
-  const { GW, GH, map } = F, isWall = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && map[y][x] === 5;
-  const top = H0 + WALL_H * 0.8, face = [], walk = [];
-  const quad = (arr, a, b, c, d, uv) => arr.push([a, b, c, d, uv]);
-  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-    if (!isWall(x, y)) continue;
-    const X = wx(x), Z = wz(y), x0 = X - 0.5, x1 = X + 0.5, z0 = Z - 0.5, z1 = Z + 0.5, y0 = H0 - 0.05, y1 = H0 + WALL_H;
-    quad(walk, [x0, top, z1], [x1, top, z1], [x1, top, z0], [x0, top, z0], [x0, z0]);
-    // faces wound outward; u runs along the wall in world units so neighbouring blocks continue the pattern
-    if (!isWall(x, y + 1)) quad(face, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [x0, x1]);
-    if (!isWall(x, y - 1)) quad(face, [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [-x1, -x0]);
-    if (!isWall(x + 1, y)) quad(face, [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [-z1, -z0]);
-    if (!isWall(x - 1, y)) quad(face, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [z0, z1]);
+// 城战's towers (towersOf): the rim's wall cells and the deck as solid stone raised over the yard, the stairs as
+// steps, every open side faced with the painted wall (tools/gen_tactical_codex.sh). The rim's outer faces (but the
+// north ones, which face away from the camera) rise past the walk into the painted merlons (their gaps cut out), so
+// the deck's archers stand behind a parapet; the faces toward the deck and the stairs stop at the walk. The face's painted cap
+// course lies at the rim's walk wherever the face runs, so blocks of every height continue one wall.
+// wx / wz: cell → world centre. Tagged as ground, so marks laid on the field (爆炎's scorch) sit on the deck.
+const STEPS = 6, SUBS = 6; // a stair's steps, and the fine cells a board cell is cut into to lay them
+export function towerMeshes(G, F, wx, wz, H0) {
+  const T = F.towers, out = new THREE.Group(); out.userData.part = 'walls';
+  if (!T?.size || !G.wallFace || !G.wallTop) return out;
+  const BASE = H0 - 0.3, FH = (TOWER.rim - H0) / 0.75, MER = TOWER.rim + 0.25 * FH;
+  // the height of fine cell (i, j) (SUBS to a board cell) and whether it is any of the tower's
+  const fine = (i, j) => {
+    const x = Math.floor(i / SUBS), y = Math.floor(j / SUBS), c = T.get(`${x},${y}`);
+    if (!c) return null;
+    if (c.kind !== 'stair') return c;
+    const a = i - x * SUBS, b = j - y * SUBS, [ux, uy] = c.up;
+    const s = Math.floor(((ux > 0 ? a : ux < 0 ? SUBS - 1 - a : uy > 0 ? b : SUBS - 1 - b) * STEPS) / SUBS);
+    return { kind: 'step', s, up: c.up, h: H0 + ((TOWER.deck - H0) * (s + 1)) / (STEPS + 1) };
+  };
+  const keys = [...T.keys()].map((k) => k.split(',').map(Number));
+  const fx = (i) => wx(0) - 0.5 + i / SUBS, fz = (j) => wz(0) - 0.5 + j / SUBS;
+  const faces = [], tops = { rim: [], deck: [] };
+  const v = (y) => 0.75 + (y - TOWER.rim) / FH;
+  for (const [x, y] of keys) for (let j = y * SUBS; j < (y + 1) * SUBS; j++) for (let i = x * SUBS; i < (x + 1) * SUBS; i++) {
+    const c = fine(i, j), x0 = fx(i), x1 = fx(i + 1), z0 = fz(j), z1 = fz(j + 1), h = c.h;
+    if (c.kind !== 'step') (c.kind === 'deck' ? tops.deck : tops.rim).push([[x0, h, z1], [x1, h, z1], [x1, h, z0], [x0, h, z0], 1]);
+    else {
+      // A tread: darker the lower it lies, and darker still in a band along one edge. Mostly along its back, where
+      // the next riser stands over it; but on a stair that climbs toward the camera ((10,7): it falls away north,
+      // its risers face away and only treads show) the step above hides that corner, so the band lies along the
+      // tread's front edge, where it drops to the step below, and is the only thing that reads it as steps.
+      const [ux, uy] = c.up, toward = uy > 0, lit = (toward ? 0.7 : 0.8) + ((toward ? 0.3 : 0.2) * c.s) / (STEPS - 1), k = (toward ? 0.35 : 0.3) / SUBS;
+      const [bx0, bx1, bz0, bz1] = ux > 0 ? [x1 - k, x1, z0, z1] : ux < 0 ? [x0, x0 + k, z0, z1] : [x0, x1, z0, z0 + k]; // north edge: the back of a stair climbing north, the front of one climbing south
+      const [tx0, tx1, tz0, tz1] = ux > 0 ? [x0, x1 - k, z0, z1] : ux < 0 ? [x0 + k, x1, z0, z1] : [x0, x1, z0 + k, z1];
+      const top = (a0, a1, b0, b1, col) => tops.rim.push([[a0, h, b1], [a1, h, b1], [a1, h, b0], [a0, h, b0], col]);
+      top(tx0, tx1, tz0, tz1, lit);
+      top(bx0, bx1, bz0, bz1, lit * 0.55);
+    }
+    // each side where the neighbour is lower, wound outward; u runs along the wall in world units
+    for (const [di, dj, a, b, u0, u1] of [
+      [0, 1, [x0, z1], [x1, z1], x0, x1], [0, -1, [x1, z0], [x0, z0], -x1, -x0],
+      [1, 0, [x1, z1], [x1, z0], -z1, -z0], [-1, 0, [x0, z0], [x0, z1], z0, z1]]) {
+      const n = fine(i + di, j + dj), lo = n ? n.h : BASE;
+      if (lo >= h - 1e-4) continue;
+      // the parapet stands on the rim's outer sides, but not on the north ones: those face away from the camera, and
+      // a parapet there would hide the men in the yard behind the tower to the waist (row 6, behind the lower tower)
+      const hi = c.kind === 'wall' && !n && dj !== -1 ? MER : h;
+      faces.push([[a[0], lo, a[1]], [b[0], lo, b[1]], [b[0], hi, b[1]], [a[0], hi, a[1]], [u0, u1, v(lo), v(hi)]]);
+    }
   }
-  const geom = (list, isFace) => {
-    const p = [], u = [], idx = [];
-    list.forEach(([a, b, c, d, uv], k) => {
-      p.push(...a, ...b, ...c, ...d);
-      if (isFace) { const [u0, u1] = uv, s = 0.55; u.push(u0 * s, 0, u1 * s, 0, u1 * s, 1, u0 * s, 1); } else u.push(a[0] / 2, a[2] / 2, b[0] / 2, b[2] / 2, c[0] / 2, c[2] / 2, d[0] / 2, d[2] / 2);
+  const geom = (list, face) => {
+    const p = [], u = [], col = [], idx = [];
+    list.forEach((q, k) => {
+      p.push(...q[0], ...q[1], ...q[2], ...q[3]);
+      if (!face) for (let m = 0; m < 4; m++) col.push(q[4], q[4], q[4]);
+      if (face) { const [u0, u1, v0, v1] = q[4], s = 0.55; u.push(u0 * s, v0, u1 * s, v0, u1 * s, v1, u0 * s, v1); } else for (let m = 0; m < 4; m++) u.push(q[m][0] / 2, q[m][2] / 2);
       idx.push(k * 4, k * 4 + 1, k * 4 + 2, k * 4, k * 4 + 2, k * 4 + 3);
     });
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
+    if (!face) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx); g.computeVertexNormals();
     return g;
   };
-  const tx = (img) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.needsUpdate = true; return t; };
-  const out = new THREE.Group(); out.userData.part = 'walls';
-  if (!face.length) return out;
-  const fm = new THREE.Mesh(geom(face, true), new THREE.MeshStandardMaterial({ map: tx(G.wallFace), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95 }));
+  const tx = (img, clampV) => { const t = new THREE.Texture(img); t.wrapS = THREE.RepeatWrapping; t.wrapT = clampV ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.needsUpdate = true; return t; };
+  const fm = new THREE.Mesh(geom(faces, true), new THREE.MeshStandardMaterial({ map: tx(G.wallFace, true), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95 }));
   fm.customDepthMaterial = new THREE.MeshDepthMaterial({ map: fm.material.map, alphaTest: 0.5, depthPacking: THREE.RGBADepthPacking });
-  const wm = new THREE.Mesh(geom(walk, false), new THREE.MeshStandardMaterial({ map: tx(G.wallTop), roughness: 0.95 }));
-  for (const m of [fm, wm]) { m.castShadow = m.receiveShadow = true; m.userData.noSeason = true; out.add(m); }
+  const rm = new THREE.Mesh(geom(tops.rim, false), new THREE.MeshStandardMaterial({ map: tx(G.wallTop), roughness: 0.95, vertexColors: true }));
+  const dm = new THREE.Mesh(geom(tops.deck, false), new THREE.MeshStandardMaterial({ map: tx(G.img.paving), roughness: 0.95 }));
+  for (const m of [fm, rm, dm]) { m.castShadow = m.receiveShadow = true; m.userData.noSeason = true; m.userData.ground = m !== fm; out.add(m); }
   return out;
 }
 
@@ -327,7 +414,11 @@ export function woodsOf(F) {
     const d = Math.max(-1 - x, x - GW, -1 - y), grove = vnoise(x * 0.22, y * 0.22, seed + 13) + Math.min(0.25, d * 0.05);
     if (grove < 0.56) continue;
     const n = 1 + (rnd() < 0.6) + (grove > 0.7);
-    for (let i = 0; i < n; i++) out.push({ x: x + rnd(), y: y + rnd(), size: 1.0 + rnd() * 0.5, pine: rnd() < 0.2, far: d });
+    for (let i = 0; i < n; i++) {
+      const t = { x: x + rnd(), y: y + rnd(), size: 1.0 + rnd() * 0.5, pine: rnd() < 0.2, far: d };
+      // none on a tower's run off the board, nor so near that the crown hangs over its wall
+      if (!F.towers || ![-0.6, 0, 0.6].some((dx) => underTower(F.towers, t.x + dx * t.size, t.y))) out.push(t);
+    }
   }
   return out;
 }

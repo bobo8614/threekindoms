@@ -19,6 +19,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { unitTex, treeTex, canvasTex, rng } from './pixel.js';
 import { edgeOcclusion, scatterTufts, backdrop, lightShafts, slash, thrust, sparkBurst, dustPuff, ring as groundRing, skyLit, release, shakeOffset, shakeLevel } from './fx.js';
 import { seasonalize } from './seasons.js';
+import { genericArt } from './core/pack.js';
 import { seasonEnv } from './seasonenv.js';
 
 const FOREST = 0, RIVER = 3, MOUNT = 4, CASTLE = 5;
@@ -349,9 +350,12 @@ export function createDuelView(T, sprites = {}, audio) {
     body.position.y = (ch * unit) / 2; body.userData.ax = (cw / 2 - meta.anchor) * unit;
     return { body, unit };
   }
-  function rider(id, look, dir) {
+  // weapon: the equipment he holds; an officer without strips of his own rides as his side's generic general with that weapon class
+  // (core/pack.js genericArt), or with the glaive when that set is not there.
+  function rider(id, look, dir, weapon) {
     // A star officer without his own strip keeps his own sprite rather than borrowing the generic rider.
-    const g = new THREE.Group(), A = sprites[`duel-${id}`] || (sprites[`officer-${id}`] ? null : sprites[`duel-${look}`]);
+    const strip = sprites[`duel-${id}`] || sprites[`duel-${genericArt(look, weapon)}`] || sprites[`duel-${look}`];
+    const g = new THREE.Group(), A = sprites[`duel-${id}`] || (sprites[`officer-${id}`] ? null : strip);
     let body, unit = 1, meta = null;
     // Cards beside the side strip for the wheel: head-on and from behind (<key>-turn, never mirrored) and the
     // three-quarter views between (<key>-wheel, drawn with his head to the right and mirrored by setCard).
@@ -373,7 +377,7 @@ export function createDuelView(T, sprites = {}, audio) {
     shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.01; shadow.scale.y = 0.4;
     g.add(body, shadow, ring);
     g.position.set(-dir * 9, 0.25, dir > 0 ? 1.0 : 0.82); scene.add(g);
-    const R = { g, body, dir, id, look, meta, unit, cards, shadow, face: dir, home: 0, loop: 'idle', loopT: Math.random() * 600, stride: 0, flash: 0, ring, react: null, hold: 0 };
+    const R = { g, body, dir, id, look, strip, meta, unit, cards, shadow, face: dir, home: 0, loop: 'idle', loopT: Math.random() * 600, stride: 0, flash: 0, ring, react: null, hold: 0 };
     setFace(R, dir); show(R, 'idle_a');
     return R;
   }
@@ -959,7 +963,7 @@ export function createDuelView(T, sprites = {}, audio) {
   // The general on foot, apart from his horse: a copy of his side strip (DOWNED) and his third card (thrown, landing,
   // struggling, kneeling). lying: drawn over the ground (onTop; see the DOWNED note below).
   function onFoot(R, lying) {
-    const A = sprites[`duel-${R.id}`] || sprites[`duel-${R.look}`], u = unitOf(A.meta);
+    const A = R.strip, u = unitOf(A.meta);
     const { body } = framePlane(A), c = { body: framePlane(A.extra, u).body, meta: A.extra.meta, follows: true };
     c.body.userData.y0 = c.body.position.y; c.body.visible = false;
     // The strip's bottom row is often his dropped weapon lying in front of him: sink the plane so his body
@@ -990,7 +994,7 @@ export function createDuelView(T, sprites = {}, audio) {
   // (death) or kneels (taken). His weapon spins away, lands flat and bounces once: where the DOWNED frame draws it
   // under him, so nothing jumps when that frame takes over and the loose one goes; or before him when he kneels.
   async function fallFrom(R, { captured = false } = {}) {
-    const foe = foeOf(R), A = sprites[`duel-${R.id}`] || sprites[`duel-${R.look}`];
+    const foe = foeOf(R), A = R.strip;
     popup(captured ? '落马' : '阵亡', head(R, 3.0), R.look);
     const plain = !R.meta || !A?.extra, landX = R.g.position.x - R.face * 1.2;
     // The close shot holds the winner and the ground the loser is thrown onto.
@@ -1045,7 +1049,7 @@ export function createDuelView(T, sprites = {}, audio) {
     await wait(160);
     show(R, 'fall'); if (fx) dustPuff(scene, R.g.position.clone().setY(0.5), 1.0, tween); await wait(420);
     if (R.meta) {
-      const A = sprites[`duel-${R.id}`] || sprites[`duel-${R.look}`];
+      const A = R.strip;
       const { body } = framePlane(A), man = { ...R, g: new THREE.Group(), body, cards: [], loop: null };
       const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.3, depthWrite: false }));
       shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.01; shadow.scale.set(A.meta.cell[0] * unitOf(A.meta) * 0.42, 0.32, 1);
@@ -1076,7 +1080,7 @@ export function createDuelView(T, sprites = {}, audio) {
   // the riderless horse walks away. A rider without the third sheet bows in the saddle instead.
   async function kneel(R) {
     R.loop = null; show(R, 'slump'); await wait(500);
-    const A = sprites[`duel-${R.id}`] || sprites[`duel-${R.look}`];
+    const A = R.strip;
     if (!R.meta || !A?.extra) { show(R, 'follow'); await tween(500, (k) => { R.body.rotation.z = -R.face * 0.12 * ease(k); }); return; }
     const f = R.face, man = onFoot(R, false), wpn = looseWeapon(R, A, false);
     man.g.position.x += f * 0.45; man.g.position.z += 0.3; // before his horse, toward the winner, clear of it as it turns away
@@ -1163,7 +1167,7 @@ export function createDuelView(T, sprites = {}, audio) {
       for (const R of riders) scene.remove(R.g);
       buildSet(battle.terrain, siegeOf && looks.a === siegeOf.look ? 1 : -1);
       const n = (s) => Math.max(3, Math.min(27, Math.ceil(battle.fielded(s) / 40)));
-      const RA = rider(battle.side.a.id, looks.a, 1), RD = rider(battle.side.d.id, looks.d, -1);
+      const RA = rider(battle.side.a.id, looks.a, 1, battle.side.a.o?.weapon), RD = rider(battle.side.d.id, looks.d, -1, battle.side.d.o?.weapon);
       riders = [RA, RD];
       cast = [...rank(looks.a, n('a'), 1), ...rank(looks.d, n('d'), -1)];
       release(gone, scene, Object.values(T)); // the last duel's set, riders and ranks
