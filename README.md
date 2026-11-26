@@ -1,6 +1,6 @@
 本项目fork自tianlin/threekindoms，未对原版本做大的修改，只是构建NAS上可运行的docker版本
 
-镜像拉取
+容器拉取创建
 ```
 services:
   threekindoms-hd2d:
