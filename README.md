@@ -4,22 +4,14 @@
 ```
 services:
   threekindoms-hd2d:
-    # Pull the latest image from GitHub Container Registry (public).
-    # Verified: this tag is a multi-arch manifest (linux/amd64 + linux/arm64),
-    # so it works on both x86-64 and ARM64 NAS. Docker picks the right arch automatically.
     image: ghcr.io/bobo8614/threekindoms-hd2d:latest
     container_name: threekindoms-hd2d
     restart: unless-stopped
     ports:
       - "6688:6688"
     volumes:
-      # Left = a folder on your NAS (create it first). Right = /data inside the container.
-      # All accounts, per-user saves, prefs and uploaded music live here.
       - ./data:/data
     environment:
-      # TK3_ADDR=":6688" is CORRECT. Go's net/http expects [host]:port;
-      # ":6688" = listen on all interfaces port 6688. Do NOT remove the colon:
-      # "6688" alone causes "missing port in address" and the container won't start.
       TK3_ADDR: ":6688"
       TK3_WEBROOT: "/app"
       TK3_DATA: "/data"
