@@ -1,3 +1,5 @@
+本项目fork自tianlin/threekindoms，未对原版本做大的修改，只是构建NAS上可运行的docker版本
+
 # Three Kingdoms HD-2D（三国 HD-2D）
 
 一款回合制三国战略游戏的 HD-2D 重制：像素角色立在 3D 地形上，加上实时光影、景深与后期。玩法规则和数值参照 1992 年 FC 游戏《三國志II 覇王の大陸》。游戏用浏览器运行（three.js），也能打包成 Electron 桌面版。
