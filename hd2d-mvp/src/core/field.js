@@ -391,7 +391,7 @@ export class Field {
     const L = () => a.level - 1;
     const loss = (v, n) => { const o = this.O(v.id), d = Math.min(o.soldiers, Math.max(0, n)); o.soldiers -= d; acc += d; addExp(this.g, u.id, Math.floor(acc / 2)); hits.push({ u: v, soldiers: -d }); lines.push(`${nm(v)} 损兵 ${d}`); };
     const hp = (v, n) => { const o = this.O(v.id), d = Math.min(o.hp, Math.max(0, n)); o.hp -= d; hits.push({ u: v, hp: -d }); lines.push(`${nm(v)} 体力 −${d}`); if (o.hp <= 0) fall(v); };
-    // 0 HP: slain, or under 武将不战死 taken by the caster's side at SPARED_HP (a ruler is slain all the same).
+    // 0 HP: slain, or under 武将不战死 taken by the caster's side at SPARED_HP (a ruler too).
     const fall = (v) => {
       const o = this.O(v.id);
       if (!spared(this.g, v.id)) { o.status = DEAD; v.gone = true; v.fate = 'dead'; lines.push(`${nm(v)} 阵亡`); return; }

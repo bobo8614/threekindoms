@@ -280,10 +280,18 @@ export function followJoin(g, f) {
 const DEATH_P = [5, 10, 20, 37, 80, 160, 201];
 // 武将不战死 (g.noWarDeath, an option off by default and absent from older records; playtest of 2026-10-30, T16/T17):
 // a general brought to 0 HP in war is taken prisoner by the other side instead of slain, coming out with SPARED_HP.
-// A ruler, who cannot be taken, dies as in the original (succession or the fall of his house): kept alive he stood
-// on his last city for good and the war could only end on day 30 (Desktop 0.2.3, 2026-10-31). 斩首 stays.
+// A ruler too since 2026-11-26 (the mode is there to gather officers): taken, he leaves the field, so he no longer
+// holds his last city to day 30 as a ruler kept alive there did (Desktop 0.2.3, 2026-10-31); he serves his captor and
+// his house crowns an heir or falls (rulerTaken, succession). The original has no capture of a ruler. 斩首 stays.
 export const SPARED_HP = 30;
-export const spared = (g, id) => (!g.noWarDeath || isRuler(g, id) ? null : 'captured');
+export const spared = (g, _id) => (g.noWarDeath ? 'captured' : null);
+// 心向 (search_preference: officers who favour a house when found). Under 武将不战死 it lapses once the house's ruler has
+// been taken (g.preferLost, written by succession) or the house has fallen; they are then found like anyone else (免费
+// 出仕 or a price), whoever searches. The original keeps a house's preference for good; this is the mode's own rule.
+export const preferLost = (g, f) => !!g.noWarDeath && (g.factions[f]?.ruler == null || !!g.preferLost?.includes(f));
+const prefHouse = (id) => { const f = Object.entries(D.rules.search_preference).find(([, ids]) => ids.includes(id))?.[0]; return f == null ? null : Number(f); };
+// The house an officer favours in this game, or null (none, or lapsed).
+export const preferOf = (g, id) => { const f = prefHouse(id); return f == null || preferLost(g, f) ? null : f; };
 // 武将不老 (g.ageless, an option off by default and absent from older records): nobody dies of age; war deaths stay.
 export function naturalDeaths(g, f) {
   if (g.ageless) return [];
@@ -472,7 +480,7 @@ async function rotate(g, io) {
 
 // captured: the old ruler is not dead but another house's prisoner (rulerTaken); the notices say so.
 export async function succession(g, io, f, oldRuler, captured = false) {
-  if (captured) rulerFirst(g, officerCity(g, oldRuler));
+  if (captured) { rulerFirst(g, officerCity(g, oldRuler)); if (!(g.preferLost ||= []).includes(f)) g.preferLost.push(f); } // 心向 lapses (preferLost)
   const cands = heirCandidates(g, f);
   if (!cands.length) {
     destroyFaction(g, f);
@@ -685,7 +693,7 @@ export function search(g, cid, executor) {
     cand = searchCandidate(g, cid);
     if (cand == null) { do res = [1, 1, 2, 2, 8, 8, 8, 8][r(8)]; while (res >= 5); }
     // Only an entry of the city's table meets the preference table; a 下野 officer from the ronin scan keeps 5 or 6 (D50)
-    else if (g.officers[cand].status === UNAPPEARED && Object.entries(D.rules.search_preference).some(([f, ids]) => ids.includes(cand))) res = 7;
+    else if (g.officers[cand].status === UNAPPEARED && preferOf(g, cand) != null) res = 7; // 心向 lapsed: 5 or 6 (preferOf)
   }
   if (full) while (res >= 5) res = row[r(8)];
   const extra = () => { let v; do v = r(256); while (v >= 41); return v; };
@@ -697,7 +705,7 @@ export function search(g, cid, executor) {
   const t = g.officers[cand];
   if (res === 5) { join(g, cid, cand); return { ok: true, msg: `${name(cand)} 愿意出仕`, joined: cand }; }
   if (res === 6) return { ok: true, offer: cand, price: Math.floor((t.hp + t.war + t.int) / 3), msg: `${name(cand)} 要求 ${Math.floor((t.hp + t.war + t.int) / 3)} 金` };
-  const pf = Number(Object.entries(D.rules.search_preference).find(([, ids]) => ids.includes(cand))[0]);
+  const pf = preferOf(g, cand);
   const accept = c.faction === pf ? r(16) >= 2 : r(16) >= 13;
   if (accept) { join(g, cid, cand); return { ok: true, msg: `${name(cand)} 被您的仁德打动，愿意出仕`, joined: cand }; }
   return { ok: true, msg: `${name(cand)} 拒绝了出仕`, refused: cand };

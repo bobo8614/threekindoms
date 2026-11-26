@@ -1,7 +1,7 @@
 // Strategic AI (6.5). Budget = command books × 10 points; the main dispatch draws 0–15 against the
 // faction/difficulty/situation weights (`10:A19C` uses D4AD, so sums above 16 never reach the last
 // branches), then attack/vacant expansion, inner moves + BD7A reinforcement, diplomacy, or domestic work.
-import { data, rng, NONE, SERVING, UNAPPEARED, RONIN, roads, citiesOf, troopsOf, recruitLoyalty, books, isRuler, officerCity, searchQueue, maxHp } from './game.js';
+import { data, rng, NONE, SERVING, UNAPPEARED, RONIN, roads, citiesOf, troopsOf, recruitLoyalty, books, isRuler, officerCity, searchQueue, maxHp, preferLost } from './game.js';
 import { tier, warlikePrelude, searchOdds, sourceExtra, giveDrop, keepDrop, extraPoints, devK, aiRecruitLoyalty, pickDomestic, adjustWeights, pickTarget, strongEnough } from './warlike.js';
 import { setupWar, occupyEmpty, autoBattle } from './warcore.js';
 import { phantomWar } from './ahuinan.js';
@@ -103,7 +103,7 @@ const moveTo = (g, f, from, to, id) => {
 
 // A00F prelude: ruler retreat (C50E), talent search (C5D2/C6CC), medical (C79A), governor (C9A5), rice sale (CC12).
 export function housekeeping(g, f, r, spend) {
-  const D = data(), ruler = g.factions[f].ruler, aff = D.rules.search_preference[String(f)] || [], odds = searchOdds(g);
+  const D = data(), ruler = g.factions[f].ruler, aff = preferLost(g, f) ? [] : D.rules.search_preference[String(f)] || [], odds = searchOdds(g);
   evade(g, f, spend);
   for (const c of citiesOf(g, f)) {
     if (r(100) < odds.search && c.officers.length < 10) {

@@ -1339,8 +1339,8 @@ function sysButtons() {
       '人物志与城市面板显示多少武将来历　关：只记自己的搜索　已登场：已登场武将的出仕年份与地点　全部：含未登场武将与各城搜索队列（剧透）') : '',
     g ? item(() => `武将寿命 ${g.ageless ? '不老' : '原版'}`, (b) => { g.ageless = !g.ageless; b.textContent = `武将寿命 ${g.ageless ? '不老' : '原版'}`; },
       '原版：武将到史实卒年后一年比一年易病逝　不老：各势力武将都不会因年老病逝（战死、斩首照旧）。随本局记录保存') : '',
-    g ? item(() => `战场生死 ${g.noWarDeath ? '不战死' : '原版'}`, (b) => { g.noWarDeath = !g.noWarDeath; b.textContent = `战场生死 ${g.noWarDeath ? '不战死' : '原版'}`; },
-      '原版：体力归零的武将阵亡　不战死：白兵、单挑、计略及电脑之间的战争中体力归零的武将改为被对方俘获，体力回复至30。君主不能被俘，照常阵亡；斩首照旧。随本局记录保存') : '',
+    g ? item(() => `战场生死 ${g.noWarDeath ? '不战死' : '原版'}`, (b) => { g.noWarDeath = !g.noWarDeath; b.textContent = `战场生死 ${g.noWarDeath ? '不战死' : '原版'}`; refreshTalentNote(); }, // 心向 labels go by it (preferOf)
+      '原版：体力归零的武将阵亡　不战死：白兵、单挑、计略及电脑之间的战争中体力归零的武将改为被对方俘获，体力回复至30。君主也会被俘，归俘获方；君主被俘或势力灭亡后，心向该势力的人才不再心向，谁搜到都可招募。斩首照旧。随本局记录保存') : '',
     g ? item(() => `人才寻访 ${g.sangu ? '三顾' : '原版'}`, (b) => { g.sangu = !g.sangu; b.textContent = `人才寻访 ${g.sangu ? '三顾' : '原版'}`; refreshTalentNote(); },
       '原版：人才是否出仕看搜索结果与他心向的君主　三顾：某城的下一位人才可寻访时，在该城第3次搜索他必定出仕，不论他心向哪位君主。只对玩家的搜索有效，随本局记录保存') : '',
     g ? item(() => `电脑进攻 ${g.warlike ? '好战' : '原版'}`, (b) => { g.warlike = !g.warlike; if (!g.warlike) delete g.warlikeFought; b.textContent = `电脑进攻 ${g.warlike ? '好战' : '原版'}`; },
@@ -1666,7 +1666,7 @@ async function setup() {
     onclick: () => { ageless = !ageless; pressed(agelessBtn, ageless); } },
     h('i', {}), '武将不老 · 不会因年老病逝');
   const noDeathBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
-    title: '原版：体力归零的武将阵亡　不战死：白兵、单挑、计略及电脑之间的战争中体力归零的武将改为被对方俘获，体力回复至30。君主不能被俘，照常阵亡；斩首照旧。便于收集武将；游戏中也可在「☰ 系统」切换。',
+    title: '原版：体力归零的武将阵亡　不战死：白兵、单挑、计略及电脑之间的战争中体力归零的武将改为被对方俘获，体力回复至30。君主也会被俘，归俘获方；君主被俘或势力灭亡后，心向该势力的人才不再心向，谁搜到都可招募。斩首照旧。便于收集武将；游戏中也可在「☰ 系统」切换。',
     onclick: () => { noWarDeath = !noWarDeath; pressed(noDeathBtn, noWarDeath); } },
     h('i', {}), '武将不战死 · 体力归零改为被俘');
   const sanguBtn = h('button', { class: 'cheat opt', 'aria-pressed': 'false',
@@ -2007,13 +2007,21 @@ function waitText(id) {
   return c.faction === d.faction && c.officers.length < 10 ? ['即将出仕', 'go'] : ['都城已满', 'bad'];
 }
 
+// 武将不战死: the line telling that a house's 心向 has lapsed (its ruler taken, or the house fallen; G.preferLost), naming
+// those it still concerned (not yet found, or 在野). Empty when nothing changed for anyone.
+function preferLapse(f) {
+  if (!G.preferLost(g, f)) return '';
+  const ids = (D.rules.search_preference[String(f)] || []).filter((id) => [G.UNAPPEARED, G.RONIN].includes(g.officers[id].status));
+  if (!ids.length) return '';
+  return `心向${factionName(f)}的人才（${ids.slice(0, 3).map(name).join('、')}${ids.length > 3 ? `等 ${ids.length} 人` : ''}）不再心向，谁搜到都可招募。`;
+}
 // One line under the city's numbers: what 搜索 can still turn up here (opens the 人物志 on this city).
 function talentNote(cid) {
   if (talentMode === 'off') return null;
   const t = G.cityTalent(g, cid), c = g.cities[cid], parts = [];
   if (talentMode === 'all') {
     if (t.head) {
-      const pf = G.debutInfo(t.head.id).prefer, lean = pf != null && pf !== c.faction ? `（心向${factionName(pf)}）` : '';
+      const pf = G.preferOf(g, t.head.id), lean = pf != null && pf !== c.faction ? `（心向${factionName(pf)}）` : '';
       parts.push(t.head.ready ? `可寻访 <b>${name(t.head.id)}</b>${lean}` : `<b>${name(t.head.id)}</b> ${D.officers[t.head.id].year}年起可寻访${lean}`);
       if (t.left > 1) parts.push(`其后尚有 ${t.left - 1} 人`);
     } else parts.push('已无人才可寻访');
@@ -2037,6 +2045,8 @@ async function roster({ city = null } = {}) {
   const rank = (id) => { const st = statusOf(id), fc = G.factionOf(g, id); return st === G.SERVING ? (fc === g.player ? 0 : 1 + fc) - (G.isRuler(g, id) ? 0.5 : 0) : st === G.RONIN ? 10 : st === G.UNAPPEARED ? 20 : 30; };
   const COLS = [
     ['武', (id) => g.officers[id].war], ['智', (id) => g.officers[id].int], ['德', (id) => g.officers[id].virtue],
+    // 体 is the 体力上限, not this month's 体力 (真真@devblog, 2026-11-25): the list compares officers, the card shows the rest.
+    ['体', (id) => G.maxHp(g.officers[id], id)],
     ['登场', (id) => -D.officers[id].year, (id) => (debutShown(id) ? `${D.officers[id].year}年` : '—'), () => talentMode !== 'off'],
   ];
   const visible = (id) => statusOf(id) !== G.UNAPPEARED || talentMode === 'all';
@@ -2072,7 +2082,7 @@ async function roster({ city = null } = {}) {
           h('td', { class: 'tx' }, at != null ? cityName(at) : '—'),
           talentMode !== 'off' ? h('td', { class: 'tx src' }, debutShown(id) ? debutText(id) : '—',
             wait ? h('em', { class: wait[1] }, wait[0]) : null,
-            debutShown(id) && d.prefer != null ? h('small', {}, `心向${factionName(d.prefer)}`) : null) : null);
+            debutShown(id) && G.preferOf(g, id) != null ? h('small', {}, `心向${factionName(G.preferOf(g, id))}`) : null) : null);
       })));
     if (!ids.length) table.append(h('tbody', {}, h('tr', { class: 'none' }, h('td', { colspan: 9 }, '没有符合条件的武将'))));
     total.innerHTML = `共 <b>${ids.length}</b> 人${hidden ? `　另有 ${hidden} 人尚未登场${talentMode === 'all' ? '' : '（系统菜单「登场情报」设为「全部」可查看）'}` : ''}`;
@@ -3652,8 +3662,8 @@ async function showEvent(e) {
     case 'join': addLog(`${name(e.id)}加入${factionName(e.faction)}军`); if (e.faction === P) await message('来投', e.lord != null ? `${name(e.id)}追随旧主${name(e.lord)}前来投奔，加入我军。` : `${name(e.id)}前来投奔，加入我军。`, e.id, 'joy'); break;
     case 'death': for (const id of e.list) { addLog(`<em>${name(id)}病逝</em>`); if (e.faction === P) await message('病逝', `${name(id)}因病去世了。`, id, 'grief'); } break;
     // Another faction's succession and fall close by themselves after the original's 240 frames.
-    case 'heir': addLog(`${name(e.old)}${e.captured ? '被俘' : '去世'}，${name(e.heir)}继位`); await message('继位', `君主${name(e.old)}${e.captured ? '被俘' : '去世'}，${name(e.heir)}继承了大业。${e.quit.length ? `<br>${e.quit.map(name).join('、')}因不服而离去。` : ''}`, e.heir, 'calm', { auto: e.faction === P ? 0 : paced(ORIGINAL.notice) }); break;
-    case 'fall': addLog(`<em>${factionName(e.faction)}势力灭亡</em>`); if (e.faction !== P) await message('灭亡', `<span style="color:${colorOf(e.faction)}">${factionName(e.faction)}</span>一族灭亡了。`, null, 'calm', { auto: paced(ORIGINAL.notice) }); break;
+    case 'heir': { const lapse = e.captured ? preferLapse(e.faction) : ''; addLog(`${name(e.old)}${e.captured ? '被俘' : '去世'}，${name(e.heir)}继位`); if (lapse) addLog(lapse); await message('继位', `君主${name(e.old)}${e.captured ? '被俘' : '去世'}，${name(e.heir)}继承了大业。${e.quit.length ? `<br>${e.quit.map(name).join('、')}因不服而离去。` : ''}${lapse ? `<br>${lapse}` : ''}`, e.heir, 'calm', { auto: e.faction === P ? 0 : paced(ORIGINAL.notice) }); break; }
+    case 'fall': { const lapse = preferLapse(e.faction); addLog(`<em>${factionName(e.faction)}势力灭亡</em>`); if (lapse) addLog(lapse); if (e.faction !== P) await message('灭亡', `<span style="color:${colorOf(e.faction)}">${factionName(e.faction)}</span>一族灭亡了。${lapse ? `<br>${lapse}` : ''}`, null, 'calm', { auto: paced(ORIGINAL.notice) }); break; }
     case 'autobattle': {
       const { war: w, res } = e, winner = res.attWins ? w.attacker : w.defender;
       addLog(`${factionName(w.attacker)}进攻${cityName(w.city)}（${factionName(w.defender)}）：${res.attWins ? '<strong>攻陷</strong>' : '败退'}`);

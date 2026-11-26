@@ -62,9 +62,9 @@ test('火矢 marks the archers\' shots as fire arrows while it lasts', () => {
   assert.equal(t.attack(arc, t.units[2], false).fire, false);
 });
 
-// 武将不战死 (T16/T17): a general at 0 HP is taken at SPARED_HP; off, he dies as before. A ruler, who cannot be
-// taken, dies as in the original either way (Desktop 0.2.3: one kept at 30 HP with nowhere to fall back to stood on
-// his last city for good, and the war could only be lost on day 30).
+// 武将不战死 (T16/T17): a general at 0 HP is taken at SPARED_HP; off, he dies as before. A ruler is taken too since
+// 2026-11-26 (the mode gathers officers): he leaves the field, so he cannot stand on his last city at 30 HP for good
+// as he did when kept alive there (Desktop 0.2.3, when the war could only be lost on day 30).
 function duelBoard(noWarDeath, defRuler = false) {
   const g = G.newGame(4, 1, 1); g.noWarDeath = noWarDeath;
   const rulers = new Set(g.factions.map((f) => f.ruler));
@@ -88,17 +88,22 @@ test('不战死: a general struck to 0 HP is captured and comes out with 30 HP',
   assert.equal(ev.kill, false); assert.equal(ev.spared, 'captured');
   const r = t.result(); assert.equal(r.d.fate, 'captured'); assert.equal(r.d.hp, G.SPARED_HP); assert.equal(r.why, 'capture');
 });
-test('不战死: a ruler struck to 0 HP dies, as in the original', () => {
+test('不战死: a ruler struck to 0 HP is captured like anyone else', () => {
   const { t } = duelBoard(true, true);
   const ev = t.attack(t.units[2], t.units[1], false);
-  assert.ok(ev.kill); assert.equal(ev.spared, undefined);
-  const r = t.result(); assert.equal(r.d.fate, 'dead'); assert.equal(r.d.hp, 0); assert.equal(r.why, 'dead');
+  assert.equal(ev.kill, false); assert.equal(ev.spared, 'captured');
+  const r = t.result(); assert.equal(r.d.fate, 'captured'); assert.equal(r.d.hp, G.SPARED_HP); assert.equal(r.why, 'capture');
 });
-test('不战死: a ruler slain in a 单挑 stays slain', () => {
+test('不战死: a ruler felled in a 单挑 is captured, and leaves no 宝物', () => {
   const { t, dId } = duelBoard(true, true);
   t.duel = { result: { dead: dId, winner: t.side.a.id } };
   const end = t.resolveDuel();
-  assert.equal(end.res.dead, dId); assert.equal(end.res.captured, undefined); assert.equal(t.result().d.fate, 'dead');
+  assert.equal(end.res.dead, null); assert.equal(end.res.captured, dId); assert.equal(end.res.loot, undefined); assert.equal(t.result().d.fate, 'captured');
+});
+test('off: a ruler struck to 0 HP dies, as in the original', () => {
+  const { t } = duelBoard(false, true);
+  const ev = t.attack(t.units[2], t.units[1], false);
+  assert.ok(ev.kill); assert.equal(t.result().d.fate, 'dead');
 });
 test('不战死: a 单挑 fall becomes a capture', () => {
   const { t, dId } = duelBoard(true);
@@ -108,8 +113,8 @@ test('不战死: a 单挑 fall becomes a capture', () => {
 });
 
 
-// On the war map a ruler brought to 0 HP under 武将不战死 dies, by a 计略 or a 白兵, enemy or the player's own,
-// commanding or not: he does not stay on the field at 30 HP, and the log says 阵亡.
+// On the war map a ruler brought to 0 HP under 武将不战死 is taken, by a 计略 or a 白兵, enemy or the player's own,
+// commanding or not: he leaves the field (he does not stay on it at 30 HP), and the log says 被擒.
 function rulerWar(commander, human = null) {
   const g = G.newGame(4, 1, 1); g.noWarDeath = true;
   const foeNear = (i, c) => G.roads(c).find((n) => g.cities[n].faction !== i && g.cities[n].faction !== G.NONE && g.cities[n].officers.length);
@@ -127,32 +132,34 @@ function rulerWar(commander, human = null) {
   return { g, field, ruler: field.units.find((u) => u.id === ruler), foe: field.units.find((u) => u.side === 'att') };
 }
 for (const [commander, human] of [[true, null], [false, null], [false, 'def']]) {
-  test(`不战死: ${human ? "the player's" : 'a'} ruler ${commander ? 'commanding' : 'not commanding'} felled by 落石 dies`, () => {
+  test(`不战死: ${human ? "the player's" : 'a'} ruler ${commander ? 'commanding' : 'not commanding'} felled by 落石 is taken`, () => {
     const { g, field, ruler, foe } = rulerWar(commander, human);
     g.officers[ruler.id].hp = 1; field.r = () => 0; foe.x = ruler.x; foe.y = ruler.y + (ruler.y > 0 ? -1 : 1); // within reach
     const res = field.cast(foe, 9, ruler, true);
     assert.ok(res.hit, '落石 hit');
-    assert.equal(g.officers[ruler.id].status, G.DEAD); assert.equal(ruler.gone, true); assert.equal(ruler.fate, 'dead');
-    assert.match(res.lines.join(' '), /阵亡/); assert.doesNotMatch(res.lines.join(' '), /负伤|坚守/);
+    assert.notEqual(g.officers[ruler.id].status, G.DEAD); assert.equal(ruler.gone, true); assert.equal(ruler.fate, 'captured');
+    assert.equal(g.officers[ruler.id].hp, G.SPARED_HP); assert.equal(ruler.capturedBy, 'att');
+    assert.match(res.lines.join(' '), /被擒/); assert.doesNotMatch(res.lines.join(' '), /阵亡|负伤|坚守/);
     assert.equal(field.woundedPick, undefined, 'no city to pick');
     if (commander) assert.deepEqual(field.over, { loser: 'def', why: 'commander' }); else { assert.equal(field.over, null); field.end('att', 'timeout'); }
-    assert.ok(field.result().dead.includes(ruler.id), 'settled as a death');
+    assert.ok(field.result().captured.byAtt.includes(ruler.id), 'settled as a prisoner of the attacker');
   });
 }
-test('不战死: a ruler felled in a 白兵 dies and the war ends with his command', () => {
+test('不战死: a ruler taken in a 白兵 leaves the field and the war ends with his command', () => {
   const { g, field, ruler, foe } = rulerWar(true);
-  field.applySkirmish(foe, ruler, { a: { soldiers: 500, hp: 40, fate: null }, d: { soldiers: 300, hp: 0, fate: 'dead' } });
-  assert.equal(g.officers[ruler.id].status, G.DEAD); assert.equal(ruler.fate, 'dead');
+  field.applySkirmish(foe, ruler, { a: { soldiers: 500, hp: 40, fate: null }, d: { soldiers: 300, hp: G.SPARED_HP, fate: 'captured' } });
+  assert.notEqual(g.officers[ruler.id].status, G.DEAD); assert.equal(ruler.fate, 'captured'); assert.equal(ruler.gone, true);
   assert.deepEqual(field.over, { loser: 'def', why: 'commander' });
 });
-// A whole 白兵 played out on a real field: the ruler's 0 HP reaches the war map as 阵亡, not as a wound.
-test('不战死: a 白兵 that brings a ruler to 0 HP settles as his death on the war map', () => {
+// A whole 白兵 played out on a real field: the ruler's 0 HP reaches the war map as a capture, not as a wound.
+test('不战死: a 白兵 that brings a ruler to 0 HP settles as his capture on the war map', () => {
   const { g, field, ruler, foe } = rulerWar(true);
   g.officers[ruler.id].hp = 1; g.officers[foe.id].war = 100; g.officers[foe.id].hp = 100;
   foe.x = ruler.x; foe.y = ruler.y + (ruler.y > 0 ? -1 : 1);
   const res = field.attack(foe, ruler);
   if (res.pending) res.auto();
-  assert.equal(res.d.fate, 'dead'); assert.equal(g.officers[ruler.id].status, G.DEAD); assert.equal(ruler.gone, true);
+  assert.equal(res.d.fate, 'captured'); assert.notEqual(g.officers[ruler.id].status, G.DEAD); assert.equal(ruler.gone, true);
+  assert.ok(field.result().captured.byAtt.includes(ruler.id));
 });
 
 // 白兵 retreat pursuit on a real war (docs/原版白兵撤退追击逻辑与修复交接_2026-11-07.md): the player's commander
@@ -161,6 +168,7 @@ test('不战死: a 白兵 that brings a ruler to 0 HP settles as his death on th
 for (const [label, draws, alive] of [['survives', [50, 8], true], ['dies', [50, 9], false]]) {
   test(`白兵 retreat pursuit on the war map: the commander ${label}`, () => {
     const { g, field, ruler, foe } = rulerWar(true, 'def');
+    g.noWarDeath = false; // the original rule: a pursuit to 0 is a death
     g.officers[ruler.id].hp = alive ? 40 : 14;
     foe.x = ruler.x; foe.y = ruler.y + (ruler.y > 0 ? -1 : 1);
     const res = field.attack(foe, ruler), b = res.pending;
@@ -261,8 +269,8 @@ test('单挑斩杀: another ruler gives 龙牙刀 below 50, once a game; a plain
   const plain = g.officers.find((o) => o.status === 2 && !rulers.has(o.id) && ![131, 173, 182, 222].includes(o.id)).id;
   assert.equal(slay(plain, { g: G.newGame(4, 1, 1) }).res.loot, undefined);
 });
-test('单挑斩杀: under 不战死 a ruler is still slain, so 马腾 still gives 青釭剑', () => {
-  const { res, o } = slay(182, { noWarDeath: true }); assert.equal(res.dead, 182); assert.deepEqual(res.loot, { id: o.id, eq: 5 });
+test('单挑斩杀: under 不战死 a ruler is taken, not slain, so 马腾 gives no 青釭剑', () => {
+  const { res, o } = slay(182, { noWarDeath: true }); assert.equal(res.dead, null); assert.equal(res.captured, 182); assert.equal(res.loot, undefined); assert.equal(o.weapon, 0);
 });
 
 // Contact between the generals (feedback R02, 2026-11-02): a 退却 order on the foe's side, his AI withdrawal or a

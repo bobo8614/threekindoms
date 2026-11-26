@@ -212,6 +212,28 @@ test('the 铁铺 list shows each officer\'s weapon and armour', async () => {
   await page.waitForSelector('.shade', { state: 'detached' });
 });
 
+// The 人物志 lists 体 (the 体力上限) beside 武、智、德 (真真@devblog, 2026-11-25): the record's own cap when the editor set one,
+// else the template's, and not the 体力 left this month.
+test('the 人物志 lists each officer\'s 体力上限 as 体', async () => {
+  const want = await page.evaluate(() => {
+    const { g, G } = window.__game, home = g.factions[g.player].city, [a, b] = g.cities[home].officers;
+    const hp = g.officers[a].hp; g.officers[a].hp = 1; g.officers[b].maxHp = 77;
+    return { hp, a: { name: G.name(a), cap: String(G.data().officers[a].hp) }, b: { name: G.name(b), cap: '77' } };
+  });
+  await page.click('.wikibtn');
+  await page.waitForSelector('.modal .wikitable');
+  const t = await page.evaluate((names) => {
+    const heads = [...document.querySelectorAll('.modal .wikitable thead th')].map((e) => e.textContent);
+    const at = heads.indexOf('体'), rows = [...document.querySelectorAll('.modal .wikitable tbody tr')];
+    return { heads, cells: names.map((n) => rows.find((r) => r.querySelector('td.nm').textContent.includes(n)).querySelectorAll('td')[at]?.textContent) };
+  }, [want.a.name, want.b.name]);
+  assert.deepEqual(t.heads.slice(1, 5), ['武', '智', '德', '体'], `columns ${t.heads}`);
+  assert.deepEqual(t.cells, [want.a.cap, want.b.cap]);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.shade', { state: 'detached' });
+  await page.evaluate((hp) => { const { g } = window.__game, [a, b] = g.cities[g.factions[g.player].city].officers; g.officers[a].hp = hp; delete g.officers[b].maxHp; }, want.hp);
+});
+
 // The help tells the keys it used to leave out (feedback R11, 2026-11-02): on its 操作 page (src/controls.js), 键鼠, across
 // the scene tabs, each key cap beside what it does.
 test('the 说明 tells the menu number keys, T, Alt, Esc and the 资料', async () => {

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as G from '../src/core/game.js';
 import { setupWar, resolveWar } from '../src/core/warcore.js';
+import { Field } from '../src/core/field.js';
 G.setData(JSON.parse(readFileSync(new URL('../data/game-data.json', import.meta.url))));
 
 const CAO = 131, MAO = 32, F = 2, LIU = 4; // 曹操, 夏侯楙 (head of 曹操's queue, 196), their house, 刘备's house
@@ -154,4 +155,63 @@ test('a stuck record whose house has since lost every city falls, and the queue 
   assert.equal(g.factions[F].fallen, CAO);
   await month(g);
   assert.equal(G.factionOf(g, MAO), LIU);
+});
+
+// 武将不战死 (2026-11-26): a ruler is taken like anyone else. His capture marks his house's 心向 as lapsed
+// (g.preferLost, read by preferOf under the mode), whether it crowns an heir or falls; and a taken ruler with no room
+// near the battle goes to any of his captor's cities with room rather than 下野 (which would lose him).
+test('不战死: a ruler taken with cities left marks his house\'s 心向 lapsed; the heir still reigns', async () => {
+  const { g } = await capture({ otherCity: true });
+  assert.deepEqual(g.preferLost, [F]);
+  assert.ok(g.factions[F].ruler != null && g.factions[F].ruler !== CAO);
+  assert.equal(G.preferOf(g, 161), F, 'off, 程昱 still favours the house');
+  g.noWarDeath = true;
+  assert.equal(G.preferOf(g, 161), null, 'under the mode he does not');
+  assert.ok(JSON.parse(JSON.stringify(g)).preferLost.includes(F), 'the record keeps it');
+});
+test('不战死: a ruler taken with nowhere near to go serves in another of his captor\'s cities, not 下野', () => {
+  for (const on of [true, false]) {
+    const g = G.newGame(LIU, 0, 17); g.year = 196; g.ageless = true; g.noWarDeath = on;
+    const target = G.officerCity(g, CAO), source = g.cities.find((c) => c.faction === LIU), attacker = source.officers[0];
+    const war = setupWar(g, { from: source.id, to: target.id, ids: [attacker], commander: attacker, gold: 0, rice: 0 });
+    const spare = g.officers.filter((o) => o.status === G.UNAPPEARED).map((o) => o.id);
+    const near = [target.id, ...G.roads(target.id)];
+    for (const n of G.roads(target.id)) {
+      const c = g.cities[n];
+      if (c.faction === LIU) while (c.officers.length < 10) { const id = spare.pop(); g.officers[id].status = G.SERVING; c.officers.push(id); }
+      else if (c.faction === G.NONE) c.faction = 5;
+    }
+    const far = g.cities.find((c) => !near.includes(c.id) && c.faction !== LIU && !c.officers.includes(g.factions[c.faction]?.ruler));
+    for (const id of [...far.officers]) G.toRonin(g, id);
+    far.faction = LIU; far.officers = [];
+    const crowd = spare.splice(-9); for (const id of crowd) g.officers[id].status = G.SERVING; // fill the battle city first
+    const prisoners = [...war.def.ids.filter((x) => x !== CAO), CAO]; // the ruler last: the overflow
+    resolveWar(g, war, { loser: 'def', survivors: { att: [attacker, ...crowd], def: [] }, dead: [],
+      captured: { byAtt: prisoners, byDef: [] }, retreated: [], chests: { att: war.att, def: war.def }, skipCut: true });
+    if (on) { assert.equal(g.officers[CAO].status, G.SERVING); assert.ok(far.officers.includes(CAO), 'in the far city with room'); }
+    else assert.equal(g.officers[CAO].status, G.RONIN, 'off: 下野 as before');
+  }
+});
+
+// End to end at loyalty 100: a 落石 brings 曹操 to 0 HP on the war map; the field's record, the settlement and
+// checkFactions give him to 刘备, crown his heir, and leave 程昱 free of his 心向.
+test('不战死 end to end: 曹操 felled on the war map is taken, his house crowns an heir, 程昱 no longer favours it', async () => {
+  const g = G.newGame(LIU, 0, 17); g.year = 196; g.ageless = true; g.noWarDeath = true;
+  assert.equal(g.officers[CAO].loyalty, 100);
+  const target = G.officerCity(g, CAO), source = g.cities.find((c) => c.faction === LIU), attacker = source.officers[0];
+  const war = setupWar(g, { from: source.id, to: target.id, ids: [attacker], commander: attacker, gold: 0, rice: 0 });
+  war.def.ids = [CAO, ...war.def.ids.filter((x) => x !== CAO)]; // he commands
+  const field = new Field(g, war, null), cao = field.units.find((u) => u.id === CAO), foe = field.units.find((u) => u.side === 'att');
+  g.officers[CAO].hp = 1; field.r = () => 0; foe.x = cao.x; foe.y = cao.y + (cao.y > 0 ? -1 : 1);
+  assert.ok(field.cast(foe, 9, cao, true).hit);
+  assert.deepEqual(field.over, { loser: 'def', why: 'commander' });
+  const res = field.result();
+  assert.ok(res.captured.byAtt.includes(CAO)); assert.ok(!res.dead.includes(CAO));
+  resolveWar(g, war, res);
+  const events = [], io = { event: async (e) => events.push(e), chooseHeir: async (_f, ids) => ids[0] };
+  await G.checkFactions(g, io);
+  assert.equal(g.officers[CAO].status, G.SERVING); assert.equal(G.factionOf(g, CAO), LIU); assert.equal(g.officers[CAO].hp, G.SPARED_HP);
+  const heir = events.find((e) => e.type === 'heir');
+  assert.ok(heir?.captured, 'an heir, told of a capture'); assert.equal(g.factions[F].ruler, heir.heir);
+  assert.equal(G.preferOf(g, 161), null);
 });

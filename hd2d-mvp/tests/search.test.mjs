@@ -107,7 +107,7 @@ test('search_preference holds the original table, 程昱 with 曹操 among them'
 // his price like anyone else; only a 未登场 entry from the city's table can become result 7 and refuse
 // (research/player-search-evidence.md §3). 0.4.3 ran every candidate through the table. Here the player is 曹操 and
 // 徐庶 favours 刘备; every outcome row is forced to `res`.
-function ronin(res, { status = G.RONIN, year = 190, seed = 1 } = {}) {
+function ronin(res, { status = G.RONIN, year = 190, seed = 1, lapse = false } = {}) {
   const g = G.newGame(2, 1, seed), jing = D.cities.find((c) => c.name === '荆州').id, c = g.cities[jing], xu = id('徐庶');
   c.faction = g.player; c.officers = g.officers.filter((o) => o.status === G.SERVING).slice(0, 3).map((o) => o.id);
   g.year = year;
@@ -116,6 +116,7 @@ function ronin(res, { status = G.RONIN, year = 190, seed = 1 } = {}) {
   const near = [jing, ...G.roads(jing)], far = D.cities.findIndex((x, i) => !near.includes(i));
   for (const o of g.officers) if (o.status === G.RONIN) o.loc = far;
   Object.assign(g.officers[xu], { status, loc: jing, loyalty: 60 });
+  if (lapse) { g.noWarDeath = true; g.preferLost = [Number(Object.entries(D.rules.search_preference).find(([, ids]) => ids.includes(xu))[0])]; }
   const rows = D.search_outcomes; D.search_outcomes = Object.fromEntries(Object.keys(rows).map((k) => [k, Array(8).fill(res)]));
   try { return { g, c, xu, out: G.search(g, jing, c.officers[0]) }; } finally { D.search_outcomes = rows; }
 }
@@ -134,4 +135,39 @@ test('D50: a 下野 徐庶 drawn as result 6 asks his price instead of refusing'
 test('D50: a 未登场 徐庶 at the head of the queue still goes by his preference', () => {
   const { out } = ronin(5, { status: G.UNAPPEARED, year: 194 });
   assert.match(out.msg, /仁德|拒绝/); assert.equal(out.offer, undefined);
+});
+
+// 武将不战死 (2026-11-26): once a house's ruler has been taken (g.preferLost) or the house has fallen, those who favoured
+// it are found like anyone else: a 未登场 徐庶 drawn as 5 joins free, as 6 asks his price, and never refuses. Off, or
+// with 刘备's house standing and untaken, he goes by his preference as before.
+test('不战死: 徐庶 no longer favours 刘备 once 刘备 was taken: result 5 joins free', () => {
+  for (let seed = 0; seed < 40; seed++) {
+    const { c, xu, out } = ronin(5, { status: G.UNAPPEARED, year: 194, seed, lapse: true });
+    assert.equal(out.joined, xu, `seed ${seed}: ${out.msg}`); assert.doesNotMatch(out.msg, /仁德|拒绝/); assert.ok(c.officers.includes(xu));
+  }
+});
+test('不战死: once lapsed, result 6 asks his price', () => {
+  const { g, xu, out } = ronin(6, { status: G.UNAPPEARED, year: 194, lapse: true }), t = g.officers[xu];
+  assert.equal(out.offer, xu); assert.equal(out.price, Math.floor((t.hp + t.war + t.int) / 3));
+});
+test('不战死: preferOf lapses with a taken ruler or a fallen house, and only in the mode', () => {
+  const g = G.newGame(2, 1, 1), xu = id('徐庶'), liu = G.preferOf(g, xu);
+  assert.equal(liu, Number(Object.entries(D.rules.search_preference).find(([, ids]) => ids.includes(xu))[0]));
+  g.preferLost = [liu];
+  assert.equal(G.preferOf(g, xu), liu, 'off: the preference stands');
+  g.noWarDeath = true;
+  assert.equal(G.preferOf(g, xu), null, 'his ruler was taken');
+  const h = G.newGame(2, 1, 1); h.noWarDeath = true;
+  assert.equal(G.preferOf(h, xu), liu, 'the house stands, its ruler untaken');
+  G.destroyFaction(h, liu);
+  assert.equal(G.preferOf(h, xu), null, 'the house fell');
+});
+test('不战死: an AI house whose ruler was taken loses its 90% on those who favoured it (甘宁)', () => {
+  const g = G.newGame(4, 1, 1), f = g.factions.findIndex((x) => x && x.ruler === id('孙策')), jx = D.cities.find((c) => c.name === '江夏').id;
+  for (const c of g.cities) if (c.faction === f) c.faction = G.NONE;
+  const c = g.cities[jx]; c.faction = f; c.officers = [id('孙策')]; g.officers[id('孙策')].city = jx; g.factions[f].city = jx; g.year = 191;
+  g.noWarDeath = true; g.preferLost = [f];
+  const draws = [0, 50, 50]; // as above: 甘宁 at 50 now fails the plain 10%
+  housekeeping(g, f, () => (draws.length ? draws.shift() : 99), () => true);
+  assert.ok(!c.officers.includes(id('甘宁')));
 });

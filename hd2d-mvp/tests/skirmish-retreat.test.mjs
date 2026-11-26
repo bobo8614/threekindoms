@@ -110,13 +110,13 @@ test('both at 0 men, the foe general across the field: still the same draw', () 
   assert.equal(t.side.d.hp, 10);
 });
 
-test('武将不战死: a pursuit to 0 takes an officer captive (SPARED_HP); a ruler dies; off, an officer dies', () => {
+test('武将不战死: a pursuit to 0 takes an officer captive (SPARED_HP), a ruler too; off, an officer dies', () => {
   const on = edge('a', { hp: 5, noWarDeath: true });
   assert.equal(out(on.t, on.gu, [99, 9]).ev.pursuit.fell, 'captured');
   assert.equal(on.t.result().a.fate, 'captured'); assert.equal(on.t.result().a.hp, G.SPARED_HP); assert.equal(on.t.over.why, 'capture');
   const ruler = edge('a', { hp: 5, noWarDeath: true, ruler: true });
-  assert.equal(out(ruler.t, ruler.gu, [99, 9]).ev.pursuit.fell, 'dead');
-  assert.equal(ruler.t.result().a.fate, 'dead');
+  assert.equal(out(ruler.t, ruler.gu, [99, 9]).ev.pursuit.fell, 'captured');
+  assert.equal(ruler.t.result().a.fate, 'captured'); assert.equal(ruler.t.result().a.hp, G.SPARED_HP);
   const off = edge('a', { hp: 5 });
   assert.equal(out(off.t, off.gu, [99, 9]).ev.pursuit.fell, 'dead');
 });
