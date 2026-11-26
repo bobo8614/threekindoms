@@ -56,41 +56,107 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 载入镜像并推送
+      # ------------------------------------------------------------------
+      # 关键改动：不再用 find | head -n1 只取第一个 tar。
+      # 按文件名里的架构分别 load / push，再把两个 digest 合成多架构 manifest。
+      # ------------------------------------------------------------------
+      - name: 载入并推送各架构镜像
+        id: arches
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
-
-          TAR=$(find "$RUNNER_TEMP/image" -name 'threekindoms-hd2d-*.tar' | head -n1)
-          if [ -z "$TAR" ]; then
-            echo "没有找到镜像 tar 包"; exit 1
-          fi
-          echo "镜像包: $TAR"
-
-          # docker load 会输出 "Loaded image: xxx:yyy" 或 "Loaded image ID: sha256:..."
-          LOAD_OUT=$(docker load -i "$TAR")
-          echo "$LOAD_OUT"
-
-          REF=$(printf '%s\n' "$LOAD_OUT" | sed -n 's/^Loaded image: //p' | head -n1)
-          if [ -z "$REF" ]; then
-            REF=$(printf '%s\n' "$LOAD_OUT" | sed -n 's/^Loaded image ID: //p' | head -n1)
-          fi
-          if [ -z "$REF" ]; then
-            echo "无法从 docker load 输出中识别镜像，请检查 tar 包"; exit 1
-          fi
-
           TARGET="ghcr.io/${OWNER}/threekindoms-hd2d"
-          docker tag "$REF" "$TARGET:$TAG"
-          docker push "$TARGET:$TAG"
-          echo "已推送 $TARGET:$TAG"
+          IMG_DIR="$RUNNER_TEMP/image"
 
-          # 只有当前 Release 确实是最新 Release 时，才更新 latest 标签
-          LATEST_TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
-          if [ "$TAG" = "$LATEST_TAG" ]; then
-            docker tag "$REF" "$TARGET:latest"
-            docker push "$TARGET:latest"
-            echo "已更新 $TARGET:latest"
+          # 期望的 tar 命名：...-amd64.tar / ...-arm64.tar（当前发布即此命名）
+          declare -A ARCH_TAR
+          for arch in amd64 arm64; do
+            TAR=$(find "$IMG_DIR" -name "threekindoms-hd2d-*-${arch}.tar" | head -n1)
+            if [ -z "$TAR" ]; then
+              echo "::warning::未找到 ${arch} 架构的 tar，将跳过该架构"
+              continue
+            fi
+            ARCH_TAR[$arch]="$TAR"
+          done
+
+          if [ ${#ARCH_TAR[@]} -eq 0 ]; then
+            echo "没有找到任何架构的镜像 tar，退出"; exit 1
           fi
+
+          for arch in amd64 arm64; do
+            TAR="${ARCH_TAR[$arch]:-}"
+            [ -z "$TAR" ] && continue
+            echo "=== 载入 ${arch}: $TAR ==="
+            LOAD_OUT=$(docker load -i "$TAR")
+            echo "$LOAD_OUT"
+            REF=$(printf '%s\n' "$LOAD_OUT" | sed -n 's/^Loaded image: //p' | head -n1)
+            if [ -z "$REF" ]; then
+              REF=$(printf '%s\n' "$LOAD_OUT" | sed -n 's/^Loaded image ID: //p' | head -n1)
+            fi
+            if [ -z "$REF" ]; then
+              echo "无法识别 ${arch} 镜像 REF"; exit 1
+            fi
+
+            # 架构专属 tag（同时推送，便于单架构用户明确选择）
+            ARCH_TAG="${TARGET}:${TAG}-${arch}"
+            docker tag "$REF" "$ARCH_TAG"
+            docker push "$ARCH_TAG"
+            echo "已推送 $ARCH_TAG"
+
+            echo "${arch}=pushed" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: 创建并推送多架构 latest（以及版本 tag）
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TARGET="ghcr.io/${OWNER}/threekindoms-hd2d"
+
+          # 用上一步推送到仓库的架构专属 tag 作为 manifest 源最稳妥：
+          # 这些 tag 已经 push，GHCR 上一定有对应 manifest。
+          AMD64_SRC="${TARGET}:${TAG}-amd64"
+          ARM64_SRC="${TARGET}:${TAG}-arm64"
+          HAVE_AMD64=false; HAVE_ARM64=false
+          [ "${{ steps.arches.outputs.amd64 }}" = "pushed" ] && HAVE_AMD64=true
+          [ "${{ steps.arches.outputs.arm64 }}" = "pushed" ] && HAVE_ARM64=true
+
+          LATEST_TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          IS_LATEST=false
+          if [ "$TAG" = "$LATEST_TAG" ]; then IS_LATEST=true; fi
+
+          # 目标 tag 列表：版本 tag 始终更新为多架构；latest 仅最新 Release 更新
+          TARGETS=("$TARGET:$TAG")
+          if [ "$IS_LATEST" = true ]; then TARGETS+=("$TARGET:latest"); fi
+
+          BOTH=true
+          if [ "$HAVE_AMD64" != true ] || [ "$HAVE_ARM64" != true ]; then BOTH=false; fi
+
+          for OUT in "${TARGETS[@]}"; do
+            if [ "$BOTH" = true ]; then
+              echo "=== 创建多架构 manifest: $OUT (amd64 + arm64) ==="
+              docker manifest create "$OUT" "$AMD64_SRC" "$ARM64_SRC" --amend
+              docker manifest annotate "$OUT" "$AMD64_SRC" --os linux --arch amd64
+              docker manifest annotate "$OUT" "$ARM64_SRC" --os linux --arch arm64 --variant v8
+              docker manifest push --purge "$OUT"
+              echo "已推送多架构 $OUT"
+            else
+              # 只有一个架构可用：退化为单架构推送，避免 workflow 失败
+              SRC=""
+              [ "$HAVE_AMD64" = true ] && SRC="$AMD64_SRC"
+              [ "$HAVE_ARM64" = true ] && SRC="$ARM64_SRC"
+              echo "::warning::$OUT 只检测到单架构，退化为单架构推送 ($SRC)"
+              docker tag "$SRC" "$OUT"
+              docker push "$OUT"
+              echo "已推送单架构 $OUT"
+            fi
+          done
+
+          echo "=== 验证 ==="
+          for OUT in "${TARGETS[@]}"; do
+            docker manifest inspect "$OUT" | grep -E '"architecture"|"os"' | head -8 || true
+          done
