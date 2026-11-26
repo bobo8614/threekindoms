@@ -1,13 +1,13 @@
 {
   "add": [
     { "name": "勾践", "like": "孙策", "city": "会稽", "war": 80, "int": 75, "virtue": 85, "loyalty": 100 },
-    { "name": "范蠡", "like": "周瑜", "city": "会稽", "int": 95 },
+    { "name": "范蠡", "like": "周瑜", "city": "会稽", "int": 95, "soldiers": 1000, "troops": { "soldier": "hillman" } },
     { "name": "文种", "like": "顾雍", "city": "豫章" },
     { "name": "西施", "like": "陆逊", "city": "会稽", "appear": "search", "year": 190 },
     { "name": "伍子胥", "like": "太史慈", "appear": "join", "faction": "越", "year": 191 }
   ],
   "edit": [
-    { "officer": "关羽", "war": 100 },
+    { "officer": "关羽", "war": 100, "troops": { "soldier": "hillman", "cavalry": "elephant" } },
     { "officer": "张飞", "city": "建安" }
   ]
 }

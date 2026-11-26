@@ -178,12 +178,12 @@ const TURN_STRIKE = {
   sword: ['WIND-UP: sword raised high above his head, elbow up, torso leaning back', 'STRIKE: a forward CUT straight ahead along his facing, sword arm extended past the horse\'s head at shoulder height'],
 };
 function turnPrompt(key) {
-  const generic = key === 'attacker' || key === 'defender';
+  const gk = genericOf(key), generic = !!gk;
   const o = generic ? null : (heroine(key) || officer(Number(key)));
-  const cls = generic ? 'blade' : weaponClass(o);
+  const cls = generic ? gk.cls : weaponClass(o);
   const cart = !generic && CARRIAGE.has(o.name);
   const look = generic
-    ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm)`
+    ? `${genericLook(gk)}`
     : (o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
   const [wind, strike] = TURN_STRIKE[cls];
   const mount = cart ? 'his four-wheeled war carriage' : 'his horse';
@@ -236,11 +236,11 @@ CART.c = (a) => [
   'TRIUMPH: the victor — carriage standing still, he stands up on the carriage floor raising the feather fan STRAIGHT UP to the sky in one hand, the other hand on the carriage rail, robe flying',
 ];
 function wheelPrompt(key) {
-  const generic = key === 'attacker' || key === 'defender';
+  const gk = genericOf(key), generic = !!gk;
   const o = generic ? null : (heroine(key) || officer(Number(key)));
   const cart = !generic && CARRIAGE.has(o.name);
   const look = generic
-    ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm)`
+    ? `${genericLook(gk)}`
     : (o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
   const front = cart ? "the front of the carriage and his face and chest, with the carriage's right-hand side receding" : "the horse's face, chest and near flank at once, with the rider's face and chest";
   const back = cart ? 'the back of the carriage and his back, with its side receding' : "the horse's rump, tail and near flank at once, with the rider's back and cloak";
@@ -259,7 +259,8 @@ function wheelPrompt(key) {
   const rows = [
     ...legs.map((c, i) => `THREE-QUARTER FRONT ${i + 1}: ${c}`),
     ...legs.map((c, i) => `THREE-QUARTER BACK ${i + 1}: ${c}`),
-    ...run.map((c, i) => `THREE-QUARTER FRONT, FLEEING ${i + 1}: ${c}; he looks back over his shoulder`),
+    // A generic sword (2026-11-24): two takes swung the short blade back beside the banner while he looked over his shoulder.
+    ...run.map((c, i) => `THREE-QUARTER FRONT, FLEEING ${i + 1}: ${c}; he looks back over his shoulder${gk?.cls === 'sword' ? ', but the sword stays upright in his near hand in FRONT of his chest exactly as in rows 1–2, never swung back beside the banner pole' : ''}`),
     `EMPTY THREE-QUARTER FRONT 1: ${empty}, ${cart ? 'rolling fast' : 'bolting at a gallop, front legs reaching'}`,
     `EMPTY THREE-QUARTER FRONT 2: ${empty}, ${cart ? 'spokes a half turn on' : 'galloping, legs gathered'}`,
     `EMPTY FRONT 1: ${empty}, square-on from the FRONT, ${cart ? 'rolling toward the viewer' : 'bolting toward the viewer, head high, one fore leg reaching'}`,
@@ -380,12 +381,12 @@ const SHEET_LAYOUT = (cart) => `Layout (critical):
 - Background: one perfectly flat solid magenta (#FF00FF) everywhere — no ground, no shadow, no scenery, no text. No magenta or pink on the figures; trails and smears are pale gold / white, never pink.
 - Detailed 16-bit SNES/Octopath-style pixel art matching reference image 1 exactly: same pixel scale, crisp pixel clusters, dark outlines, 3-tone shading, light from the upper left.`;
 function spinLeapPrompt(key, kind) {
-  const generic = key === 'attacker' || key === 'defender';
+  const gk = genericOf(key), generic = !!gk;
   const o = generic ? null : (heroine(key) || officer(Number(key)));
   const look = generic
-    ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm)`
+    ? `${genericLook(gk)}`
     : (o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`);
-  const base = generic ? 'blade' : DRAWN_AS[o.name] || weaponClass(o);
+  const base = generic ? gk.cls : DRAWN_AS[o.name] || weaponClass(o);
   const cls = base === 'spear' && TWIN.test(look) ? 'twin' : base;
   const cart = !generic && CARRIAGE.has(o.name);
   const idle = cart ? 'IDLE (reference): carriage standing still, all four wheels on the ground, he sits upright holding the feather fan up — identical to the first cell of reference image 1'
@@ -432,17 +433,26 @@ ${rows.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 ${notes} Exactly two hands in every cell.`;
 }
 
+// The generic generals, one per side, in each weapon class (src/core/pack.js genericArt): `attacker` / `defender` carry the
+// glaive, `<side>-spear` and `<side>-sword` are the same riders with the other two weapons.
+export const genericOf = (key) => { const m = /^(attacker|defender)(?:-(spear|sword))?$/.exec(String(key)); return m && { side: m[1], cls: m[2] || 'blade' }; };
+export const GENERIC_WEAPON = {
+  blade: 'carrying a long glaive (guandao-style polearm)',
+  spear: 'carrying a long Han spear (mao) — a slender leaf-shaped iron spearhead with a small red horsehair tassel tied just below the head, on a dark lacquered wooden shaft longer than he is tall, NOT a glaive and with no curved blade; exactly ONE spear, always in his hands — when he thrusts or draws it back there is no second spear standing upright beside him',
+  sword: 'carrying a straight double-edged Han sword (jian) held in ONE hand, the other hand on the reins — a one-handed sword, NOT a polearm; exactly ONE sword, always in his hand, and no polearm anywhere',
+};
+const genericLook = ({ side, cls }) => `a generic ${side === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${side === 'attacker' ? 'brown' : 'black'} warhorse, ${GENERIC_WEAPON[cls]}${cls === 'blade' ? '' : `, with his side's ${side === 'attacker' ? 'green dragon' : 'yellow'} war banner on a pole strapped to his back in every cell where he is mounted`}`;
 // A woman general's look (heroine_prompts.mjs) gets the same sheets with every pronoun turned.
 export const framePrompt = (key, sheet = 'a') => isHeroine(key) ? feminize(riderPrompt(key, sheet)) : riderPrompt(key, sheet);
 function riderPrompt(key, sheet = 'a') {
   if (sheet === 'turn') return turnPrompt(key);
   if (sheet === 'wheel') return wheelPrompt(key);
   if (sheet === 'spin' || sheet === 'leap') return spinLeapPrompt(key, sheet);
-  const generic = key === 'attacker' || key === 'defender';
+  const gk = genericOf(key), generic = !!gk;
   const o = generic ? null : (heroine(key) || officer(Number(key)));
-  const cls = generic ? 'blade' : weaponClass(o);
+  const cls = generic ? gk.cls : weaponClass(o);
   const look = generic
-    ? `a generic ${key === 'attacker' ? 'green-and-silver armoured' : 'crimson-and-gold armoured'} Three Kingdoms general on a ${key === 'attacker' ? 'brown' : 'black'} warhorse, carrying a long glaive (guandao-style polearm) — exactly as in reference image 1`
+    ? `${genericLook(gk)} — exactly as in reference image 1`
     : `${o.look || ICONIC[o.name] || `${o.name} (Romance of the Three Kingdoms officer), carrying a ${DATA.equipment[o.weapon].name}`} — exactly as in reference image 1`;
   const s = STRIKE[cls], w = SWING[cls];
   const cart = !generic && CARRIAGE.has(o.name);

@@ -8,6 +8,7 @@ import { STRATEGY_FX } from '../fx.js';
 import { stage, fresh } from '../commitguard.js';
 import { PHONE } from '../phone.js';
 import { UNTIL_HIT } from '../core/batch.js';
+import { genericArt } from '../core/pack.js';
 
 export function makeInteract(wv) {
   const { field, audio, ui, human, scene, terr, inside, views, removeGone, mark, clearMarks, clearPreview, cursor, frameCast, keepInView, unframeCast } = wv;
@@ -318,8 +319,10 @@ export function makeInteract(wv) {
   // `held`: called from the shop dialog, which holds the field itself while it is open.
   function shop(u, eq, { held = false } = {}) {
     if (!u || u.gone || u.side !== human || (st.busy && !held) || field.over || field.turn !== human) return;
-    const res = field.buyEquip(u, eq);
+    const before = genericArt('', field.O(u.id).weapon), res = field.buyEquip(u, eq);
     ui.log(res.ok ? res.msg : `${name(u.id)}：${res.msg}`);
+    // A general riding as the generic one takes up the look of the new weapon's class at once (core/pack.js genericArt, war/units.js).
+    if (res.ok && genericArt('', field.O(u.id).weapon) !== before && views.get(u)) { wv.drop(views.get(u).g); views.delete(u); wv.addUnit(u); }
     wv.tag(u); hud(); if (res.ok) st.flash = true;
     if (st.sel === u) showOptions(); st.flash = false;
   }

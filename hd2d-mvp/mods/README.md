@@ -102,7 +102,7 @@ node hd2d-mvp/tools/check_pack.mjs --all --index
 | `ruler` | 是 | 君主：开局必须在本势力的某座城里，不能是别的势力的君主 |
 | `like` | 是 | 借用哪个原版势力的 AI 性格（进攻与内政的倾向、调兵的门槛） |
 | `colors` | 是 | `flag` 旗帜和名牌的颜色，`land` 领地染色的颜色，都写成 `#rrggbb` |
-| `troops` | 否 | 白兵里这家士兵的外观，只换样子、不换规则：`soldier`（步兵）可写 `hillman` 山岳蛮兵、`ashigaru` 日本足轻，`cavalry`（骑兵）可写 `elephant` 南蛮战象、`steppe` 匈奴铁骑，例如 `{ "soldier": "ashigaru", "cavalry": "steppe" }`；没写的兵种照原版。这些外观的图只在开源仓库里，桌面版和安卓版的安装包不带，在那里照原版兵种显示 |
+| `troops` | 否 | 白兵里这家士兵的外观，只换样子、不换规则：`soldier`（步兵）可写 `hillman` 山岳蛮兵、`ashigaru` 日本足轻，`cavalry`（骑兵）可写 `elephant` 南蛮战象、`steppe` 匈奴铁骑，例如 `{ "soldier": "ashigaru", "cavalry": "steppe" }`；没写的兵种照原版。武将自己也可以写 `troops`（见 officers.json），写了的兵种以武将的为准。这些外观的图只在开源仓库里，桌面版和安卓版的安装包不带，在那里照原版兵种显示 |
 | `succession` | 否 | 君主死后优先继位的人，按顺序 |
 | `join` | 否 | 到了登场年份会自动来君主所在城出仕的武将，按顺序 |
 | `prefer` | 否 | 偏爱本势力的武将：被本势力搜索到时更容易出仕 |
@@ -132,13 +132,14 @@ node hd2d-mvp/tools/check_pack.mjs --all --index
 | `name` | 是 | 不能与已有武将重名 |
 | `like` | 是 | 借用哪个**原版**武将的整套美术：立绘、半身像、表情、单挑和行军的像素图。同一张脸会出现在两个人身上，这是只写数据的代价 |
 | `look` | 否 | 女将外观，只换战场上的样子：`f-spear` 女将·枪、`f-blade` 女将·刀、`f-sword` 女将·剑。白兵立像、单挑动作和战争地图行军都换成这套，立绘、表情和数值仍取 `like` 的。单挑里的出招按外观画的兵器走，最好把 `weapon` 写成同一类（剑 0–7、刀 8–15、枪 16–23），不一致时 `check_pack.mjs` 会提示。这些图只在开源仓库里，桌面版和安卓版的安装包不带，在那里照 `like` 的样子显示 |
+| `troops` | 否 | 他带的兵在白兵里的外观，写法同 factions.json 的 `troops`，例如 `{ "cavalry": "elephant" }`。跟着武将走，不管他在哪个势力：写了的兵种用他的，没写的用所在势力的，势力也没写就照原版。同样只换样子、不换规则，安装包里照原版兵种显示 |
 | `appear` | 否 | `initial` 开局就在城中（默认）、`search` 到年份后在城里搜索出现、`join` 到年份后自动来势力君主所在城出仕 |
 | `city` | `initial`、`search` 必填 | 所在城 |
 | `faction` | `join` 必填 | 投奔哪个势力 |
 | `year` | 否 | 登场年，默认 189；`initial` 只能是 189 |
 | `hp` `war` `int` `loyalty` `virtue` `exp` `soldiers` `weapon` `armor` `level` `army` `death` | 否 | 不写就取 `like` 那个武将的。`army` 是兵种：平、山、水；`death` 是寿终的年份 |
 
-改原版武将（`edit`）：用 `officer` 指明是谁，能改数值；`city` 只能挪开局就在城中的武将。不能改登场年份，也不能删武将。
+改原版武将（`edit`）：用 `officer` 指明是谁，能改数值，也能写 `troops` 给他的兵换外观（例如让原版某员南方武将带战象）；`city` 只能挪开局就在城中的武将。不能改登场年份，也不能删武将。
 
 ## 官方扩展地块
 

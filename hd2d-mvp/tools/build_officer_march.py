@@ -1,7 +1,7 @@
 """Build a star officer's war-map march strip from his painted 单挑 strips, so he rides the war map in his own
 armour and horse instead of his side's generic general.
 
-  python3 hd2d-mvp/tools/build_officer_march.py [officer_id ...]   (no ids: every officer in duel/index.json)
+  python3 hd2d-mvp/tools/build_officer_march.py [officer_id|attacker-spear|... ...]   (no ids: every officer in duel/index.json)
 
 In:  assets/ai/sprites/duel/<id>.png / .json      — side profile (slice_duel_frames.py): idle_a, walk_1..4
      assets/ai/sprites/duel/<id>-turn.png / .json — straight front / back (slice_troop_frames.py --duel):
@@ -15,7 +15,7 @@ Out: assets/ai/sprites/march/<id>.png  — one row of equal cells, frames <side|
 The war map shows front / back only for headings within ~35° of the camera axis (src/warview.js pose()), where
 the straight-on views read right; the generic generals keep their three-quarter sheets (slice_march_frames.py).
 """
-import json, os, sys
+import json, os, re, sys
 from PIL import Image
 
 MVP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,5 +68,9 @@ def build(oid):
 ids = sys.argv[1:] or [k for k in json.load(open(os.path.join(DUEL, 'index.json'))) if k.isdigit()]
 os.makedirs(OUT, exist_ok=True)
 for oid in ids: print(build(oid))
-have = sorted({f[:-5] for f in os.listdir(OUT) if f.endswith('.json') and f[:-5].isdigit()}, key=int)
+# The generic generals' spear and sword sets (src/core/pack.js genericArt) ride in strips built the same way and are listed after
+# the officers; the glaive pair keeps its three-quarter sheets, loaded by name (slice_march_frames.py).
+ARMED = re.compile(r'(attacker|defender)-(spear|sword)')
+keys = {f[:-5] for f in os.listdir(OUT) if f.endswith('.json')}
+have = sorted((k for k in keys if k.isdigit()), key=int) + sorted(k for k in keys if ARMED.fullmatch(k))
 json.dump(have, open(os.path.join(OUT, 'index.json'), 'w'))

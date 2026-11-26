@@ -171,7 +171,8 @@ export function officerRow(g, id, { on, onclick, extra } = {}) {
   const o = g.officers[id];
   return h('div', { class: `off ${on ? 'on' : ''}`, 'data-id': id, ...(onclick ? pressable(onclick, { 'aria-pressed': on ? 'true' : null }) : {}) },
     avatar(id),
-    h('div', {}, h('div', { class: 'nm' }, name(id), extra ? h('em', {}, extra) : null),
+    // 军 on the name line, where a narrow panel has room (侦察 reads a rival's officers here, 霸王之王@devblog 2026-11-25).
+    h('div', {}, h('div', { class: 'nm' }, name(id), extra ? h('em', {}, extra) : null, h('small', { class: 'army' }, `${o.army}军`)),
       h('div', { class: 'sub' }, ...[['武', o.war], ['智', o.int], ['德', o.virtue], ['忠', o.loyalty]].map(([k, v]) => h('span', {}, k, h('b', {}, v))))),
     h('div', { class: 'tr' }, h('b', {}, o.soldiers), h('br'), `体${o.hp}/${maxHp(o, id)}`));
 }

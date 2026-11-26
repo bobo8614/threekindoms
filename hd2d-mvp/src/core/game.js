@@ -13,6 +13,12 @@ export const FACTION_COLORS = ['#5a5a66', '#c8402f', '#7a4ad0', '#e0a020', '#3f8
 export const factionColor = (f) => D?.factions[f]?.colors?.flag ?? FACTION_COLORS[f];
 // A pack faction's 白兵 troop looks ({ soldier: 'ashigaru', … }, core/pack.js TROOP_LOOKS), or null: the original kinds' looks.
 export const factionTroops = (f) => D?.factions[f]?.troops ?? null;
+// The troop looks of the squads an officer leads into a 白兵: his own (officers.json troops), kind by kind over those of the
+// faction he fights for, or null: the original kinds' looks. Not bound to a house: a pack can dress an original officer's men.
+export const officerTroops = (id, f) => {
+  const t = { ...D?.factions[f]?.troops, ...D?.officers[id]?.troops };
+  return Object.keys(t).length ? t : null;
+};
 
 let D = null, BASE = null; // static data (data/game-data.json with data/base-map.json, and a pack's when one is in use); BASE without the pack
 export const data = () => D;

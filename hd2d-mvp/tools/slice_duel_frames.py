@@ -11,7 +11,7 @@ Out: assets/ai/sprites/duel/<key>.png  — one row of equal cells, every frame o
      assets/ai/sprites/duel/<key>.json — cell size, anchor, idle figure height, per-frame weapon tip,
      and the clips (frame, hold ms, event) for the rider's weapon class.
 """
-import argparse, json, os
+import argparse, json, os, re
 from collections import deque
 from PIL import Image, ImageFilter
 
@@ -68,7 +68,9 @@ ap.add_argument('--colors', type=int, default=48)
 a = ap.parse_args()
 MVP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if not a.weapon:
-    if a.key in ('attacker', 'defender'): a.weapon = 'blade'
+    # The generic generals (duel_frame_prompts.mjs genericOf): attacker / defender carry the glaive, <side>-spear / <side>-sword the others.
+    m = re.fullmatch(r'(attacker|defender)(?:-(spear|sword))?', a.key)
+    if m: a.weapon = m.group(2) or 'blade'
     else:
         D = json.load(open(os.path.join(MVP, 'data/game-data.json')))
         o = D['officers'][int(a.key)]
@@ -194,6 +196,11 @@ meta = {'weapon': a.weapon, 'frames': FRAMES, 'cell': [cellW, cellH], 'anchor': 
         'tips': tips, 'rest': rest_px(small[FRAMES.index('downed')]), 'clips': clips(a.weapon, full)}
 json.dump(meta, open(os.path.join(MVP, f'assets/ai/sprites/duel/{a.key}.json'), 'w'), ensure_ascii=False, indent=1)
 idx = os.path.join(MVP, 'assets/ai/sprites/duel/index.json')
-keys = sorted({f[:-5] for f in os.listdir(os.path.dirname(idx)) if f.endswith('.json') and f != 'index.json' and not f.endswith(('-turn.json', '-wheel.json', '-c.json')) and f != 'extra.json'})
+# Only side strips: not the sheets that ride along with one (-turn, -wheel, -c, -spin, -leap), the lists beside it, or the women
+# generals' looks (sprites/heroines.json lists those, and the release packages leave them out: desktop/build-app.mjs).
+try: heroines = set(json.load(open(os.path.join(MVP, 'assets/ai/sprites/heroines.json'))))
+except FileNotFoundError: heroines = set()
+keys = sorted({f[:-5] for f in os.listdir(os.path.dirname(idx)) if f.endswith('.json') and f not in ('index.json', 'extra.json', 'spin.json', 'leap.json')
+               and not f.endswith(('-turn.json', '-wheel.json', '-c.json', '-spin.json', '-leap.json')) and f[:-5] not in heroines})
 json.dump(keys, open(idx, 'w'))
 print(a.key, a.weapon, len(FRAMES), 'frames', 'cell', cellW, cellH, 'tips strike', tips.get('strike'), 'allin', tips.get('allin_strike'), 'jab', tips.get('feint_jab'))

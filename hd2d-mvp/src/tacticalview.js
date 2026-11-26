@@ -13,8 +13,9 @@ import { backdrop, lightShafts, slash, sparkBurst, dustPuff, flare, flames, embe
 import { seasonalize } from './seasons.js';
 import { seasonEnv } from './seasonenv.js';
 import { buildTerrain, dressBoard, azureWaterTex, vnoise } from './diorama.js';
-import { loadTacticalGround, tacticalGround, fieldOf, bakeGround, groundMesh, waterMesh, wallMeshes, woodsOf, plantWoods, bannerMesh, WATER_Y } from './tacticalground.js';
+import { loadTacticalGround, tacticalGround, fieldOf, bakeGround, groundMesh, waterMesh, towerMeshes, towersOf, woodsOf, plantWoods, bannerMesh, WATER_Y } from './tacticalground.js';
 import { GW, GH } from './core/tactical.js';
+import { genericArt } from './core/pack.js';
 import { blastRig } from './blastfx.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -138,20 +139,24 @@ export function createTacticalView(T, sprites) {
     performance.measure('tac:bakeGround', { start: tp });
     { const gm = groundMesh(G, F, baked, wx0, wz0); gm.userData.ground = true; set.add(gm); }
     if (b.map.some((row) => row.some((c) => c === 3 || c === 4))) { water = waterMesh(G, F, wx0, wz0); set.add(water); } else water = null;
-    if (t === 5 && G.wallFace && G.wallTop) set.add(wallMeshes(G, F, wx, wz, H0));
+    if (t === 5) set.add(towerMeshes(G, F, wx, wz, H0));
     // the country's crowns dim with distance like its ground
     set.add(plantWoods(G, woods.map((w) => ({ x: wx(w.x - 0.5), z: wz(w.y - 0.5), h: F.height(w.x, w.y), size: w.size, pine: w.pine, shade: w.far ? Math.max(0.55, 1 - w.far * 0.05) : 1 })), 0.86, seed));
     billboards = [];
     const wet = (x, y) => b.map[y][x] === 3 || b.map[y][x] === 4;
-    // men stand on the ground under them: atop a knoll, ankle-deep in a pool
-    cellH = (x, y) => (x >= 0 && y >= 0 && x < GW && y < GH && wet(x, y) ? WATER_Y - 0.04 : F.height(x + 0.5, y + 0.5));
+    // men stand on the ground under them: atop a knoll or a tower's deck, ankle-deep in a pool
+    cellH = (x, y) => (x >= 0 && y >= 0 && x < GW && y < GH && wet(x, y) ? WATER_Y - 0.04 : F.stand(x, y));
   }
   function ground(b) {
     const G = tacticalGround(where.month, where.city);
     if (G) return painted(b, G);
     const t = b.terrain, map = b.map, inside = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH, seed = t * 31 + 7;
     const floor = t === 1 ? ['sand', 'dirt'] : t === 5 ? ['stone', 'plinth'] : ['grass', 'earth'];
-    const hAt = (x, y) => [H0, H0, H0 + 0.75 + ((x * 7 + y * 13) % 3) * 0.08, 0.1, 0.18, H0 + 0.95][map[y][x]];
+    // 城战's towers (towersOf): the decks and stairs raised inside the walls, as on the painted field
+    // (the walls at the rim's height, not a block over the deck); men stand only on the decks and stairs
+    const T = t === 5 ? towersOf(map, GW, GH) : null, tower = (x, y) => T?.get(`${x},${y}`);
+    const raised = (x, y) => { const c = tower(x, y); return c && c.kind !== 'wall' ? c.h : null; };
+    const hAt = (x, y) => tower(x, y)?.h ?? [H0, H0, H0 + 0.75 + ((x * 7 + y * 13) % 3) * 0.08, 0.1, 0.18, H0 + 0.95][map[y][x]];
     const board = (x, y) => {
       const c = map[y][x], h = hAt(x, y);
       if (c === 1) return { h, top: 'forest', side: 'earth' };
@@ -205,7 +210,7 @@ export function createTacticalView(T, sprites) {
     // faint tactical grid so squares stay legible under the depth of field
     const grid2 = new THREE.GridHelper(GW, GW, '#000000', '#000000');
     grid2.scale.z = GH / GW; grid2.position.y = H0 + 0.012; grid2.material.transparent = true; grid2.material.opacity = 0.08; set.add(grid2);
-    cellH = (x, y) => (inside(x, y) ? Math.min(hAt(x, y), H0) : H0);
+    cellH = (x, y) => (inside(x, y) ? raised(x, y) ?? Math.min(hAt(x, y), H0) : H0);
   }
 
   // What the last build laid besides the men (ground, water, walls, woods, banners) and what it was laid for: the
@@ -258,7 +263,8 @@ export function createTacticalView(T, sprites) {
   // of his strip, a proxy of the same plane turned to the sun that only casts his shadow, and a contact blob.
   function strips(look, u) {
     if (u.kind === 'gen') {
-      const id = battle.side[u.side].id, A = sprites[`duel-${id}`] || (sprites[`officer-${id}`] ? null : sprites[`duel-${look}`]);
+      // Without strips of his own he rides as his side's generic general in the weapon class he holds (core/pack.js genericArt).
+      const S = battle.side[u.side], id = S.id, A = sprites[`duel-${id}`] || (sprites[`officer-${id}`] ? null : sprites[`duel-${genericArt(look, S.o?.weapon)}`] || sprites[`duel-${look}`]);
       return [A || { tex: sprites[`officer-${id}`] || sprites[look] || unitTex(look), meta: null }];
     }
     const kind = KIND[u.kind], alt = wear[u.side]?.[kind], own = alt && sprites[`troop-${look}-${alt}`] ? alt : kind;

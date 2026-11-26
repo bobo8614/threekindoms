@@ -149,6 +149,30 @@ test("a new house's troop looks are looks only: kept on its faction, checked aga
   }
 });
 
+test('troop looks on an officer, new or original, go with him whatever house he serves', () => {
+  // officers.json troops: his squads' looks, kind by kind over his faction's (G.officerTroops), so not bound to a house.
+  const r = edit((p) => {
+    p.factions[0].troops = { soldier: 'ashigaru', cavalry: 'steppe' };
+    p.officers.add.find((o) => o.name === '范蠡').troops = { soldier: 'hillman' };
+    p.officers.edit.find((o) => o.officer === '关羽').troops = { cavalry: 'elephant' };
+  });
+  assert.deepEqual(r.errors, []);
+  const D = r.data, id = (n) => D.officers.findIndex((o) => o.name === n), yue = D.factions.find((f) => f.name === '越').id;
+  assert.deepEqual(D.officers[id('范蠡')].troops, { soldier: 'hillman' });
+  assert.deepEqual(D.officers[id('关羽')].troops, { cavalry: 'elephant' });
+  assert.ok(!('troops' in D.officers[id('勾践')]) && !('troops' in D.officers[id('张飞')]), 'no troops written, none on the record');
+  G.setData(D);
+  assert.deepEqual(G.officerTroops(id('范蠡'), yue), { soldier: 'hillman', cavalry: 'steppe' }); // his own over his house's
+  assert.deepEqual(G.officerTroops(id('勾践'), yue), { soldier: 'ashigaru', cavalry: 'steppe' }); // his house's
+  for (const f of [1, 3, yue]) assert.deepEqual(G.officerTroops(id('关羽'), f), { cavalry: 'elephant', ...(f === yue ? { soldier: 'ashigaru' } : {}) });
+  assert.equal(G.officerTroops(id('张飞'), 1), null);
+  assert.deepEqual(merge(FIX).data.officers.map(({ troops, ...o }) => o), D.officers.map(({ troops, ...o }) => o), 'looks only');
+  const has = (x, s) => assert.ok(x.errors.some((e) => e.includes(s)), `${s} in ${x.errors.join(' | ')}`);
+  has(edit((p) => { p.officers.add[0].troops = {}; }), 'troops 应为');
+  has(edit((p) => { p.officers.add[0].troops = { soldier: 'elephant' }; }), 'troops 的 "soldier": "elephant"');
+  has(edit((p) => { p.officers.edit[0].troops = { archer: 'ashigaru' }; }), 'troops 的 "archer"');
+});
+
 test('the AI plays twenty years on a pack with a new house', async () => {
   const { data: D } = merge(FIX);
   let houseWon = 0;
