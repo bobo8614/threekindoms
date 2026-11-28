@@ -395,60 +395,35 @@ test('when an AI faction attacks the player right after another\'s turn, no 战�
   assert.deepEqual(left, [], `plaques left: ${left.join(', ')}`);
 });
 
-// An AI war keeps the original's 7.09 s in its three beats (出阵, 战斗中, 胜利): the standards march, clash and one
-// falls, and in the last beat the city flashes under 攻陷 / 守住 (playtest of 2026-10-31, F11). A 旱灾 / 洪水 shows the struck land, someone else's within the
+// An AI war keeps the original's 7.09 s in its three beats (出阵, 战斗中, 胜利): its window plays the three pictures
+// beside the board, and in the last beat the city flashes under 攻陷 / 守住 (playtest of 2026-10-31, F11). A 旱灾 / 洪水 shows the struck land, someone else's within the
 // original's 4.76 s (F09).
 test('an AI war ends with its city flashing the outcome, 7.09 s in all', async () => {
   const r = await page.evaluate(async () => {
     const { g, io } = window.__game, fs = g.factions.filter((f) => f.ruler != null && f.id !== g.player);
-    const city = g.cities.find((c) => c.faction === fs[1].id).id, from = window.__game.G.data().cities[city].roads[0], t0 = performance.now(), seen = new Set(), words = [];
+    const city = g.cities.find((c) => c.faction === fs[1].id).id, from = window.__game.G.data().cities[city].roads[0], t0 = performance.now(), seen = new Set(), words = [], scenes = [];
     const { scene } = window.__game.strategy, objs = scene.children.length;
-    let most = 0;
+    let box = null;
     const watch = setInterval(() => {
       const n = document.querySelector('.ctag.news'); if (n) seen.add(n.dataset.news);
       const w = document.querySelector('.aiwar')?.textContent; if (w && w !== words.at(-1)) words.push(w);
-      most = Math.max(most, scene.children.length - objs);
+      const v = document.querySelector('.vig.aiwin'); if (v && v.dataset.scene !== scenes.at(-1)) scenes.push(v.dataset.scene);
+      if (v && !box) { const b = v.getBoundingClientRect(), c = window.__game.strategy.screenAtRest(city); box = { left: b.left, right: b.right, top: b.top, bottom: b.bottom, cities: [c, window.__game.strategy.screenAtRest(from)].map((p) => [p.x, p.y]) }; }
     }, 30);
     await io.event({ type: 'autobattle', war: { attacker: fs[0].id, defender: fs[1].id, city, from, att: { ids: [fs[0].ruler] } }, res: { attWins: false } });
     clearInterval(watch);
-    await new Promise((r) => setTimeout(r, 1200)); // the last dust settles, the rings fade
-    return { total: performance.now() - t0 - 1200, seen: [...seen], words, most, left: scene.children.length - objs, att: window.__game.G.factionName(window.__game.g, fs[0].id), def: window.__game.G.factionName(window.__game.g, fs[1].id), plaques: document.querySelectorAll('.aiwar').length };
+    await new Promise((r) => setTimeout(r, 1200)); // the outcome's rings fade
+    return { total: performance.now() - t0 - 1200, seen: [...seen], words, left: scene.children.length - objs, att: window.__game.G.factionName(window.__game.g, fs[0].id), def: window.__game.G.factionName(window.__game.g, fs[1].id), plaques: document.querySelectorAll('.aiwar').length, scenes, box, windows: document.querySelectorAll('.vig.aiwin').length };
   });
+  // The original's window on the map plays its three pictures in turn, where it covers neither city.
+  assert.deepEqual(r.scenes, ['sortie', 'aiwar-clash', 'aiwar-victory']); assert.equal(r.windows, 0, 'the window closed');
+  for (const [x, y] of r.box.cities) assert.ok(x < r.box.left || x > r.box.right || y < r.box.top || y > r.box.bottom, `window ${['left', 'right', 'top', 'bottom'].map((k) => Math.round(r.box[k])).join(' ')} over a city at ${Math.round(x)},${Math.round(y)}`);
   assert.ok(near(r.total, 7090, 0.1), `took ${Math.round(r.total)} ms`);
   assert.equal(r.seen.length, 1); assert.match(r.seen[0], /守住$/, 'the defender held it');
   // The original's three captions in turn: 出阵 and 战斗中 for the attacker, 胜利 for the winner.
   assert.deepEqual(r.words, [`${r.att}军出阵`, `${r.att}军战斗中`, `${r.def}军胜利`]);
-  assert.ok(r.most >= 2, 'the two standards stood on the board'); assert.equal(r.left, 0, 'and were cleared after'); assert.equal(r.plaques, 0);
+  assert.equal(r.left, 0, 'nothing left on the board'); assert.equal(r.plaques, 0);
 });
-// A war stepped by hand on the 3D map, all in one evaluate, so the frame loop cannot get a tick in between.
-const steppedWar = (script) => page.evaluate((script) => {
-  const { g, G, strategy } = window.__game, fs = g.factions.filter((f) => f.ruler != null && f.id !== g.player), to = g.cities.find((c) => c.faction === fs[1].id).id;
-  const w = strategy.aiWar({ from: G.data().cities[to].roads[0], to, att: fs[0].id, def: fs[1].id, attName: 'a', defName: 'b' });
-  try { return new Function('w', script)(w); } finally { w.dispose(); }
-}, script);
-
-test('an AI war\'s clash strikes from its first moment, the march\'s clock long gone', async () => {
-  const r = await steppedWar(`
-    w.march(2360); for (let t = 0; t < 2.36; t += 0.1) w.tick(0.1);
-    const settled = w.debug(); w.clash(2360); const before = settled.dust; w.tick(0.03); const first = w.debug();
-    const rings = [first.rings]; for (let t = 0; t < 1; t += 0.1) { w.tick(0.1); rings.push(w.debug().rings); }
-    return { dust: first.dust, before, rings };`);
-  assert.ok(r.dust >= r.before + 4, `the first blow's dust and sparks at once: ${r.before} then ${r.dust}`);
-  assert.ok(r.rings[0] >= 1, 'with its ring');
-  assert.ok(r.rings.at(-1) >= 1, 'and more through the clash');
-});
-
-test('a winning attacker rides in from where his last lunge left him, with no step or snap', async () => {
-  const r = await steppedWar(`
-    w.march(100); w.clash(1000); w.tick(0.1); // the top of his first lunge
-    const lunged = w.debug(); w.end(true, 2360); w.tick(0.016);
-    return { lunged, next: w.debug() };`);
-  const step = Math.hypot(r.next.a.x - r.lunged.a.x, r.next.a.z - r.lunged.a.z);
-  assert.ok(step < 0.06, `a frame's step on the board, his ride forward at most (back to his mark is 0.3): ${step}`);
-  assert.notEqual(r.lunged.a.lean, 0, 'he was leaning into the blow');
-  assert.ok(Math.abs(r.next.a.lean - r.lunged.a.lean) < 0.02, `and straightens by degrees: ${r.lunged.a.lean} then ${r.next.a.lean}`);
-});
-
 // The board as baked (tools/blender_sandtable.py): the sea shows nowhere but the sea, and no river stops short of it.
 test('no ground sinks under the sea plane away from the sea, and 交州\'s river reaches the sea', () => {
   const dir = new URL('../assets/ai/sandtable/board/', import.meta.url), meta = JSON.parse(readFileSync(new URL('board.json', dir))), bin = readFileSync(new URL('height.bin', dir));

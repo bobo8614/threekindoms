@@ -928,5 +928,68 @@
    "blend": 0.12,
    "attempt": 2
   }
+ },
+ "depart": {
+  "w": 640,
+  "h": 426,
+  "story": {
+   "src": "v2/depart/story.webp",
+   "cols": 3,
+   "rows": 3,
+   "hold": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1.6
+   ],
+   "blend": 0.12
+  }
+ },
+ "aiwar-clash": {
+  "w": 640,
+  "h": 426,
+  "story": {
+   "src": "v2/aiwar-clash/story.webp",
+   "cols": 3,
+   "rows": 3,
+   "hold": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1.6
+   ],
+   "blend": 0.12
+  }
+ },
+ "aiwar-victory": {
+  "w": 640,
+  "h": 426,
+  "story": {
+   "src": "v2/aiwar-victory/story.webp",
+   "cols": 3,
+   "rows": 3,
+   "hold": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1.6
+   ],
+   "blend": 0.12
+  }
  }
 }

@@ -1,4 +1,4 @@
-// Capture the 白兵 field for review: stills at deployment and during the first rounds (with the HUD, and a
+// Capture the 白兵 field for review: stills at deployment (under the 开始交战 prompt) and, once it is pressed, during the first rounds (with the HUD, and a
 // close-up without it), plus a video of the opening clashes.
 //   node hd2d-mvp/tools/tactical_capture.mjs [out_dir] [--a 38 --d 51 --t 2] [--size 1440x900] [--url …] [--prefix after] [--side d]
 // --side d: the player defends (the AI attacks); check both sides, the HUD cards must stand over their own troops.
@@ -22,6 +22,7 @@ await page.goto(URL + (URL.includes('mute') ? '' : (URL.includes('?') ? '&' : '?
 await page.evaluate(([a, d, t, human]) => { window.__run = window.__game.debug.quickTactical(a, d, t, { human }); }, [A, D, TER, arg('--side', 'a')]);
 await page.waitForSelector('.tq-form'); await page.click('.tq-form'); await page.locator('.tq-deploy:not(.arming)').click();
 await page.waitForFunction(() => window.__tq && !document.querySelector('.tq-formation'));
+await page.waitForSelector('.tq-start button:not(.arming)', { timeout: 30000 });
 await page.waitForTimeout(1800);
 const shot = (n) => page.screenshot({ path: join(out, `${P}-${n}.jpg`), quality: 88 });
 await shot('deploy');
@@ -32,6 +33,10 @@ const close = async (n) => {
   await page.evaluate(() => { document.querySelector('.tq')?.style.removeProperty('visibility'); window.__game.tview.zoom(1300); });
 };
 await close('deploy-close');
+// The battle opens paused under the 开始交战 prompt (src/tacticalhud.js): nothing moves until it is pressed, and the button
+// only takes a press once it has armed. Without this the rounds below were four stills of the same deployed field.
+await page.locator('.tq-start button:not(.arming)').click();
+await page.waitForFunction(() => !document.querySelector('.tq-start'));
 for (let i = 1; i <= 4; i++) {
   await page.waitForTimeout(2600);
   await shot(`round${i}`);

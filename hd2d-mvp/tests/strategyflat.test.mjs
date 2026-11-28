@@ -652,150 +652,27 @@ test('at 1024×600 the board, the tags and the hits all follow the new size', as
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
-// ---- The AI war's standards and the sky (the last layers of draw()).
-// A war stepped by hand, all in one evaluate, so the frame loop cannot get a tick in between. `script` runs in the page: script(s, w, dbg).
-const stepped = (script, arg) => page.evaluate(({ script, arg }) => {
-  const s = window.__game.strategy, dbg = () => s.flatDebug().aiWar;
-  return new Function('s', 'dbg', 'arg', script)(s, dbg, arg);
-}, { script, arg });
-const WAR = `const w = s.aiWar({ from: arg.from, to: arg.to, att: 2, def: 3, attName: '袁绍', defName: '曹操' });`;
-const roadOf = (a, b) => { const r = board.roads.find((q) => (q.a === a && q.b === b) || (q.a === b && q.b === a)), p = []; for (let i = 0; i < r.p.length; i += 2) p.push([r.p[i], r.p[i + 1]]); return r.a === a ? p : p.reverse(); };
-const offRoad = (pts, x, y) => Math.min(...pts.map(([a, b]) => Math.hypot(a - x, b - y)));
+// ---- An AI war's view: nothing marches on the board (the war plays in its window, vignette.js warWindow); the march frames the two cities and the view holds there.
+const WAR_NOW = `window.__w = window.__game.strategy.aiWar({ from: 12, to: 8, att: 2, def: 3, attName: '袁绍', defName: '曹操' });`;
+const goalOf = (v) => ({ k: v.k, cx: (720 - v.x) / v.k, cy: (450 - v.y) / v.k });
 
-test('march: the attacker\'s standard rises at his city and goes down the road, the defender\'s not up yet', async () => {
+test('an AI war\'s view: the march frames the two cities, the clash and the outcome stay there, and the player gets his view back', async () => {
   await bare();
-  const r = await stepped(`${WAR}
-    w.march(2000); const a = dbg(); w.tick(0.1); const risen = dbg(); const seen = [];
-    for (let i = 0; i < 18; i++) { w.tick(0.1); seen.push(dbg().a); }
-    const out = { stage: a.stage, start: a.a, alpha0: a.a.alpha, alpha: risen.a.alpha, seen, d: dbg().d, dust: dbg().dust, cloth: dbg().cloth };
-    w.dispose(); return out;`, { from: 12, to: 8 });
-  const pts = roadOf(12, 8);
-  assert.equal(r.stage, 'march');
-  assert.ok(Math.hypot(r.start.x - pts[0][0], r.start.y - pts[0][1]) < 2, `starts at his city: ${JSON.stringify(r.start)}`);
-  assert.equal(r.alpha0, 0); assert.ok(r.alpha > 0.2 && r.alpha < 0.5, `rises: ${r.alpha}`); assert.equal(r.seen.at(-1).alpha, 1);
-  assert.equal(r.d.shown, false, 'the defender stands up at the clash');
-  for (const p of r.seen) assert.ok(offRoad(pts, p.x, p.y) < 40, `on the road: ${JSON.stringify(p)}`);
-  const left = (p) => Math.hypot(p.x - pts.at(-1)[0], p.y - pts.at(-1)[1]);
-  assert.ok(left(r.seen.at(-1)) < left(r.start) * 0.7, 'and well along it');
-  assert.ok(left(r.seen.at(-1)) > 40, 'short of the walls');
-  assert.ok(r.dust > 0 && r.dust < 20, `dust at its heels, restrained: ${r.dust}`);
-  assert.ok(r.cloth >= 28, `the cloth reads at the whole board: ${r.cloth} px wide`);
-});
-
-test('clash: both standards up before the walls, far enough apart to read, lunging in turn', async () => {
-  await bare();
-  const r = await stepped(`${WAR}
-    w.march(100); w.clash(2400); const leans = [], gaps = [];
-    for (let i = 0; i < 24; i++) { w.tick(0.1); const d = dbg(); leans.push([d.a.lean, d.d.lean]); gaps.push(Math.hypot(d.a.x - d.d.x, d.a.y - d.d.y) * s.viewState().k); }
-    const out = { stage: dbg().stage, d: dbg().d, leans, gaps, dust: dbg().dust, cloth: dbg().cloth, pulses: s.flatDebug().pulses };
-    w.dispose(); return out;`, { from: 12, to: 8 });
-  assert.equal(r.stage, 'clash'); assert.equal(r.d.shown, true); assert.equal(r.d.alpha, 1);
-  assert.ok(r.leans.some(([a]) => a !== 0) && r.leans.some(([, d]) => d !== 0), 'each lunges');
-  assert.ok(r.leans.every(([a, d]) => !(a && d)), 'in turn');
-  assert.ok(Math.min(...r.gaps) >= r.cloth * 0.6, `the standards stay apart on screen: ${Math.min(...r.gaps)} for a cloth of ${r.cloth}`);
-  assert.ok(r.dust > 0); assert.ok(r.pulses > 0, 'rings off the fight');
-});
-
-for (const wins of [true, false]) test(`end: the loser's standard falls away from the winner; ${wins ? 'a winning attacker rides in' : 'a held city keeps its standard'}`, async () => {
-  await bare();
-  const r = await stepped(`${WAR}
-    w.march(100); w.clash(100); w.tick(0.3); const before = dbg();
-    w.end(arg.wins, 2000); const trace = [];
-    for (let i = 0; i < 20; i++) { w.tick(0.1); const d = dbg(); trace.push({ a: d.a, d: d.d }); }
-    const out = { stage: dbg().stage, before, trace }; w.dispose(); return out;`, { from: 12, to: 8, wins });
-  assert.equal(r.stage, 'end');
-  const loser = wins ? 'd' : 'a', winner = wins ? 'a' : 'd', at = (t) => r.trace[Math.round(t * 10) - 1];
-  const away = Math.sign(r.before[loser].x - r.before[winner].x) || 1;
-  assert.ok(Math.abs(at(0.6)[loser].lean) > 1.4, `falls over: ${at(0.6)[loser].lean}`);
-  assert.equal(Math.sign(at(0.3)[loser].lean), away, 'away from the winner');
-  assert.equal(at(1.1)[loser].alpha, 0, 'and is gone');
-  assert.equal(at(0.5)[winner].lean, 0); assert.equal(at(1.5)[winner].alpha, 1, 'the winner stands');
-  assert.ok(at(2)[winner].alpha < 0.05, `until the end: ${at(2)[winner].alpha}`);
-  const to = city(8), rode = Math.hypot(at(1)[winner].x - to.cx, at(1)[winner].y - to.cy);
-  if (wins) assert.ok(rode < 3, `rides into the city: ${rode}`); else assert.ok(rode > 20, `holds before the walls: ${rode}`);
-});
-
-test('the clash\'s dust and rings start with the clash, however long the march ran, and go on through it', async () => {
-  await bare();
-  const r = await stepped(`${WAR}
-    w.march(2360); for (let i = 0; i < 24; i++) w.tick(0.1);
-    w.clash(2360); const seen = []; let p = s.flatDebug().pulses;
-    for (let i = 0; i < 22; i++) { w.tick(0.1); const q = s.flatDebug().pulses; seen.push(q > p); p = q; }
-    const end = () => { w.dispose(); return seen; }; return end();`, { from: 12, to: 8 });
-  const beats = r.flatMap((on, i) => (on ? [i * 0.1] : []));
-  assert.ok(beats[0] <= 0.1, `the first blow at once: ${beats}`);
-  assert.ok(beats.length >= 5 && beats.at(-1) > 1.5, `and on through it: ${beats}`);
-});
-
-test('a winning attacker rides in from where his last lunge left him: no step back to his mark', async () => {
-  await bare();
-  const r = await stepped(`${WAR}
-    w.march(100); w.clash(1000); w.tick(0.1); // the top of his first lunge
-    const lunged = dbg().a; w.end(true, 2000); w.tick(0.016); const next = dbg().a; w.dispose(); return { lunged, next };`, { from: 12, to: 8 });
-  const k = (await view()).k, step = Math.hypot(r.next.x - r.lunged.x, r.next.y - r.lunged.y) * k;
-  assert.ok(step < 3, `a frame's step on screen: ${step}`);
-});
-
-test('dispose leaves nothing behind; a new war replaces the last', async () => {
-  await bare();
-  const r = await stepped(`${WAR}
-    w.march(1000); for (let i = 0; i < 8; i++) w.tick(0.1); const during = dbg();
-    const w2 = s.aiWar({ from: 8, to: 12, att: 3, def: 2, attName: '曹操', defName: '袁绍' }); const swapped = dbg();
-    w.dispose(); const still = !!dbg(); // the old one's dispose must not end the new one
-    w2.dispose(); w2.tick(0.1); w2.dispose();
-    return { dust: during.dust, swapped: swapped.dust, still, after: dbg() ?? null, debug: s.flatDebug().dust };`, { from: 12, to: 8 });
-  assert.ok(r.dust > 0); assert.equal(r.swapped, 0, 'the old dust went with it'); assert.equal(r.still, true);
-  assert.equal(r.after, null); assert.equal(r.debug, 0);
-});
-
-test('the cloth bears the surname, a compound one in two characters', async () => {
-  const r = await page.evaluate(async () => {
-    const { COMPOUND } = await import(new URL('src/strategy.js', location.href).href), s = window.__game.strategy, drawn = {};
-    const fill = CanvasRenderingContext2D.prototype.fillText;
-    for (const name of ['曹操', ...COMPOUND.map((c) => `${c}某`)]) {
-      const seen = [];
-      CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { seen.push(t); return fill.call(this, t, ...a); };
-      const w = s.aiWar({ from: 12, to: 8, att: 2, def: 3, attName: name, defName: '刘备' });
-      CanvasRenderingContext2D.prototype.fillText = fill;
-      w.dispose(); drawn[name] = seen;
-    }
-    return { drawn, COMPOUND };
-  });
-  assert.deepEqual(r.COMPOUND, ['公孙', '诸葛', '司马', '夏侯', '皇甫', '太史']);
-  assert.deepEqual(r.drawn['曹操'], ['曹', '刘']);
-  for (const c of r.COMPOUND) assert.deepEqual(r.drawn[`${c}某`], [c[0], c[1], '刘'], c);
-});
-
-for (const [what, from] of [['from === to', 8], ['no road between them', 0], ['no from', null]]) test(`${what}: a straight approach from the south-west`, async () => {
-  await bare();
-  const r = await stepped(`${WAR} w.march(2000); const a = dbg(); for (let i = 0; i < 18; i++) w.tick(0.1); const b = dbg(); w.dispose(); return { a: a.a, b: b.a };`, { from, to: 8 });
-  const c = city(8), [sx, sy] = [c.cx - 2.4 * 110, c.cy + 1.4 * 110 * 0.85];
-  assert.ok(Math.hypot(r.a.x - sx, r.a.y - sy) < 2, `starts south-west of the city: ${JSON.stringify(r.a)}`);
-  const u = ((r.b.x - sx) * (c.cx - sx) + (r.b.y - sy) * (c.cy - sy)) / ((c.cx - sx) ** 2 + (c.cy - sy) ** 2);
-  assert.ok(u > 0 && u < 1, `comes toward it: ${u}`);
-  assert.ok(Math.hypot(r.b.x - (sx + (c.cx - sx) * u), r.b.y - (sy + (c.cy - sy) * u)) < 2, 'in a straight line');
-});
-
-test('the camera: the march keeps the whole board, the clash closes in on the fight, and the player gets his view back', async () => {
-  const v = await bare();
-  await page.evaluate(() => { const s = window.__game.strategy; window.__w = s.aiWar({ from: 12, to: 8, att: 2, def: 3, attName: '袁绍', defName: '曹操' }); window.__w.march(800); });
-  same(await settled(), v, 'the board fits: frame does not move it');
-  await page.evaluate(() => window.__w.clash(800));
-  const close = await settled();
-  assert.ok(close.k > v.k * 1.9, `closer in: ${close.k} from ${v.k}`);
-  const fight = await page.evaluate(() => { const d = window.__game.strategy.flatDebug().aiWar; return { x: (d.a.x + d.d.x) / 2, y: (d.a.y + d.d.y) / 2 }; }), [fx, fy] = toScreen(close, fight.x, fight.y);
-  assert.ok(Math.abs(fx - 720) < 60 && Math.abs(fy - 450) < 80, `on the fight: ${fx}, ${fy}`);
+  await page.evaluate(() => { const s = window.__game.strategy; s.zoom(-99999); s.focusCity(25); });
+  const start = await settled();
+  await page.evaluate((w) => { eval(w); window.__w.march(800); }, WAR_NOW);
+  const framed = await settled();
+  for (const id of [12, 8]) { const [x, y] = toScreen(framed, city(id).cx, city(id).cy); assert.ok(x > 0 && x < 1440 && y > 0 && y < 900, `city ${id} on screen: ${x}, ${y}`); }
+  await page.evaluate(() => { window.__w.clash(800); window.__w.end(true, 800); });
+  same(await settled(), framed, 'the clash and the outcome keep the framing');
+  assert.equal((await dbg()).aiWar.stage, 'end');
   await page.evaluate(() => window.__w.dispose());
-  same(await settled(), v, 'back to the whole board');
+  same(await settled(), start, 'back to his view');
+  assert.equal((await dbg()).aiWar, null);
   await zoomAllOut();
 });
 
-// The player's moves in a show: start where given, run the show with a move at the given beat, end it, and see where the view lands.
-const WAR_NOW = `window.__w = window.__game.strategy.aiWar({ from: 12, to: 8, att: 2, def: 3, attName: '袁绍', defName: '曹操' });`;
-const goalOf = (v) => ({ k: v.k, cx: (720 - v.x) / v.k, cy: (450 - v.y) / v.k });
-const nearGoal = (a, b, what) => assert.ok(Math.hypot(a.cx - b.cx, a.cy - b.cy) < 8, `${what}: ${JSON.stringify([a, b])}`);
-
-test('a pan in the march is his: the clash still closes in, and he gets that place and his zoom back', async () => {
+test('a pan in the war is his: he gets that place and his zoom back', async () => {
   await bare();
   await page.evaluate(() => { const s = window.__game.strategy; s.zoom(-99999); s.focusCity(8); });
   await settled();
@@ -803,63 +680,13 @@ test('a pan in the march is his: the clash still closes in, and he gets that pla
   const before = await settled();
   await page.evaluate(() => window.__game.strategy.pan(-1.5, 0.8)); const panned = goalOf(await settled());
   assert.ok(Math.hypot(panned.cx - goalOf(before).cx, panned.cy - goalOf(before).cy) > 50, 'the pan moved it');
-  await page.evaluate(() => window.__w.clash(800));
-  const fight = goalOf(await settled());
-  assert.ok(Math.hypot(fight.cx - panned.cx, fight.cy - panned.cy) > 30, `the clash goes to the fight: ${JSON.stringify([fight, panned])}`);
-  await page.evaluate(() => window.__w.dispose());
-  const back = await settled();
-  assert.ok(Math.abs(back.k - before.k) < 1e-3, 'his zoom'); nearGoal(goalOf(back), panned, 'his place');
+  await page.evaluate(() => { window.__w.clash(800); window.__w.dispose(); });
+  const back = goalOf(await settled());
+  assert.ok(Math.abs(back.k - before.k) < 1e-3, 'his zoom'); assert.ok(Math.hypot(back.cx - panned.cx, back.cy - panned.cy) < 8, `his place: ${JSON.stringify([back, panned])}`);
   await zoomAllOut();
 });
 
-test('a tap in the clash keeps its place, but a whole-board player still gets the whole board, and so does the next war', async () => {
-  const v = await bare();
-  await page.evaluate((w) => { eval(w); window.__w.march(800); window.__w.clash(800); }, WAR_NOW);
-  await settled();
-  await page.evaluate(() => window.__game.strategy.pan(0.6, 0)); const tapped = goalOf(await settled());
-  await page.evaluate(() => window.__w.dispose());
-  same(await settled(), v, 'the zoom comes back: at the whole board the place cannot show');
-  await page.evaluate(() => window.__game.strategy.zoom(-99999)); // the wish was kept: zoomed in again, the view is where he tapped to
-  nearGoal(goalOf(await settled()), tapped, 'his place is still the wish');
-  await zoomAllOut();
-  await page.evaluate((w) => { eval(w); window.__w.march(800); window.__w.clash(800); window.__w.dispose(); }, WAR_NOW);
-  same(await settled(), v, 'and the next war starts from it and ends on it');
-});
-
-test('a zoom in the clash is his too, and its place comes back on its own', async () => {
-  const v = await bare();
-  // A city near the middle of the board: its place is not cut short by the edge at either zoom.
-  const mid = board.cities.reduce((p, q) => (Math.hypot(q.cx - (x0 + x1) / 2, q.cy - (y0 + y1) / 2) < Math.hypot(p.cx - (x0 + x1) / 2, p.cy - (y0 + y1) / 2) ? q : p));
-  await page.evaluate((id) => { const s = window.__game.strategy; s.zoom(-300); s.focusCity(id); }, mid.id);
-  const start = await settled();
-  await page.evaluate((w) => { eval(w); window.__w.march(800); window.__w.clash(800); }, WAR_NOW);
-  await settled();
-  await page.evaluate(() => window.__game.strategy.zoom(250)); const zoomed = await settled();
-  assert.ok(zoomed.k < v.k * 2 - 0.01 && zoomed.k > start.k * 0.5, `zoomed by hand: ${zoomed.k}`);
-  await page.evaluate(() => window.__w.dispose());
-  const back = await settled();
-  assert.ok(Math.abs(back.k - zoomed.k) < 1e-3, 'his zoom stays'); nearGoal(goalOf(back), goalOf(start), 'the place he had');
-  await zoomAllOut();
-});
-
-test('the standard is painted over the flags and under the tags', async () => {
-  const v = await bare(), c = city(13), [fx, fy] = toScreen(v, c.flag[0], c.flag[1]), probes = [[fx + 2, fy + 4], [fx + 5, fy + 4], [fx + 8, fy + 4]]; // into a city's own flag, the road south from it
-  const flag = await pixels(probes);
-  // Stepped until the cloth hangs over that flag, marching out of the flag's own city, then left up for the frame loop to draw.
-  const at = await stepped(`const w = s.aiWar({ from: 13, to: 22, att: arg.att, def: 3, attName: '袁绍', defName: '曹操' }); window.__w = w; w.march(4000); w.tick(0.4);
-    const v = s.viewState(); for (let i = 0; i < 400 && (dbg().a.y - arg.fy) * v.k < 52; i++) w.tick(0.01);
-    window.__w.tick = () => {}; return dbg().a;`, { fy: c.flag[1], att: 2 });
-  await page.waitForTimeout(120);
-  assert.ok((at.y - c.flag[1]) * v.k >= 50, `under the flag: ${JSON.stringify(at)}`);
-  const over = await pixels(probes);
-  assert.ok(over.every((p, i) => far(p, flag[i]) > 40), `the cloth hides the flag: ${JSON.stringify([flag, over])}`);
-  // The tag of the same city, with the standard at it, still takes the point: the tags are a layer above the canvas.
-  const tag = await page.evaluate(() => { const e = document.querySelectorAll('.flatstrategy .ctag')[13], r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2, hit = document.elementFromPoint(x, y); return { on: !!hit.closest('.ctag'), same: hit.closest('.ctag') === e, above: !!document.querySelector('.flatstrategy canvas + .labels') }; });
-  assert.deepEqual(tag, { on: true, same: true, above: true });
-  await page.evaluate(() => window.__w.dispose()); await settled();
-  same(await zoomAllOut(), v, 'view restored');
-});
-
+// ---- The sky (the last layer of draw()).
 test('the sky is the month\'s: rain in 五月, snow in 十二月, blossom in 二月, leaves in 十月, clear in 四月', async () => {
   const at = async (m) => { await page.evaluate((m) => window.__game.strategy.setSeason(m, true), m); return (await dbg()).weather; };
   const may = await at(4), apr = await at(3), dec = await at(11), feb = await at(1), oct = await at(9);
@@ -938,32 +765,22 @@ test('rain dims and streaks the picture; a clear month draws nothing over it', a
   await bare();
 });
 
-test('the fight\'s own city lets its tag fade for the clash, and has it back for the outcome', async () => {
-  await bare();
-  const o = (id) => page.evaluate((id) => document.querySelectorAll('.flatstrategy .ctag')[id].style.getPropertyValue('--o'), id);
-  await page.evaluate(() => { window.__w = window.__game.strategy.aiWar({ from: 12, to: 8, att: 2, def: 3, attName: '袁绍', defName: '曹操' }); window.__w.march(800); });
-  await page.waitForTimeout(100); assert.equal(await o(8), '1');
-  await page.evaluate(() => window.__w.clash(800)); await page.waitForTimeout(100);
-  assert.equal(await o(8), '0.3'); assert.equal(await o(12), '1');
-  await page.evaluate(() => window.__w.end(true, 800)); await page.waitForTimeout(100); assert.equal(await o(8), '1');
-  await page.evaluate(() => window.__w.clash(800)); await page.evaluate(() => window.__w.dispose()); await page.waitForTimeout(100); assert.equal(await o(8), '1', 'skipped: back at once');
-  await zoomAllOut();
-});
-
 test('an AI war through the app: its three captions, 7.09 s, the outcome on the city, nothing left', async () => {
   await bare();
   const r = await page.evaluate(async () => {
     const { g, io, strategy } = window.__game, fs = g.factions.filter((f) => f.ruler != null && f.id !== g.player);
-    const city = g.cities.find((c) => c.faction === fs[1].id).id, from = window.__game.G.data().cities[city].roads[0], t0 = performance.now(), words = [], stages = new Set(), seen = new Set();
+    const city = g.cities.find((c) => c.faction === fs[1].id).id, from = window.__game.G.data().cities[city].roads[0], t0 = performance.now(), words = [], stages = new Set(), seen = new Set(), scenes = [];
     const watch = setInterval(() => {
       const w = document.querySelector('.aiwar')?.textContent; if (w && w !== words.at(-1)) words.push(w);
       const d = strategy.flatDebug().aiWar; if (d) stages.add(d.stage);
+      const v = document.querySelector('.vig.aiwin'); if (v && v.dataset.scene !== scenes.at(-1)) scenes.push(v.dataset.scene);
       const n = document.querySelector('.ctag.news'); if (n) seen.add(n.dataset.news);
     }, 30);
     await io.event({ type: 'autobattle', war: { attacker: fs[0].id, defender: fs[1].id, city, from, att: { ids: [fs[0].ruler] } }, res: { attWins: false } });
     clearInterval(watch);
-    return { total: performance.now() - t0, words, stages: [...stages], seen: [...seen], left: strategy.flatDebug().aiWar ?? null, att: window.__game.G.factionName(g, fs[0].id), def: window.__game.G.factionName(g, fs[1].id) };
+    return { total: performance.now() - t0, words, stages: [...stages], seen: [...seen], left: strategy.flatDebug().aiWar ?? null, att: window.__game.G.factionName(g, fs[0].id), def: window.__game.G.factionName(g, fs[1].id), scenes };
   });
+  assert.deepEqual(r.scenes, ['sortie', 'aiwar-clash', 'aiwar-victory']);
   assert.ok(Math.abs(r.total - 7090) < 709, `took ${Math.round(r.total)} ms`);
   assert.deepEqual(r.words, [`${r.att}军出阵`, `${r.att}军战斗中`, `${r.def}军胜利`]);
   assert.deepEqual(r.stages, ['march', 'clash', 'end']); assert.equal(r.left, null);

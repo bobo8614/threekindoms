@@ -99,5 +99,5 @@ export function createStrategyMarks({ scene, data, sand, world, cityPos, cityRea
   }
   function updateHover(time) { ring.material.opacity = 0.6 + Math.sin(time * 4) * 0.3; ringGhostMat.opacity = ring.material.opacity * MARK_GHOST_OPACITY; }
   return { hover, clearSelection, select, clearCandidates, addCandidates, pulse, updateRings, updatePulses, updateFlow, updateHover,
-    addPulse(ring) { pulses.push(ring); }, pulseCount() { return pulses.length; }, lastPulse() { return pulses[pulses.length - 1]; } };
+    lastPulse() { return pulses[pulses.length - 1]; } };
 }

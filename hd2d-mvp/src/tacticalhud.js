@@ -283,21 +283,23 @@ export async function runTactical({ battle, hs, looks, troopLooks = {}, view, du
     } finally { casting = false; fxHold = null; drawTop(); drawConsole(); }
   }
   async function announce(ev) {
-    // Cast → effect → outcome, so the result is not given away before the performance.
+    // Cast → effect → outcome, so the result is not given away before the performance. No sound of its own from the cast to the
+    // outcome, as on the original (all six traced, 咒缚 and 挑发 failing too: under the 白兵 theme alone, devblog #786 #787 黑色风车):
+    // the remake's war-start phrase here was the original's 升级 phrase (123×4), and a failure added 取消, 爆炎's burst 爆音.
     const mine = ev.side === hs;
-    audio.sfx('sfx-horn');
     await banner(ev.name, mine ? '#6ab8ff' : '#ff8a70');
     await view.play({ ...ev, type: 'tactic' }, hooks);
     log(`${mine ? '我军' : '敌军'}施展 <b>${ev.name}</b>：${!ev.ok ? '失败' : ev.id === 'blast' && !ev.center ? '炸弹飞出战场，没有爆炸' : '成功'}`);
-    if (!ev.ok) { audio.sfx('sfx-cancel'); await banner(`${ev.name}·失败`, '#777'); }
+    if (!ev.ok) await banner(`${ev.name}·失败`, '#777');
   }
   const hooks = {
     sfx: (k) => audio.sfx(k),
     update,
-    // 追击 at the edge (core/tactical.js pursue()), worded as the original's 18:7E / 18:FA.
+    // 追击 at the edge (core/tactical.js pursue()), worded as the original's 18:7E / 18:FA. Silent, hit or not, as on the original
+    // (traced 2026-11-26: docs/review-assets/2026-11-26/pursuit-audio); the remake had played the 升级 phrase (123×4) on a hit.
     pursuit: async (ev) => {
       const p = ev.pursuit, nm = name(battle.side[ev.u.side].id), mine = ev.u.side === hs;
-      if (p.hit) { audio.sfx('sfx-horn'); await banner(`${nm} 遭到追击　受到 ${p.dmg} 点伤害`, mine ? '#ff8a70' : '#6ab8ff', 1300); }
+      if (p.hit) { await banner(`${nm} 遭到追击　受到 ${p.dmg} 点伤害`, mine ? '#ff8a70' : '#6ab8ff', 1300); }
       else await banner(`${nm} 撤退了`, '#a0a0a0', 900);
     },
     round: (ev) => { if (ev.withdraw && ev.withdraw !== hs) log(`<em>${name(battle.side[ev.withdraw].id)}军开始撤退</em>`); if (auto) { battle.aiCommands(hs); battle.aiTactic(hs); } drawTop(); drawConsole(); },
@@ -474,7 +476,9 @@ export async function runTactical({ battle, hs, looks, troopLooks = {}, view, du
   await banner('白兵战　开始', looks[hs] === 'attacker' ? '#6ab8ff' : '#ff8a70');
   if (paused) {
     opening = h('div', { class: 'tq-ask tq-start' },
-      h('p', {}, '两军列阵完毕', choosing ? null : h('small', {}, `（${name(S.id)}守城，用城池阵）`), h('br'), h('small', {}, '可先下达将令、施展战术（施展战术不会开始交战），准备好后开始交战。'), h('br'), h('small', {}, (PHONE ? '暂停时可看各队兵数。' : '暂停时或按住 Alt 可看各队兵数。'))),
+      // Phone: a short line, so the prompt keeps clear of the orders beside it (devblog #786 黑色风车; src/phone.css .tq-start)
+      PHONE ? h('p', {}, '两军列阵完毕', choosing ? null : h('small', {}, `（${name(S.id)}守城）`), h('br'), h('small', {}, '可先下令、施展战术'))
+        : h('p', {}, '两军列阵完毕', choosing ? null : h('small', {}, `（${name(S.id)}守城，用城池阵）`), h('br'), h('small', {}, '可先下达将令、施展战术（施展战术不会开始交战），准备好后开始交战。'), h('br'), h('small', {}, '暂停时或按住 Alt 可看各队兵数。')),
       h('div', {}, h('button', { class: 'tq-btn primary arming', 'data-pad': 'start', onclick: (e) => begin(e) }, '开始交战', h('kbd', {}, '空格'))));
     root.append(opening);
     markStage(); // the press that deployed, held or repeated, does not start the fight (D32 §7, §9.1)

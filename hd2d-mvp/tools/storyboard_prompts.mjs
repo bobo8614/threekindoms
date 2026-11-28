@@ -549,6 +549,52 @@ export const SCENES = {
       'The general gallops through the centre at full tilt, his red plume streaming.',
       'The front of the army reaches the right side, the fortress the same size as before. On the fortress towers, two thin pale columns of beacon smoke rise, with no flames: the fortress itself is whole and not burning.',
       'A huge cloud of dust and a forest of banners sweep toward the fortress under the same subdued evening sky, with the thin beacon smoke still rising from the intact towers. The general rides at the front of the army at the right, the same size as in frame 8.']) },
+  // AI 间战争's second and third beats (aiwar-clash take a, sheet-a.png, had the two generals swap sides in frame 3 and
+  // back in frame 4, a jump at a quarter second a frame: take b keeps each on his own side) (FC: 「××軍　戦闘中」, two riders crossing weapons under a grey sky; 「××軍
+  // 勝利」, a soldier raising a banner against a clear blue sky; the same pictures in every war, whoever wins). The
+  // clash tells no outcome and the victory shows no city taken, so either one plays for an attacker or a defender.
+  'aiwar-clash': { old: 'sortie', place: 'new', refs: ['assets/ai/vignettes/source/v2/sortie/sheet.png', 'assets/ai/vignettes/source/v2/aiwar-clash/sheet-a.png'], cast: 'The third reference image is the first beat of this same war (the army riding out): keep the general\'s look (lamellar armour, red-plumed helmet, dark bay horse, long ji halberd) and the painting\'s style; this panel is a closer shot of the battle itself. The fourth reference image is an earlier take of this very sheet: keep its place, camera, light, sky and figures exactly, and change only what the description now says (in every panel the red-plumed general stays on the left and the black-plumed one on the right; they never swap sides).', prompt: sheet(
+    'The middle of a battle on an open plain under a heavy overcast sky of grey and dusty pale ochre, no sun visible. Low dark hills far behind; trampled earth, broken spears and scattered shields in the foreground. Thick drifting dust and smoke hang over the field. No city, no fortress, no walls anywhere. The sky and light stay the same in all nine panels.',
+    'Two mounted generals fighting at the centre: on the left, a general in dark lamellar armour and a red-plumed helmet on a dark bay horse with a long ji halberd, facing right; on the right, an enemy general in dark iron lamellar armour and a black-plumed helmet on a grey horse with a long spear, facing left. Behind each of them a crowd of small fighting soldiers, cavalry and infantry, on foot and mounted, in similar dark armour. The few banners in the dust are torn and too faded to tell apart. Neither side gives way: nobody falls, flees or wins in any panel.',
+    ['The two generals gallop at each other from left and right through the dust, weapons levelled; the soldiers behind them close in.',
+      'They meet at the centre: halberd and spear cross with a bright spark, both horses rearing.',
+      'They spring apart, each still on his own side of the frame (the red-plumed general on the left, the black-plumed one on the right): both horses rear back and wheel half round, dust bursting around the hooves.',
+      'They turn their horses and face each other again, weapons raised high; the melee behind them thickens.',
+      'A second crash of halberd and spear at the centre, sparks flying; the horses shove chest to chest.',
+      'They strain against each other, weapons locked, both horses on their hind legs, dust swirling up around them.',
+      'They break apart, both still in the saddle; arrows streak across the grey sky over the fighting crowd.',
+      'They charge again from left and right, the soldiers behind them clashing all across the plain.',
+      'The two generals locked again at the centre, weapons crossed, the whole plain behind them full of fighting and dust under the grey sky, the outcome still unknown.']) },
+  'aiwar-victory': { old: 'sortie', place: 'new', refs: ['assets/ai/vignettes/source/v2/sortie/sheet.png'], cast: 'The third reference image is the first beat of this same war: match its painting style, armour and detail; this panel is a new place and a new figure.', prompt: sheet(
+    'The top of a low grassy rise after a battle, under a clear bright blue sky with a few white clouds, the dust of the battle settling far below. The rise fills the lower part of the frame, a broad plain with distant blue hills on the horizon behind it. No city, no fortress, no walls, no fallen or dead bodies anywhere. The sky and light stay the same in all nine panels.',
+    'A foot soldier in a brown leather lamellar coat and a padded hood-helmet, at the centre of the frame, seen from the waist up a little from below, facing the viewer. He holds a tall wooden pole with a large plain red banner with no writing, no emblem and no symbol. A few small soldiers further down the rise behind him.',
+    ['The soldier stands on the rise holding the banner pole upright at his side, the red banner hanging slack, catching his breath.',
+      'He grips the pole with both hands and begins to lift it, the banner starting to unfurl.',
+      'He thrusts the pole high above his head; the banner opens in the wind.',
+      'Arms straight up, he shouts in triumph, the banner streaming out to the right.',
+      'The banner billows and swings to the left in a gust, he still holds it high, shouting.',
+      'The banner streams to the right again; the small soldiers down the rise raise their spears and cheer.',
+      'He waves the banner in a wide arc over his head, cloth curling.',
+      'The banner streams out full and flat to the right, he holds it high and steady, mouth open in a cry of victory.',
+      'He stands holding the banner high against the clear blue sky, the cloth streaming out, the cheering soldiers below him, in bright light.']) },
+  // 出阵 (src/app.js expedition): the player's army marches out of its own city to war (82游戏电影圈的TONY老师@devblog #818).
+  // A new place, unlike 征兵's drill yard inside the walls: outside the gate at dawn, the column leaving down the road.
+  // It ends on the march, before anything is known of the battle. `old: 'sortie'` lends the earlier war painting's palette only.
+  // Painted by Codex (tools/gen_storyboard_codex.sh, 1536×1024, so each frame is enlarged a little to 640). Take a (sheet-a.png)
+  // drew the hill road only in frame 9; take b, told so with take a as the place, drew it in all nine but still put a file
+  // of soldiers ahead of the general in frame 9: tools/patch_depart_f9.py takes that stretch from frame 8 (sheet.png).
+  depart: { old: 'sortie', place: 'new', refs: ['assets/ai/vignettes/source/v2/depart/sheet-a.png'], cast: 'The third reference image is an earlier take of this very sheet: keep its place, camera, light and figures exactly, and change only what the description now says (the winding road into the hills at the far right is there and empty in every panel, and nobody walks ahead of the general).', prompt: sheet(
+    'Outside the main gate of a walled Han city at first light. The grey stone city wall runs across the upper left of the frame with a large two-storey gate tower with dark tiled roofs over a tall arched gateway with heavy wooden doors, a war drum on a stand on the wall beside the tower, and long red banners with no writing hanging from the battlements. A calm moat runs along the foot of the wall, crossed by a wide low stone bridge in front of the gate. From the bridge a broad pale earth road runs down and across the lower middle of the frame to the right edge, then winds off between low green hills toward a far range of blue mountains on the right horizon. That winding stretch of road at the far right is part of the fixed scenery: it is drawn the same in all nine panels, empty until the general reaches it. Willows by the moat, short grass beside the road, nothing in front of the road. The sky is cool blue-grey at the top warming to pale gold and soft peach at the right horizon where the sun is just rising; low mist lies along the moat. Quiet, restrained colour. The light and sky stay the same in all nine panels.',
+    'A general in dark lamellar armour, a red cape and a helmet with a red plume, riding a white warhorse and holding a long spear; beside him a standard-bearer on a brown horse with a tall plain red banner without any writing; behind them a long column of foot soldiers in red-brown tunics with spears and round shields and a few riders, many plain red banners. They come out of the gateway, over the bridge, and march along the road to the right. The general is always at the head of the column, on the road, with hooves fully on the road.',
+    ['The gate is shut. Mist on the moat; on the wall beside the tower a drummer raises his sticks over the war drum, and the banners stir.',
+      'The heavy doors swing half open; inside the gateway, spear points and a red banner are seen in the shadow. The drummer strikes the drum.',
+      'The doors stand fully open. The general on the white horse rides out onto the bridge, the standard-bearer beside him, the first ranks of spearmen behind them in the gateway.',
+      'At the far end of the bridge, the general reins in, turns his horse half back toward the gate and raises his spear high; the soldiers on the bridge raise their spears in answer.',
+      'The general rides on down the road at a walk, the standard-bearer beside him, the column pouring over the bridge behind him with banners streaming.',
+      'The head of the column is at the middle of the road, the general in front; the column now runs back unbroken over the bridge into the gateway. Small figures watch from the battlements.',
+      'The general leads the column along the road toward the right, a little dust rising under the marching feet; the bridge and gateway are full of marching soldiers.',
+      'The general nears the right side where the road bends into the hills, pointing ahead with his spear toward the distant mountains.',
+      'A long column with a forest of red banners stretches the whole length of the road from the open gate to the hills at the right, the general small at its head near the right edge with nobody ahead of him on the road, all marching away under the rising sun. The gate stands open and the drummer on the wall still beats the drum.']) },
   // 旱灾 (src/app.js showEvent 'disaster'): the land itself drying out.
   drought: { old: 'drought', prompt: sheet(
     'A farming valley at midday in summer: terraced paddy fields, an irrigation ditch with a wooden water wheel, a thatched farmhouse and a few trees in the distance. The sun stands high in a sky that starts pale blue. The whole sequence shows the same place getting worse.',
@@ -601,7 +647,13 @@ const BUILD = {
   // frame 9, at the gate: the officer's head was lost against the dark doorway and the open door kept the shut one's planks
   poach: { fine: [[150, 170, 300, 350, 22], [20, 110, 130, 300, 14]] },
   'st-firearrow': { fine: [[0, 110, 340, 280, 9]] }, // the archers' bows stayed hanging in the air after they had crouched again
+  // the drumsticks stayed where they were raised, a banner's tip floated before the willow, and the ranks in the gateway
+  // and on the bridge kept the frame before's heads and spears, a hoof stayed on the road, the far column on the hill road was lost
+  depart: { fine: [[30, 200, 120, 290, 22], [330, 195, 400, 245, 22], [90, 150, 310, 345, 22], [300, 290, 640, 410, 22], [520, 190, 640, 260, 22]] },
   pop: { quant: 'kmeans' }, // the blue banners came out grey
+  'aiwar-clash': { quant: 'kmeans' }, // the red cape and banners came out brown
+  // the red banner came out brown too; thin bits of its tail where it flew a frame before stayed in the sky: 10 where they were (22 kept them), 22 elsewhere (10 there set the far hills crawling)
+  'aiwar-victory': { quant: 'kmeans', fine: [[400, 140, 620, 205, 10], [200, 140, 260, 180, 10], [150, 0, 640, 340, 22]] },
   // land: in frames 1 and 4 the raised hoe's head was drawn as an axe; repainted by an image edit as a thin L-shaped hoe
   // blade standing up toward the sky and patched into those two shipped frames only (sheet.png holds the fix,
   // sheet-before-hoefix.png the original; 2026-11-07).
@@ -619,5 +671,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (flag === '--build') { console.log(JSON.stringify(BUILD[scene] || {})); process.exit(0); }
   if (flag === '--extra') { console.log(JSON.stringify(EXTRA[scene] || {})); process.exit(0); }
   if (flag === '--refs') console.log(['assets/ai/title.webp', `assets/ai/vignettes/source/${S.old}/bg.webp`, ...(S.refs || [])].join('\n'));
-  else process.stdout.write(`${S.prompt}\n\nThe second reference image is an earlier painting of this place: use it for mood, palette and detail only, not for its figures, and follow the description and the sheet layout above.${S.cast ? `\n${S.cast}` : ''}`);
+  else process.stdout.write(`${S.prompt}\n\n${S.place === 'new' ? 'The second reference image is an earlier painting of another scene in this game: use it for palette, armour, banners and detail only. It is NOT this place: draw the place described above' : 'The second reference image is an earlier painting of this place: use it for mood, palette and detail only, not for its figures'}, and follow the description and the sheet layout above.${S.cast ? `\n${S.cast}` : ''}`);
 }

@@ -41,8 +41,9 @@ const out = argOf('--out') ? resolve(argOf('--out')) : join(here, 'app');
 const MOBILE = process.argv.includes('--mobile');
 const mods = join(here, 'node_modules');
 
-// Generator inputs and editor-only material that the game never loads, and the dropped generated score (新编, assets/audio/bgm-*).
-const SKIP = [/(^|\/)source(\/|$)/, /^assets\/ai\/title-source/, /^assets\/audio\/(original|remix)\//, /^assets\/audio\/generated\.json$/, /^assets\/audio\/bgm-[^/]+\.mp3$/, /(^|\/)\.DS_Store$/];
+// Generator inputs and editor-only material that the game never loads, the dropped generated score (新编, assets/audio/bgm-*), the
+// retired waist-up set (assets/ai/halfbody/, src/ui.js figure) and the 铁线工笔 working set, published into portraits/ and faces/.
+const SKIP = [/(^|\/)source(\/|$)/, /^assets\/ai\/title-source/, /^assets\/ai\/halfbody\//, /^assets\/ai\/portraits-v2\//, /^assets\/audio\/(original|remix)\//, /^assets\/audio\/generated\.json$/, /^assets\/audio\/bgm-[^/]+\.mp3$/, /(^|\/)\.DS_Store$/];
 const KEEP = [/^index\.html$/, /^save-editor\.html$/, /^src\//, /^data\//, /^mods\//, /^assets\//]; // mods/: the data packs shipped with the game (core/pack.js)
 // An extension region of the 战略地图 ships only once it is open to packs (listed in its regions/index.json): until then no pack can
 // declare it, and its pictures would only weigh the package (docs/战略地图数据包_交接_2026-11-17.md).
@@ -163,7 +164,6 @@ if (MOBILE) {
   const SETS = [
     { dir: 'assets/ai/portraits', args: ['-resize', '640', '0', '-q', '78'] },
     { dir: 'assets/ai/faces', args: ['-resize', '288', '0', '-q', '78'] },
-    { dir: 'assets/ai/halfbody', args: ['-q', '75'] },
     { dir: 'assets/ai/warground/maps', args: ['-q', '72'] },
   ];
   const rows = SETS.flatMap(({ dir, args }) => listIn(dir, /\.webp$/).map((file) => ({ file, label: dir, args: [...args, '-alpha_q', '100', '-sharp_yuv', '-metadata', 'none'] })));

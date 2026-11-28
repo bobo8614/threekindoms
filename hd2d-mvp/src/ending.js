@@ -5,7 +5,7 @@
 // A click or key finishes what is being written, or moves on; nothing here can skip the result by accident, since the
 // hall waits for its own click and the input is ignored for a moment after each screen opens.
 import { name } from './core/game.js';
-import { h, avatar, figure } from './ui.js';
+import { h, avatar, face } from './ui.js';
 // The 鸣谢 and makers are players' own names: rawText keeps them as written in 繁體 too.
 import { rawText } from './lang.js';
 
@@ -79,7 +79,7 @@ async function hall(stage, g, ruler, score, parts) {
   const row = (k, v, note) => h('div', { class: 'end-part' }, h('span', {}, k), h('b', {}, v), h('small', {}, note));
   const hint = score >= 70 ? null : `统一度达到 ${score >= 40 ? 70 : 40} 分，结局还有更多可看`;
   const card = stage.add(h('div', { class: 'end-result', 'data-score': score },
-    h('div', { class: 'end-frame' }, figure(ruler)),
+    h('div', { class: 'end-frame' }, face(ruler)), // the whole portrait (waist-up, 2:3 like the frame)
     h('div', { class: 'end-result-body' },
       h('h2', {}, '天下统一'),
       h('p', { class: 'end-when' }, `${g.year}年${g.month + 1}月　${name(ruler)}平定三十州`),
@@ -102,7 +102,7 @@ function officerCard(g, D, id, isRuler) {
   const o = g.officers[id], w = D.equipment[o.weapon], a = D.equipment[24 + o.armor];
   const stat = (k, v) => h('div', {}, h('span', {}, k), h('b', {}, v));
   return h('div', { class: `end-card ${isRuler ? 'is-ruler' : ''}`, 'data-id': id },
-    h('div', { class: 'end-frame' }, figure(id)),
+    h('div', { class: 'end-frame' }, face(id)),
     h('div', { class: 'end-card-body' },
       isRuler ? h('small', {}, '君主') : null,
       h('h3', {}, name(id)),

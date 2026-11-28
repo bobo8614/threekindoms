@@ -31,7 +31,7 @@ export const ICONIC = {
   周瑜: 'Zhou Yu: elegant handsome Wu commander and musician, clean-shaven, refined features, red-and-white robe over light armour, sword and guqin motif, confident',
   马超: 'Ma Chao (Splendid Ma): young handsome western cavalry general, white lion-head armour, silver helmet with white plume, long spear, fierce noble look',
   司马懿: 'Sima Yi: cunning long-lived strategist of Wei, sharp wolf-like calculating gaze, long thin beard, dark purple scholar robes with black hat, cold smile',
-  典韦: "Dian Wei: Cao Cao's ferocious bodyguard, huge muscular build, wild beard, bald or short cropped hair, heavy dark armour, a pair of short-hafted iron ji halberds, one gripped in each fist like hand weapons — NOT a long glaive",
+  典韦: "Dian Wei: Cao Cao's ferocious bodyguard, huge muscular build, wild thick black beard and bushy brows, a round-topped dark iron helmet with lamellar ear and neck guards hanging to the shoulders (never bald, never a bare headband), heavy dark armour, a pair of short-hafted iron ji halberds, one gripped in each fist like hand weapons — NOT a long glaive",
   许褚: 'Xu Chu (Tiger Fool): massive bare-armed brawler, bushy beard, simple armour open at the chest, huge spiked iron club or broad sword, reckless grin',
   黄忠: 'Huang Zhong: veteran archer general, old but vigorous, long white beard and white eyebrows, gold-and-green armour, great longbow and broad sabre',
   孙权: 'Sun Quan: young lord of Wu, green-blue eyes and reddish-purple beard, square jaw, red-and-gold royal armour, regal and calm',

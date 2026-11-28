@@ -273,6 +273,9 @@ body.phone .vig.floating { width: min(94vw, calc((var(--vh) * .78 - 62px) * 1.5 
 body.phone .vig canvas { image-rendering: auto; }
 body.phone .vig-frame { padding: 4px; }
 body.phone .vig-cap { margin-top: 4px; padding: 0 26px; font-size: 15px; line-height: 1.5; letter-spacing: 1px; min-height: 1.5em; }
+body.phone .vig.aiwin { width: min(40vw, calc((var(--vh) * .62 - 40px) * 1.5)); left: var(--g); } body.phone .vig.aiwin.right { left: auto; right: var(--gr); }
+body.phone .vig.aiwin.top { top: calc(var(--gt) + 36px); } body.phone .vig.aiwin.bottom { bottom: calc(var(--gb) + 8px); }
+body.phone .vig.aiwin .vig-cap { font-size: 14px; padding: 0 6px; gap: 6px; }
 body.phone .vig-more { right: 10px; bottom: 6px; font-size: 12px; }
 
 /* 战略地图: panels that used to land on each other.
@@ -473,5 +476,14 @@ body.phone .tq-tactics .tq-tacfold { grid-column: 1 / -1; order: 1; justify-self
 body.phone .tq-tactics.open .tq-tacfold { outline: 2px solid #ffe08a; outline-offset: -2px; }
 body.phone .tq-tacfold .tq-tac-live { top: -15px; right: 0; }
 body.phone .tq-orders .tq-row.none { display: none; }
+/* 开始交战 before the fight (devblog #786 黑色风车): the prompt stood 330 px wide in the middle, over the 围 of the orders unfolded
+   beside it, and took their taps. Now it is a small card, and while orders or tactics stand unfolded it fades and lets taps
+   through (▶ 继续 in the controls starts the fight as well); an unfolded row stands over the controls too (全军's 待 and 围 lay under
+   them). tests/phonetactical.test.mjs taps every option. */
+body.phone .tq-start { max-width: 200px; padding: 8px 12px; transition: opacity .15s; }
+body.phone .tq-start p { font-size: 14px; } body.phone .tq-start small { font-size: 12px; }
+body.phone .tq-start .tq-btn.primary { padding-inline: 18px; font-size: 16px; } body.phone .tq-start kbd { display: none; }
+body.phone .tq:has(.tq-row.open, .tq-tactics.open) .tq-start { opacity: 0; pointer-events: none; }
+body.phone .tq-orders:has(.tq-row.open) { z-index: 5; } body.phone .tq-orders .tq-row.open { background: rgba(14, 10, 6, .97); }
 /* the shortest phones (568×320): the cells a little lower, so the five still keep under the top cards */
 @media (max-height: 340px) { body.phone .tq-orders .tq-row:not(.open) .tq-cmd.on, body.phone .tq-orders .tq-fold, body.phone .tq-orders .tq-row.open .tq-kind, body.phone .tq-orders .tq-cmd { min-height: 34px; } }
