@@ -41,7 +41,7 @@ export const blocking = () => layer().childElementCount > 0;
 let portraitFiles = {};
 export const setPortraits = (p) => (portraitFiles = p);
 // Painted art is indexed by officer id; an 阿会喃 copy (原版漏洞, core/ahuinan.js) wears 阿会喃's.
-// Every officer has a painted portrait, half-body and four expressions (tests/artcoverage.test.mjs);
+// Every officer has a painted portrait and four expressions (tests/artcoverage.test.mjs);
 // 阿会喃's portrait is only a last resort, never the original pixel art.
 const art = artOf; // a pack's officer, or an 阿会喃 copy, shows the officer whose pictures he borrows
 const FALLBACK = 'assets/ai/portraits/0.webp';
@@ -55,16 +55,13 @@ export const setFaces = (f) => (faceFiles = f);
 // Three framings (F08): every slot uses one of them, so officers line up the same way side by side.
 // - avatar(id, mood): head and shoulders, the expression bust — every small slot (rosters, tables, legend,
 //   result ledgers, battle cards, dialogs).
-// - figure(id): the standard waist-up portrait (tools/halfbody_prompts.mjs) for the large slots (ruler
-//   select, war unit panel, 白兵 face-off); the calm bust stands in until one is generated.
-// - face(id): the free-pose illustration, shown whole only on the officer card.
-let halfbodyFiles = {};
-export const setHalfbody = (f) => (halfbodyFiles = f);
+// - figure(id): the large slots (ruler select, war unit panel, 白兵 face-off). Since the 铁线工笔 set
+//   (tools/portraits_v2/, 2026-11-28) became the default it is the calm bust: the old waist-up set
+//   (assets/ai/halfbody/, tools/build_halfbody.py) was in the previous style, and none was drawn for the new
+//   one (user's decision), so it is neither loaded nor shipped.
+// - face(id): the portrait, shown whole on the officer card and in the 片尾 frames (src/ending.js).
 export const avatar = (id, mood = 'calm', cls = '') => face(id, `${cls} avatar`, mood);
-export function figure(id, cls = '') {
-  if (halfbodyFiles[art(id)]) return h('img', { src: halfbodyFiles[art(id)], class: `${cls} figure ai`, alt: name(id) });
-  return avatar(id, 'calm', `${cls} figure`);
-}
+export const figure = (id, cls = '') => avatar(id, 'calm', `${cls} figure`);
 // face(id) is the officer's portrait; face(id, cls, mood) is the dialog bust with that expression.
 export function face(id, cls = '', mood = null) {
   if (mood == null) return h('img', { src: portrait(id), class: `${cls} ai`, alt: name(id) });

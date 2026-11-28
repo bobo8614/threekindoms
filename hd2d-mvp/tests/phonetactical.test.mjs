@@ -24,6 +24,41 @@ async function open({ a = 51, d = 38, t = 5, human = 'a', query = '' } = {}) {
 const box = (page, sel) => page.locator(sel).evaluateAll((l) => l.map((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height, text: e.textContent }; }).filter((b) => b.w > 0));
 const on = (page, k) => page.locator(`.tq-row:not(.tq-all) .tq-cmd.on[data-k="${k}"]`);
 
+// devblog #786 (黑色风车): before the fight the 开始交战 prompt stood over the orders unfolded beside it and took the taps on 围;
+// 全军's 待 and 围 lay under the controls. Every option of every unfolded row, and every tactic, takes its own tap.
+for (const [w, h, safe] of [[667, 360, ''], [568, 320, '&safe=44,0,34,0']]) test(`phone 白兵 ${w}×${h}${safe ? ' with a notch' : ''}: the 开始交战 prompt is small and never covers an unfolded order or tactic`, async () => {
+  const page = await game.open(`&phone${safe}`);
+  if (w !== 667) { await page.setViewportSize({ width: w, height: h }); await page.reload(); await page.waitForFunction(() => window.__game?.debug, null, { timeout: 60000 }); }
+  await skipIntro(page);
+  await page.evaluate(() => { window.__game.debug.quickTactical(51, 38, 5, { human: 'a' }); });
+  await page.waitForSelector('.tq-formation, .tq-start', { timeout: 60000 });
+  if (await page.locator('.tq-formation').count()) { await page.locator('.tq-form').first().click(); await page.locator('.tq-deploy:not(.arming)').click(); }
+  await page.waitForSelector('.tq-start button:not(.arming)', { timeout: 30000 });
+  const [ask] = await box(page, '.tq-start'), [btn] = await box(page, '.tq-start .tq-btn');
+  assert.ok(ask.w <= 210, `the prompt is ${ask.w} px wide`);
+  assert.ok(btn.h >= 40, `its button is a thumb's size (${btn.h} px)`);
+  const covered = () => page.evaluate(() => [...document.querySelectorAll('.tq-row.open .tq-cmd, .tq-tactics.open .tq-tac')].filter((e) => {
+    const b = e.getBoundingClientRect(), t = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2); return !(e === t || e.contains(t));
+  }).map((e) => e.textContent));
+  const n = await page.locator('.tq-orders .tq-row:not(.none)').count();
+  for (let i = 0; i <= n; i++) {
+    if (i < n) await page.locator('.tq-orders .tq-row:not(.none)').nth(i).locator('.tq-cmd.on, .tq-fold').first().click();
+    else await page.locator('.tq-tacfold').click();
+    await page.waitForTimeout(250);
+    assert.ok(await page.locator('.tq-row.open, .tq-tactics.open').count(), `${i}: unfolded`);
+    assert.deepEqual(await covered(), [], `${i}: every option takes its tap`);
+    if (i < n) await page.locator('.tq-orders .tq-row.open .tq-kind, .tq-orders .tq-row.open .tq-fold').first().click(); else await page.locator('.tq-tacfold').click();
+    await page.waitForTimeout(200);
+  }
+  // a choice of order: given, folded, and the prompt is back to start the fight
+  await on(page, '弓').click(); await page.locator('.tq-row.open .tq-cmd[aria-label="待机"]').click();
+  assert.equal(await on(page, '弓').textContent(), '■待');
+  await page.locator('.tq-start button').click();
+  await page.waitForFunction(() => !document.querySelector('.tq-start'), null, { timeout: 5000 });
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test('phone 白兵: five folded order cells stand in a narrow strip under the cards; the camera frames the field beside it', async () => {
   const page = await open({ query: '&safe=59,0,0,0' }); // a notch on the left only: the strips are not alike
   assert.equal(await page.evaluate(() => document.body.classList.contains('phone')), true);

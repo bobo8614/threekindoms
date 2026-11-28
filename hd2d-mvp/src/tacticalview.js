@@ -508,6 +508,7 @@ export function createTacticalView(T, sprites) {
         v.moving = true;
         // A general is pursued at the rim (core/tactical.js pursue()): the HUD names it, the blow lands on him there and
         // his bar takes it before he goes, so the HP never changes after he has gone; a pursuit that kills him fells him.
+        // No sound: the original's pursuit plays none, the blow (off screen there) included (docs/review-assets/2026-11-26/pursuit-audio).
         if (p) {
           // on the cell he leaves from: the board's rim is the screen's edge, so the numbers stand a cell inward
           clash(posOf(ev.u));
@@ -515,7 +516,7 @@ export function createTacticalView(T, sprites) {
           await hooks.pursuit?.(ev);
           const at = posOf(ev.u).clone(); at.x -= dir * 0.9;
           if (p.hit) {
-            hooks.sfx?.('sfx-clash'); flash(ev.u, 1.8); sparkBurst(scene, posOf(ev.u).clone().setY(at.y + 0.5), 24, '#ffd070');
+            flash(ev.u, 1.8); sparkBurst(scene, posOf(ev.u).clone().setY(at.y + 0.5), 24, '#ffd070');
             popup(`-${p.dmg}`, at.clone().setY(at.y + 1.0), `${v.look} heavy`); reel(ev.u); tag(ev.u); hooks.update?.(); shake = 0.12;
             await sleep(d(560));
           } else { popup('脱身', at.clone().setY(at.y + 1.0), 'word'); await sleep(d(360)); }
@@ -575,7 +576,7 @@ export function createTacticalView(T, sprites) {
       if (!ev.center) { await blast.play({ from, to, d, dud: true }); return; }
       clash(to);
       await blast.play({ from, to, d, shake: (k) => { shake = Math.max(shake, k); },
-        onBurst: () => { hooks.sfx?.('sfx-blast'); for (const h of ev.hits) { popup(`-${h.dmg}`, posOf(h.u).clone().setY(1.2), units.get(h.u).look); flash(h.u); reel(h.u); tag(h.u); if (h.u.dead || h.u.out) kill(h.u, { fade: h.u.kind === 'gen' && battle.side[h.u.side].fate !== 'dead' }); } } });
+        onBurst: () => { for (const h of ev.hits) { popup(`-${h.dmg}`, posOf(h.u).clone().setY(1.2), units.get(h.u).look); flash(h.u); reel(h.u); tag(h.u); if (h.u.dead || h.u.out) kill(h.u, { fade: h.u.kind === 'gen' && battle.side[h.u.side].fate !== 'dead' }); } } });
       await sleep(d(200));
     } else {
       const target = ev.id === 'bind' ? foe : own, p = posOf(target).clone();

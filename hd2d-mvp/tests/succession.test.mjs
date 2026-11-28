@@ -177,23 +177,3 @@ test('on screen: a fallen house\'s next officer comes to the player naming the l
   assert.ok(text.includes(`${r.next}追随旧主${r.old}`) && text.includes('加入我军'), `notice: ${text}`);
   assert.deepEqual(page.errors, []);
 });
-
-test('on screen: the standard in an AI war bears the new ruler\'s surname', async () => {
-  const page = await game.open();
-  await newCampaign(page, '刘备');
-  const stop = closeMessages(page);
-  try {
-    await killRuler(page, 2);
-  } finally { stop(); }
-  const r = await page.evaluate(() => {
-    const { g, G, strategy } = window.__game, f = 2, seen = [];
-    const fill = CanvasRenderingContext2D.prototype.fillText;
-    CanvasRenderingContext2D.prototype.fillText = function (s, ...a) { seen.push(s); return fill.call(this, s, ...a); };
-    const city = g.cities.find((c) => c.faction === f).id;
-    const show = strategy.aiWar({ from: null, to: city, att: f, def: 1, attName: G.factionName(g, f), defName: G.factionName(g, 1) });
-    CanvasRenderingContext2D.prototype.fillText = fill;
-    show?.dispose?.();
-    return { seen, heir: G.factionName(g, f) };
-  });
-  assert.ok(r.seen.includes(r.heir[0]), `drawn ${r.seen} for ${r.heir}`);
-});

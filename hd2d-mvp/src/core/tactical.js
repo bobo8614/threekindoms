@@ -358,7 +358,7 @@ export class Tactical {
   }
   autoDuel() { const d = this.duel; for (let t; (t = d.next()); ) d.act(t, d.aiCommand(t)); return this.resolveDuel(); }
 
-  // Our general at 0 HP: slain, or under 武将不战死 taken (a ruler is slain all the same), and the 白兵 ends.
+  // Our general at 0 HP: slain, or under 武将不战死 taken (a ruler too), and the 白兵 ends.
   fell(s) {
     const S = this.side[s], gu = this.gen(s), how = spared(this.g, S.id) || 'dead';
     gu.dead = true;

@@ -81,6 +81,64 @@ test('a 白兵 volley sounds as it looses and again as the arrows land', async (
   assert.ok(r.gap > 100, `the landing follows the flight (${Math.round(r.gap)} ms)`);
 });
 
+// devblog #786 #787 (黑色风车): every 白兵 tactic played the war-start phrase as it was cast, which is the original's 升级 phrase (123×4),
+// a failure 取消 after it and 爆炎 a burst. The original plays nothing of its own from the cast to the outcome (all six traced on the
+// ROM, 咒缚 and 挑发 failing too: docs/白兵音效与开始交战提示框交接_2026-11-26_devblog786-787.md); the 白兵 theme plays on.
+test('a 白兵 tactic is cast, lands or fails without a sound of its own', async () => {
+  const p = await game.open();
+  await p.evaluate(() => { window.__game.debug.quickTactical(153, 191, 2, { human: 'a' }); });
+  await p.waitForSelector('.tq-form', { timeout: 60000 });
+  await p.locator('.tq-form').first().click(); await p.locator('.tq-deploy:not(.arming)').click();
+  await p.waitForSelector('.tq-start button:not(.arming)', { timeout: 30000 });
+  await spy(p);
+  const out = {};
+  // cast before the fight starts (a cast does not start it), one at a time: each run anew, 咒缚 made to fail
+  for (const [name, fail] of [['咒缚', true], ['强弩', false], ['爆炎', false]]) {
+    await p.evaluate(([fail]) => { const b = window.__tq, S = b.side.a; S.tp = 40; S.fx = {}; S.usedThisRound = false; window.__r = b.r; if (fail) b.r = () => 0; }, [fail]);
+    await p.locator('.tq-speed .tq-btn', { hasText: '1×' }).click(); // the console drawn anew with the points given
+    await heard(p);
+    const n = await p.locator('.tq-feed p', { hasText: `施展 ${name}` }).count();
+    await p.locator('.tq-tac:not([disabled])', { hasText: name }).click();
+    await p.waitForFunction(([name, n]) => [...document.querySelectorAll('.tq-feed p')].filter((e) => e.textContent.includes(`施展 ${name}`)).length > n, [name, n], { timeout: 30000 });
+    await p.waitForSelector('.banner', { state: 'detached', timeout: 10000 }).catch(() => {});
+    out[name] = { said: await p.locator('.tq-feed p').first().textContent(), heard: await heard(p) };
+    await p.evaluate(() => { window.__tq.r = window.__r; });
+  }
+  assert.match(out['咒缚'].said, /失败/);
+  assert.match(out['爆炎'].said, /成功/, `爆炎 lands on the field: ${out['爆炎'].said}`);
+  for (const [k, v] of Object.entries(out)) assert.deepEqual(v.heard, [], `${k}: ${v.heard}`);
+  assert.equal(await p.evaluate(() => window.__tq.over || !!document.querySelector('.tq-start')), true, 'the fight is still to start');
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
+});
+
+// The 白兵 pursuit at the edge (bank14 $A407–$A4F6) plays nothing of its own, a hit or an escape: traced on the ROM from the natural
+// retreat chain, 13 and 5 points and an escape (docs/review-assets/2026-11-26/pursuit-audio). The remake had played the 升级 phrase
+// (sfx-horn) and an attack sound (sfx-clash) on a hit.
+for (const hit of [true, false]) test(`a 白兵 general pursued at his edge ${hit ? 'and hit' : 'who gets away'} hears nothing of it`, async () => {
+  const p = await game.open();
+  await p.evaluate(() => { window.__game.debug.quickTactical(153, 191, 2, { human: 'a' }); });
+  await p.waitForSelector('.tq-form', { timeout: 60000 });
+  await p.locator('.tq-form').first().click(); await p.locator('.tq-deploy:not(.arming)').click();
+  await p.waitForSelector('.tq-start button:not(.arming)', { timeout: 30000 });
+  // our general on our edge, ordered back, the first to act: his step leaves the field, and the pursuit draws U(100) (≥ 32:
+  // pursued) and U(10); the battle's own loop plays it
+  await p.evaluate((hit) => {
+    const b = window.__tq, gu = b.gen('a'), r = b.r;
+    gu.x = 0; b.side.a.cmd.gen = 'retreat'; b.queue = [gu];
+    b.r = (n) => (n === 100 ? (hit ? 99 : 0) : n === 10 ? 4 : r(n));
+  }, hit);
+  await spy(p);
+  await p.locator('.tq-start button:not(.arming)').click();
+  await p.waitForSelector('.tq-result', { timeout: 30000 });
+  const [pursuit, hp] = await p.evaluate(() => [window.__tq.side.a.pursuit, window.__tq.side.a.hp]);
+  assert.deepEqual(pursuit, hit ? { hit: true, dmg: 9, rolled: 9, from: hp + 9 } : { hit: false, dmg: 0 });
+  assert.match(await p.locator('.tq-feed').textContent(), hit ? /遭到追击，体力 −9/ : /成功脱身/, 'the pursuit was played');
+  assert.deepEqual(await heard(p), []);
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
+});
+
 test('the player\'s month and war day begin without the war-start phrase', async () => {
   const p = await game.open();
   await spy(p);

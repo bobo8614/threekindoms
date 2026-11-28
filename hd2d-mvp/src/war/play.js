@@ -64,6 +64,8 @@ export function makePlay(wv) {
     const turns = (i) => i > 0 && i < legs.length && legs[i - 1].flat.dot(legs[i].flat) < 0.99; // a corner at pts[i]
     const p = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3();
     let beat = 1, i = 0;
+    // Our own ride to a cell the player can see is watched where it is (src/war/camera.js ride); one that ends out of the clear is kept in it.
+    if (follow && wv.rideEndsInSight(...path[path.length - 1])) follow = false;
     v.moving = v.walk = true; v.stride = 0;
     await tween(ms, (k) => {
       // Trapezoid pace: `ramp` ms up to speed, level, `ramp` ms down.

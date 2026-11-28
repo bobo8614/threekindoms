@@ -19,7 +19,6 @@ import { createStrategySky } from './strategysky.js';
 import { createStrategyMarks } from './strategymarks.js';
 import { createStrategyWar } from './strategywar.js';
 import { zh } from './lang.js'; // 繁體: text shown through CSS attr() is not reached by lang.js's patches
-export { COMPOUND, surnameOf, paintBanner } from './strategywar.js';
 
 // A world-depth band keeps the playable neighbourhood sharp at any zoom; low tilt retains a soft far rim.
 const DOF_BAND = [6.5, 0.16], DOF_RAMP = [9, 0.08], DOF_STRENGTH = [0.95, 0.9], DOF_FAR = [1, 0.4], DOF_NEAR = [0.7, -0.2];
@@ -129,9 +128,7 @@ export function createStrategy(ctx) {
   setSeason(2, true); // the title screen opens on 季春
 
   const territoryAttention = () => world.setTerritoryFocus?.(!!candidates || war.active);
-  const war = createStrategyWar({ scene, sand, cityPos, pathOf, groundY, colorOf, frame, focusCity: (cid) => focusCity(cid),
-    clashFocus: (mid) => { goal.target.set(mid.x, mid.y * 0.5 + 0.4, mid.z + 0.5); goal.dist = 16; },
-    attention: territoryAttention, addPulse: visualMarks.addPulse, pulseCount: visualMarks.pulseCount });
+  const war = createStrategyWar({ frame, focusCity: (cid) => focusCity(cid), attention: territoryAttention });
   // Ease the view so all these cities are on screen, looking at their middle.
   function frame(cids) {
     const ps = cids.map((c) => cityPos[c]), cx = ps.reduce((a, p) => a + p.x, 0) / ps.length, cz = ps.reduce((a, p) => a + p.z, 0) / ps.length;

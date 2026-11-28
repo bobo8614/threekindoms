@@ -236,6 +236,68 @@ test('working out a framing never moves the real camera', async () => {
   assert.deepEqual(p.errors, []);
 });
 
+// Our own march (2026-11-27, 大宝剑@devblog): the camera stays while the rider is in the clear, and when he would leave it slides
+// the least that keeps him there. Before, every frame of the ride set the view on a point leaned toward the board's middle (0.6 of
+// the way at 远 on a wide window) and cleared the player's own slide, so a march near the edge left him at the top of the screen.
+test('our own march keeps the view the player set, and slides only to keep the rider in sight', async () => {
+  const p = await war3d();
+  await p.evaluate(() => { const w = window.__game.war; for (let i = 0; i < 8 && w.cancel(); i++); w.hoverCell(null); w.overview(); });
+  await warRest(p, { jump: true });
+  // The rider (ours, selected) and a reachable empty cell in the clear or out of it, the one whose ride leans the view farthest: the
+  // farthest from the board's middle.
+  const sel = () => p.evaluate(() => { const w = window.__game.war, f = w.field; f.pool[f.human] = 60; const u = f.alive.find((u) => u.side === f.human); if (w.st.sel !== u) w.clickCell(u.x, u.y); return { id: u.id, x: u.x, y: u.y }; });
+  const pick = (want) => p.evaluate((want) => {
+    const w = window.__game.war, f = w.field, u = w.st.sel;
+    const cells = [...(w.st.reach?.dist.keys() ?? [])].map((k) => k.split(',').map(Number))
+      .filter(([x, y]) => !f.unitAt(x, y) && Math.max(Math.abs(x - u.x), Math.abs(y - u.y)) >= 2 && w.seenClearAt(x, y) === want)
+      .sort((a, b) => Math.hypot(b[0] - 15.5, b[1] - 9) - Math.hypot(a[0] - 15.5, a[1] - 9));
+    return cells.length ? { x: cells[0][0], y: cells[0][1] } : null;
+  }, want);
+  const goal = () => p.evaluate(() => window.__game.war.probe().view.target);
+  const ride = async (c) => { await p.evaluate(({ x, y }) => window.__game.war.clickCell(x, y), c); await p.waitForFunction(() => !window.__game.war.st.busy, null, { timeout: 20000 }); await warRest(p, { jump: true }); };
+  const back = async () => { await p.evaluate(() => window.__game.war.undo()); await p.waitForFunction(() => !window.__game.war.st.busy && !window.__game.war.st.last, null, { timeout: 20000 }); await warRest(p, { jump: true }); };
+
+  // 远, the view slid onto him: a ride that stays in the clear leaves the camera where it is.
+  await p.evaluate(() => { const w = window.__game.war; w.zoom(-100); }); await warRest(p, { jump: true });
+  assert.equal(await p.evaluate(() => window.__game.war.probe().view.zoom), 'far');
+  const me = await sel();
+  await p.evaluate(({ x, y }) => window.__game.war.centreOn(x, y), me); await warRest(p, { jump: true });
+  const near = await pick(true); assert.ok(near, 'one of ours can ride to a cell in the clear');
+  let a = await goal();
+  await ride(near);
+  let b = await goal();
+  assert.ok(Math.hypot(b[0] - a[0], b[2] - a[2]) < 0.05, `the camera stayed: ${a} → ${b}`);
+  assert.ok(await p.evaluate(({ x, y }) => window.__game.war.seenClearAt(x, y), near), 'he is in the clear where he stopped');
+  assert.equal(await p.evaluate(() => window.__game.war.probe().view.moved), true, 'the view is still the player\'s');
+  await back();
+
+  // 远 again, the view not slid by the player (the step taken from the overview, then the general picked): the card he shows once he has
+  // ridden (撤销移动 on it) changes its height, and that does not set the view on him again either.
+  await p.evaluate(() => { const w = window.__game.war; for (let i = 0; i < 8 && w.cancel(); i++); w.overview(); }); await warRest(p, { jump: true });
+  await p.evaluate(() => window.__game.war.zoom(-100)); await warRest(p, { jump: true });
+  await sel(); await warRest(p, { jump: true });
+  const near2 = await pick(true); assert.ok(near2, 'one of ours can ride to a cell in the clear, the view untouched');
+  a = await goal();
+  await ride(near2); await p.waitForTimeout(300); await warRest(p, { jump: true });
+  b = await goal();
+  assert.ok(Math.hypot(b[0] - a[0], b[2] - a[2]) < 0.05, `the camera stayed, the view untouched: ${a} → ${b}`);
+  await back();
+
+  // 近: a ride out of the clear slides the view, but only as far as keeps him in it; it does not centre him.
+  await p.evaluate(() => { const w = window.__game.war; w.zoom(-100); w.zoom(-100); }); await warRest(p, { jump: true });
+  assert.equal(await p.evaluate(() => window.__game.war.probe().view.zoom), 'near');
+  await sel(); const far = await pick(false); assert.ok(far, 'one of ours can ride out of the clear at 近');
+  a = await goal();
+  await ride(far);
+  b = await goal();
+  assert.ok(await p.evaluate(({ x, y }) => window.__game.war.seenClearAt(x, y), far), 'the view slid to keep him in the clear');
+  assert.ok(Math.hypot(b[0] - a[0], b[2] - a[2]) > 0.3, `the view slid: ${a} → ${b}`);
+  assert.ok(Math.hypot(b[0] - (far.x - 15.5), b[2] - (far.y - 9) - 1) > 0.5, `the least slide, not a re-centre on him: ${b} for (${far.x}, ${far.y})`);
+  await back();
+  await p.evaluate(() => { const w = window.__game.war; for (let i = 0; i < 8 && w.cancel(); i++); w.overview(); }); await warRest(p, { jump: true });
+  assert.deepEqual(p.errors, []);
+});
+
 // The player's step (Task 7): st.stage, a read-only name for where the player is, read off the fields interact.js keeps. This
 // case opens its own war, as war3d() does, but stays on the 布阵 to see that step first.
 test('st.stage names the step the player is on', async () => {

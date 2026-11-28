@@ -174,9 +174,19 @@ export function makeCamera(wv) {
   const tookCamera = () => { if (enemyTurn()) handsKey = turnKey(); };
   function watch(x, y) {
     if (handsKey === turnKey() || view.tactical || view.closeup) return;
-    const c = { x: Math.min(W - 1, Math.max(0, Math.round(x))), y: Math.min(H - 1, Math.max(0, Math.round(y))) };
-    if (!seenClear(c)) slideTo(c);
+    ride(x, y);
   }
+  // A march followed (the enemy's, watched as above, and our own since 2026-11-27, 大宝剑@devblog): the camera stays while the rider is
+  // in the clear and slides the least that keeps him there when he nears its edge. He is judged where the camera is going, not where it
+  // is mid-ease: judged on the real camera, still catching up, each frame would slide the goal another step toward him and the view would
+  // creep onto him. Before, our own march re-centred the view each frame on a point leaned toward the board's middle (0.6 of the way at
+  // 远 on a wide window), so a march near the edge dragged the camera off him and threw away the view the player had slid to.
+  // A ride that ends in the clear is not followed at all (rideEndsInSight, src/war/play.js moveAlong): he may set out from under the panel
+  // or past the edge and ride into the picture the player is looking at.
+  const cellAt = (x, y) => ({ x: Math.min(W - 1, Math.max(0, Math.round(x))), y: Math.min(H - 1, Math.max(0, Math.round(y))) });
+  const seenAhead = (c) => seenClear(c, poseOn(scratch, { yaw: view.yawGoal ?? view.yaw, pitch: view.pitchGoal ?? view.pitch, dist: view.distGoal ?? view.dist, target: view.targetGoal }));
+  function ride(x, y) { const c = cellAt(x, y); if (!seenAhead(c)) slideTo(c); }
+  const rideEndsInSight = (x, y) => !flat && !view.tactical && !view.closeup && view.zoom !== 'whole' && seenAhead(cellAt(x, y));
   // 定位目标: on the player's asking, the target in the middle of the clear, at 中 (nearer if the view is nearer already).
   function locate(t) {
     if (!t || t.gone) return;
@@ -199,7 +209,7 @@ export function makeCamera(wv) {
   const leanK = () => (view.zoom !== 'far' ? 1 : (innerHeight - inset.top - inset.bottom) / innerHeight < 0.6 ? 0.95 : camera.aspect >= 1.5 ? 0.6 : camera.aspect >= 1.1 ? 0.8 : 0.95);
   // 全景 already shows every general: picking one or following a march leaves it be.
   function focusOn(u) { if (view.tactical || view.zoom === 'whole') return; if (enemyTurn()) return watch(u.x, u.y); const k = leanK(); view.panned = false; view.atFit = false; view.fit = false; view.moved = false; view.targetGoal.set(wx(u.x) * k, 0, wz(u.y) * k + 1); }
-  function followPoint(p) { if (view.tactical || view.zoom === 'whole') return; if (enemyTurn()) return watch(p.x + W / 2 - 0.5, p.z + H / 2 - 0.5); const k = leanK(); view.panned = false; view.atFit = false; view.fit = false; view.moved = false; view.targetGoal.set(p.x * k, 0, p.z * k + 1); }
+  function followPoint(p) { if (view.tactical || view.zoom === 'whole' || view.closeup) return; if (enemyTurn()) return watch(p.x + W / 2 - 0.5, p.z + H / 2 - 0.5); ride(p.x + W / 2 - 0.5, p.z + H / 2 - 0.5); }
   // Screen space the HUD covers (px): the camera frames the target in the free band between them by
   // shifting the projection centre, so a selected unit never sits behind the unit panel or the dock.
   // left: the action panel's column (D32), so the middle of the frame stands in the middle of the clear right of it.
@@ -431,6 +441,6 @@ export function makeCamera(wv) {
     },
   };
   return { view, inset, LENS, STEPS, YAWS, CENTRE, fitBox, footprint, fitInside, wholeView, farDist, stepDist, seenClear, pickYaw, placeCamera,
-    keepOnBoard, fitBoard, setStep, focusOn, followPoint, frameCast, keepInView, locate, unframeCast, castMoved, updateCamera, seenClearAt: (x, y) => seenClear({ x, y }),
+    keepOnBoard, fitBoard, setStep, focusOn, followPoint, rideEndsInSight, frameCast, keepInView, locate, unframeCast, castMoved, updateCamera, seenClearAt: (x, y) => seenClear({ x, y }),
     focusAt, focusWant, focusPick, snapshot, restore, ...cam };
 }

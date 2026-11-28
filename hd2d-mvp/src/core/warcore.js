@@ -118,11 +118,31 @@ export function resolveWar(g, war, res) {
   queue = place(g, winF, queue, war.city);
   while (queue.length) {
     const dest = retreatCity(g, war.city, winF);
-    if (dest == null) { for (const id of queue) toRoninAt(g, id, war.city); break; }
+    if (dest == null) {
+      // 武将不战死: a ruler here (the winner's own, or one just taken) goes to any of the winner's cities with room
+      // rather than 下野, which would lose him (checkFactions).
+      for (const id of queue) {
+        const c = g.noWarDeath && isRuler(g, id) ? citiesOf(g, winF).find((x) => x.officers.length < 10) : null;
+        if (c) place(g, winF, [id], c.id); else toRoninAt(g, id, war.city);
+      }
+      break;
+    }
     queue = place(g, winF, queue, dest);
   }
   // Losers retreat (attackers prefer their source city).
   const loseChest = res.chests[loseSide], adrift = [];
+  // 武将不战死 (2026-11-26): a ruler in a losing queue with nowhere to go is not lost (下野, then dead in checkFactions).
+  // The loser's own becomes the winner's prisoner, as one taken on the field (rulerTaken: an heir, or the fall of his
+  // house); the winner's own, held by the loser, goes home. Either way into the battle city or any of the winner's
+  // cities with room; with none at all he is lost as before. One the AI settlement sends 下野 alive (adrift) stays so.
+  const keepRuler = (id) => {
+    if (!isRuler(g, id) || adrift.includes(id)) return false;
+    const c = [city, ...citiesOf(g, winF)].find((x) => x.faction === winF && x.officers.length < 10);
+    if (!c) return false;
+    place(g, winF, [id], c.id);
+    if (g.factions[winF].ruler !== id) { g.officers[id].loyalty = capturedLoyalty(g.officers[id].loyalty); held(winSide).push(id); }
+    return true;
+  };
   for (let first = true; back.length; first = false) {
     const dest = retreatCity(g, war.city, loseF, loseSide === 'att' ? war.from : null);
     if (dest == null) {
@@ -134,7 +154,7 @@ export function resolveWar(g, war, res) {
       // docs/原版非太守君主下野兼容_交接_2026-11-21.md
       const lord = g.factions[loseF].ruler;
       if (first && res.field && g.factions[loseF].ai && back.indexOf(lord) > 0 && !citiesOf(g, loseF).length) adrift.push(lord);
-      for (const id of back) toRoninAt(g, id, war.city);
+      for (const id of back) if (!(g.noWarDeath && keepRuler(id))) toRoninAt(g, id, war.city);
       break;
     }
     back = place(g, loseF, back, dest);
@@ -192,7 +212,7 @@ export function fight(g, war) {
   // Prisoners: loser officers with draw100 ≥ loyalty are captured.
   const loseSide = attWins ? 'def' : 'att', winSide = attWins ? 'att' : 'def';
   const captured = { byAtt: [], byDef: [] };
-  // 武将不战死: those who would have fallen are the other side's prisoners instead (rulers, loyalty 100, never fall here).
+  // 武将不战死: those who would have fallen are the other side's prisoners instead (rulers, loyalty 100, never fall or are taken here).
   if (g.noWarDeath) for (const id of dead.splice(0)) (war.att.ids.includes(id) ? captured.byDef : captured.byAtt).push(id);
   surv[loseSide] = surv[loseSide].filter((id) => {
     const l = O(id).loyalty;

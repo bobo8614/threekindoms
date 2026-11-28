@@ -44,3 +44,21 @@ test('记录 opens the slot picker', async () => {
   await answered().catch(() => assert.fail('记录: nothing opened'));
   await settle();
 });
+
+// 分兵's 清空 (82游戏电影圈的TONY老师@devblog #816): 补满's mirror sends all of one officer's men back to the reserve.
+test('分兵 清空 sends all of an officer\'s men to the reserve, 补满 brings them back', async () => {
+  const state = () => page.evaluate(() => { const { g } = window.__game, c = g.cities[g.factions[g.player].city], id = c.officers[0];
+    return { soldiers: g.officers[id].soldiers, reserve: c.reserve }; });
+  const before0 = await state();
+  assert.ok(before0.soldiers > 0, 'the first officer leads men to send back');
+  await cmd(page, '军', '分兵');
+  const row = page.locator('.shade .row').first();
+  await row.locator('button', { hasText: /^清空$/ }).click();
+  const cleared = await state();
+  assert.equal(cleared.soldiers, 0);
+  assert.equal(cleared.reserve, before0.reserve + before0.soldiers);
+  assert.equal(await row.locator('.val').textContent(), '0');
+  await row.locator('button', { hasText: /^补满$/ }).click();
+  assert.equal((await state()).soldiers, Math.min(1000, cleared.reserve));
+  await settle();
+});

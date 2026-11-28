@@ -21,7 +21,8 @@ export const vignettesOn = () => enabled;
 export function setVignettes(on) { enabled = on; try { localStorage.setItem('hd2d-vignettes', on ? 'on' : 'off'); } catch {} }
 
 // Command → scene, with the 开发 field picking land / industry / pop. 调遣 (once 移动), 侦察 and 赈济 (once 施舍) have their own (feedback T12, 2026-10-30).
-const SCENE_OF = { 防灾: 'disaster', 记录: 'record', 征兵: 'conscript', 调遣: 'march', 运输: 'move', 搜索: 'search', 侦察: 'scout', 赏赐: 'reward', 赈济: 'alms',
+// 出阵 plays depart (app.js expedition plays it and its phrase itself; #818). sortie is the AI war's first picture (warWindow).
+const SCENE_OF = { 出阵: 'depart', 防灾: 'disaster', 记录: 'record', 征兵: 'conscript', 调遣: 'march', 运输: 'move', 搜索: 'search', 侦察: 'scout', 赏赐: 'reward', 赈济: 'alms',
   买米: 'rice-buy', 卖米: 'rice-sell', 卖宝: 'treasure', 医馆: 'hospital', 书馆: 'school', 铁铺: 'weapons', 同盟: 'ally', 诱纳: 'poach', 离间: 'discord' };
 // The phrase each command plays (the original's $04D6 writes, research/music-cues-evidence.md §5, and
 // research/music-cues.csv; assets/audio/*/cue-*.mp3 from tools/original_audio_placeholders.py). 侦察, 任命 and 分兵
@@ -212,6 +213,42 @@ export async function playVignette({ scene, caption, onBook, books = 1, onShow, 
   box.classList.add('out'); dim.classList.remove('in'); await sleep(wipe);
   cancelAnimationFrame(raf); box.remove(); dim.remove(); removeEventListener('keydown', onKey, true);
   return true;
+}
+// A war between two AI factions (FC AI-turn substates 8–10, 142 frames each): a small framed window on the strategy
+// map (left in one replayed war, right in the other; here wherever it covers neither city) plays three pictures in turn, the same in every war: the army riding out
+// (sortie), two generals crossing weapons (aiwar-clash) and a soldier raising a banner (aiwar-victory), each over its
+// beat, with 「××军 出阵 / 战斗中 / 胜利」 under it. Neither of the last two tells who won, so they play for a defender's
+// win too. It always plays (the original's own screen, not a 命令演出), and resolves null when its art is missing.
+// avoid: screen points (the two cities) it should not cover; it takes the first place, measured as it stands, that
+// covers none of them: the middle of the side away from the first point, then the other side's, then the top and
+// bottom corners, else the first. beat(i, ms, caption...) shows picture i, its frames spread over ms; close() takes it away.
+export const WAR_SCENES = ['sortie', 'aiwar-clash', 'aiwar-victory'];
+export async function warWindow({ avoid = [] } = {}) {
+  const S = await Promise.all(WAR_SCENES.map(load));
+  if (S.some((s) => !s)) return null;
+  const cv = h('canvas', { width: S[0].w, height: S[0].h }), cap = h('div', { class: 'vig-cap aiwar' });
+  const box = h('div', { class: 'vig aiwin', role: 'img', title: '按 Enter／空格跳过' }, h('div', { class: 'vig-frame' }, cv), cap);
+  document.body.append(box);
+  const pts = avoid.filter(Boolean), away = pts[0] && pts[0].x < innerWidth / 2 ? 'right' : 'left', other = away === 'left' ? 'right' : 'left';
+  const places = [[away, 'mid'], [other, 'mid'], [away, 'top'], [away, 'bottom'], [other, 'top'], [other, 'bottom']];
+  const covers = () => { const r = box.getBoundingClientRect(), m = 24; return pts.some((p) => p.x > r.left - m && p.x < r.right + m && p.y > r.top - m && p.y < r.bottom + m); };
+  const put = ([sd, v]) => { box.classList.remove('left', 'right', 'top', 'mid', 'bottom'); box.classList.add(sd, v); };
+  put(places.find((pl) => (put(pl), !covers())) ?? places[0]);
+  requestAnimationFrame(() => box.classList.add('in'));
+  const c = cv.getContext('2d'); c.imageSmoothingEnabled = false;
+  let cur = null, t0 = 0, span = 1, raf = 0;
+  const due = pacer();
+  const frame = (t = performance.now()) => { if (cur && due(t)) paint(c, cur, (performance.now() - t0) / 1000, { span }); raf = requestAnimationFrame(frame); };
+  frame();
+  return {
+    el: box,
+    beat(i, ms, ...caption) {
+      cur = S[i]; t0 = performance.now(); span = Math.max(0.1, ms / 1000); box.dataset.scene = WAR_SCENES[i];
+      cap.replaceChildren(...caption); box.setAttribute('aria-label', cap.textContent);
+      paint(c, cur, 0, { span });
+    },
+    close() { cancelAnimationFrame(raf); box.remove(); },
+  };
 }
 // Load a scene and draw it at time t onto a canvas (previews and checks).
 export async function sceneFrame(scene, t, canvas, text) { const S = await load(scene); if (!S) return false; canvas.width = S.w; canvas.height = S.h; const c = canvas.getContext('2d'); c.imageSmoothingEnabled = false; paint(c, S, t, { text }); return true; }

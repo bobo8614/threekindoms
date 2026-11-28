@@ -29,11 +29,12 @@ async function open() {
   await page.waitForTimeout(2500); // the turn banner
   return { page, errors };
 }
-// Waits for pred in the page, reading past story messages (.msg) on the way; false on timeout.
+// Waits for pred in the page, reading past story messages (.msg) and 命令演出 (.vig: 出阵 plays one, and at 原版 it waits
+// for a key) on the way; false on timeout.
 async function until(page, pred, arg, ms = 60000) {
   for (const end = Date.now() + ms; Date.now() < end;) {
-    if (!(await page.locator('.msg').count()) && (await page.evaluate(pred, arg))) return true;
-    if (await page.locator('.msg').count()) await page.keyboard.press('Escape');
+    if (!(await page.locator('.msg, .vig').count()) && (await page.evaluate(pred, arg))) return true;
+    if (await page.locator('.msg, .vig').count()) await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
   }
   return false;

@@ -107,10 +107,19 @@ test('fire arrows burn the final five rice: the surviving ruler is not reported 
   settle(b); assert.match(fate(b, b.ruler), /无路可退.*身亡/);
 });
 
-test('all friendly retreat cities full is also no escape, including with 武将不战死', () => {
-  const b = battle(); b.g.noWarDeath = true;
+test('all friendly retreat cities full is also no escape', () => {
+  const b = battle();
   for (const dest of G.roads(b.war.city)) { b.g.cities[dest].faction = 2; b.g.cities[dest].officers = Array(10).fill(b.enemy); }
   settle(b); assert.match(fate(b, b.ruler), /无路可退.*身亡/); assert.match(fate(b, b.general), /下野/);
+});
+// 武将不战死 (2026-11-26): a ruler with nowhere to go is taken by the winner instead of lost; his officers still 下野.
+test('不战死: a ruler with no escape is taken into the winner\'s city', () => {
+  const b = battle(); b.g.noWarDeath = true;
+  for (const dest of G.roads(b.war.city)) { b.g.cities[dest].faction = 2; b.g.cities[dest].officers = Array(10).fill(b.enemy); }
+  settle(b);
+  assert.equal(fate(b, b.ruler), `被俘归顺（${G.cityName(b.war.city)}）`); assert.match(fate(b, b.general), /下野/);
+  assert.equal(b.g.officers[b.ruler].status, G.SERVING); assert.equal(G.factionOf(b.g, b.ruler), 1);
+  assert.equal(b.g.officers[b.ruler].loyalty, G.capturedLoyalty(100));
 });
 
 test('a winner placed in another city reports that final city', () => {

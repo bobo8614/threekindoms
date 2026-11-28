@@ -4,7 +4,7 @@
 import { PHONE, FLAT_DPR } from './phone.js';
 import * as THREE from 'three';
 import { createSeasons, SEASON_TABLE, U } from './seasons.js';
-import { colorOf, paintBanner, surnameOf } from './strategy.js';
+import { colorOf } from './strategy.js';
 import { heightField, townSeat, courseOf, waterIndex, wetCostOf } from './packgeo.js';
 import { SEA_Y } from './worldmap.js';
 import { regionHeights } from './regionseam.js';
@@ -32,9 +32,6 @@ const CLEAR = 0.62; // the roads end at the walls: in 3D the town stands in fron
 // The cloth's world width (a little over the 3D plane's up close: this view never gets as near), the least it shows in screen px, and how far its pole goes down the picture.
 // It hangs taller than the 3D plane looks from above, where a flat view would leave a sliver.
 const FLAG_W = 0.3, FLAG_MIN = 14, POLE = 0.44 * PAN_UNIT * UP;
-// An AI war's standard. WAR: the 3D map's scale for the sand table's towns. CLOTH: the cloth's width in the 3D model's units. On screen the cloth is at least CLOTH_MIN px, what keeps a
-// surname legible at the whole board, and CLOTH_WORLD world units when that is more. PRESS: the model's heights are pressed by this, as seen from above the 3D one looks shorter than it stands.
-const WAR = 0.7, CLOTH = 0.33, CLOTH_MIN = 30, CLOTH_WORLD = 0.6, PRESS = 0.75;
 // The picture row of a latitude: the sand table's z against the board's cy (a fit over the cities, within a degree), with toZ's 31.5 - lat. Where snow and blossom may fall, by the 3D map's bands.
 const ROW = (lat) => (44.15 - lat) / 0.00914;
 const SKY_CELL = 48; // sky()'s flake scale, 1: as the war map's at this window. The 3D flakes hardly change on screen with the distance, so these do not take the zoom.
@@ -331,7 +328,6 @@ export async function createStrategyFlat(ctx) {
     g.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y);
     drawPulses();
     g.setTransform(dpr, 0, 0, dpr, 0, 0); g.globalAlpha = 1;
-    warShow?.draw(k, x, y);
     if (skyOn) drawSky(k, y, dt);
   }
 
@@ -608,124 +604,12 @@ export async function createStrategyFlat(ctx) {
     }
   }
 
-  // ---- A war between two AI factions, in the 3D map's three beats and at its timing (createStrategy's aiWar, driven by app.js): the attacker's standard goes down the road from his
-  // city, the two clash before the walls with the view closing in, the loser's falls and a winning attacker rides in. Each cloth is painted at its size on screen, and each standard
-  // is put together on one scratch canvas and laid down whole, so a fade or a topple shows no seams. Nothing here is made per frame: the dust is a pool, the canvases stay.
+  // ---- A war between two AI factions (createStrategy's aiWar, driven by app.js): the war plays in a window at the side of the map (vignette.js warWindow) and its
+  // outcome flashes on the city (announce); here only the view, which frames the two cities for the march and holds there, so the window placed clear of them stays clear.
   let warShow = null;
-  const dust = Array.from({ length: 64 }, () => ({ life: 0, t: 0, x: 0, y: 0, size: 0, vy: 0, o: 0, spark: false }));
-  let puffs = null, scratch = null, sg = null;
-  const puffOf = (col) => {
-    const c = Object.assign(document.createElement('canvas'), { width: 64, height: 64 }), p = c.getContext('2d'), grd = p.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grd.addColorStop(0, col); grd.addColorStop(0.45, `${col}99`); grd.addColorStop(1, `${col}00`);
-    p.fillStyle = grd; p.fillRect(0, 0, 64, 64);
-    return c;
-  };
-  const kick = (px, py, { n = 1, spread = 0.12, size = 0.32, life = 0.9, spark = false } = {}) => {
-    puffs ??= { dust: puffOf('#d8c8a2'), spark: puffOf('#ffc070') };
-    for (let i = 0, j = 0; i < n; i++) {
-      while (j < dust.length && dust[j].t < dust[j].life) j++;
-      if (j === dust.length) return;
-      Object.assign(dust[j], { t: 0, life, size, spark, x: px + (Math.random() - 0.5) * spread * PAN_UNIT, y: py + (Math.random() - 0.5) * spread * PAN_UNIT * DOWN, vy: 0.12 + Math.random() * 0.1, o: spark ? 1 : 0.6 });
-    }
-  };
-  const liveDust = () => dust.reduce((n, d) => n + (d.t < d.life), 0);
-  function drawDust(k, x, y) {
-    for (const d of dust) {
-      if (d.t >= d.life) continue;
-      const u = d.t / d.life, w = d.size * PAN_UNIT * k * (0.6 + u * 0.9);
-      g.globalCompositeOperation = d.spark ? 'lighter' : 'source-over'; g.globalAlpha = d.o * (1 - u);
-      g.drawImage(d.spark ? puffs.spark : puffs.dust, d.x * k + x - w / 2, d.y * k + y - w / 2, w, w);
-    }
-    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
-  }
-  const clothWidth = (k) => Math.round(Math.max(CLOTH_MIN, CLOTH_WORLD * PAN_UNIT * k));
-  function standard(f, nm) {
-    const col = colorOf(f), sur = surnameOf(nm), cv = document.createElement('canvas'), cg = cv.getContext('2d');
-    const S = {
-      col, x: 0, y: 0, alpha: 1, shown: true, lean: 0, lift: 0, fallDir: 1, sized: 0,
-      cloth(w) { // at its size on screen, so the brush strokes are the screen's and not a shrunken picture's
-        if (S.sized === w * dpr) return cv;
-        S.sized = w * dpr; cv.width = Math.ceil(w * dpr); cv.height = Math.ceil(w * 4 / 3 * dpr);
-        cg.setTransform(cv.width / 96, 0, 0, cv.height / 128, 0, 0); paintBanner(cg, col, sur);
-        return cv;
-      },
-      dispose() { cv.width = cv.height = 0; },
-    };
-    S.cloth(clothWidth(viewState().k));
-    document.fonts?.load('52px "Ma Shan Zheng"', sur).then(() => { S.sized = 0; }).catch(() => {}); // the brush face may still be loading
-    return S;
-  }
-  const COLS = 8;
-  function drawStandard(S, k, x, y, w) {
-    const u = w / CLOTH, sc = dpr, ox = Math.ceil(0.2 * u * sc), oy = Math.ceil(0.98 * u * sc), sw = ox + Math.ceil(0.5 * u * sc), sh = oy + Math.ceil(0.04 * u * sc);
-    if (!scratch) { scratch = document.createElement('canvas'); sg = scratch.getContext('2d'); }
-    if (scratch.width < sw || scratch.height < sh) { scratch.width = Math.max(scratch.width, sw); scratch.height = Math.max(scratch.height, sh); }
-    sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sw, sh);
-    sg.setTransform(sc, 0, 0, sc, ox, oy); // the base's middle at the origin, up is negative, in CSS px
-    const Y = (h) => -h * u * PRESS, X = (m) => m * u, wave = (m, i) => Math.sin(time * 6 + m * 18 + i) * 0.12 * m * u * DOWN;
-    // Two pennants behind, then the block, its gold trim, the pole and its finial, then the cloth: as the 3D model, back to front.
-    const line = Math.max(1.25, 0.028 * u);
-    for (const [i, m, foot] of [[1, 0.1, 0.1], [2, 0.15, 0.13]]) {
-      const top = Y(0.69) - foot * u * 0.2, tip = wave(0.26, i);
-      sg.fillStyle = '#3a2818'; sg.fillRect(X(m) - line * 0.3, top, line * 0.6, -foot * u - top);
-      sg.beginPath(); sg.moveTo(X(m), top); sg.lineTo(X(m), top + 0.16 * u * PRESS); sg.lineTo(X(m + 0.26), top + 0.08 * u * PRESS + tip); sg.closePath();
-      sg.fillStyle = S.col; sg.fill(); sg.strokeStyle = 'rgba(26,14,6,.7)'; sg.lineWidth = 0.75; sg.stroke();
-    }
-    const bw = X(0.3), top = 0.09 * u, front = 0.06 * u, sill = -front - top;
-    sg.fillStyle = S.col; sg.fillRect(-bw / 2, sill, bw, top); sg.fillStyle = 'rgba(255,255,255,.18)'; sg.fillRect(-bw / 2, sill, bw, top); // the top, catching the light
-    sg.fillStyle = S.col; sg.fillRect(-bw / 2, -front, bw, front); sg.fillStyle = 'rgba(0,0,0,.28)'; sg.fillRect(-bw / 2, -front, bw, front);
-    sg.fillStyle = '#d8b060'; sg.fillRect(-bw / 2 - 0.5, -front - 0.75, bw + 1, 1.5);
-    sg.strokeStyle = 'rgba(26,14,6,.75)'; sg.lineWidth = 0.75; sg.strokeRect(-bw / 2, sill, bw, top + front);
-    const poleX = X(-0.1), head = Y(1.08);
-    sg.fillStyle = '#3a2818'; sg.fillRect(poleX - line / 2, head, line, -top * 0.5 - front - head);
-    sg.fillStyle = '#e8c878'; sg.beginPath(); sg.moveTo(poleX, head - 0.08 * u); sg.lineTo(poleX + line * 1.3, head); sg.lineTo(poleX - line * 1.3, head); sg.closePath(); sg.fill();
-    sg.strokeStyle = 'rgba(26,14,6,.7)'; sg.lineWidth = 0.5; sg.stroke();
-    const cv = S.cloth(w), h = w * 4 / 3, x0 = X(-0.086), y0 = Y(1.06), cw = w / COLS, lift = (i) => wave(CLOTH * i / COLS, 0);
-    for (let i = 0; i < COLS; i++) {
-      const a = lift(i), slope = (lift(i + 1) - a) / cw, shade = clamp((lift(i + 1) - a) / (0.012 * u), -1, 1) * 0.16;
-      sg.setTransform(sc, slope * sc, 0, sc, ox + (x0 + cw * i) * sc, oy + (y0 + a) * sc);
-      sg.drawImage(cv, cv.width * i / COLS, 0, cv.width / COLS, cv.height, 0, 0, cw + (i < COLS - 1 ? 0.6 : 0), h); // a hair over the next, or the joins show
-      if (Math.abs(shade) > 0.02) { sg.fillStyle = shade > 0 ? `rgba(0,0,0,${shade})` : `rgba(255,255,255,${-shade})`; sg.fillRect(0, 0, cw, h); }
-    }
-    sg.setTransform(sc, 0, 0, sc, ox, oy); sg.beginPath();
-    for (let i = 0; i <= COLS; i++) sg[i ? 'lineTo' : 'moveTo'](x0 + cw * i, y0 + lift(i));
-    for (let i = COLS; i >= 0; i--) sg.lineTo(x0 + cw * i, y0 + h + lift(i));
-    sg.closePath(); sg.strokeStyle = 'rgba(26,14,6,.75)'; sg.lineWidth = 1; sg.lineJoin = 'round'; sg.stroke();
-    // Its shadow stays on the ground; the rest is laid down whole, on the pixel grid while upright, and leans or falls about its base.
-    const px = S.x * k + x, py = S.y * k + y;
-    g.globalAlpha = 0.32 * S.alpha; g.fillStyle = '#000'; g.beginPath(); g.ellipse(px, py, 0.26 * u, 0.26 * u * 0.55, 0, 0, Math.PI * 2); g.fill();
-    g.save(); g.globalAlpha = S.alpha;
-    g.translate(Math.round(px * dpr) / dpr, Math.round((py - S.lift * u) * dpr) / dpr); if (S.lean) g.rotate(S.lean);
-    g.drawImage(scratch, 0, 0, sw, sh, -ox / dpr, -oy / dpr, sw / dpr, sh / dpr);
-    g.restore();
-  }
-  function aiWar({ from, to, att, def, attName, defName }) {
+  function aiWar({ from, to }) {
     warShow?.dispose();
-    const end = cities[to];
-    // The road from his city as the board draws it; without one, a straight approach from the south-west.
-    const road = from != null && from !== to ? board.roads.find((r) => (r.a === from && r.b === to) || (r.a === to && r.b === from)) : null;
-    let pts, sea = null;
-    if (road) { pts = road.p; sea = road.sea; if (road.a !== from) { pts = []; for (let i = road.p.length - 2; i >= 0; i -= 2) pts.push(road.p[i], road.p[i + 1]); sea = [...road.sea].reverse(); } }
-    else {
-      const [sx, sy] = [end.cx - 2.4 * PAN_UNIT, end.cy + 1.4 * PAN_UNIT * DOWN]; pts = [];
-      for (let i = 0; i <= 24; i++) pts.push(sx + (end.cx - sx) * i / 24, sy + (end.cy - sy) * i / 24);
-    }
-    const runs = [0]; for (let i = 1; i < pts.length / 2; i++) runs.push(runs[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], (pts[i * 2 + 1] - pts[i * 2 - 1]) / DOWN) / PAN_UNIT);
-    const L = runs.at(-1);
-    let atX = 0, atY = 0, atSea = false;
-    const at = (d) => {
-      d = clamp(d, 0, L);
-      let i = 1; while (i < runs.length - 1 && runs[i] < d) i++;
-      const u = (d - runs[i - 1]) / ((runs[i] - runs[i - 1]) || 1);
-      atX = pts[i * 2 - 2] + (pts[i * 2] - pts[i * 2 - 2]) * u; atY = pts[i * 2 - 1] + (pts[i * 2 + 1] - pts[i * 2 - 1]) * u; atSea = !!sea && !!sea[i];
-    };
-    const A = standard(att, attName), D = standard(def, defName);
-    const place = (S, d) => { at(d); S.x = atX; S.y = atY; S.d = d; };
-    // The 3D map's stand-offs, the attacker's opened out so that the two cloths stand side by side at the close-up's zoom. Fixed, or he would jump as the view closes in.
-    const kNear = kMin * Z_MAX, holdD = () => Math.max(0, L - 1.05 * WAR), stopA = () => Math.max(0, L - 1.05 * WAR - Math.max(1.05 * WAR, clothWidth(kNear) * 1.5 / (PAN_UNIT * kNear)));
-    D.shown = false; A.alpha = 0; place(A, stopA()); const ax = A.x; place(A, 0); place(D, holdD());
-    const side = Math.sign(D.x - ax) || 1; // which way the two face, held for the show: a road running north and south would flicker
-    let stage = null, t = 0, len = 1, nextDust = 0, attWins = false, midX = 0, midY = 0, rideFrom = 0;
+    let stage = null;
     // The view the show gives back: what the player had, kept up with any move of his since the show last moved it. Zoom and place are his separately.
     let home = null, mine = null;
     const ownMoves = () => {
@@ -734,70 +618,21 @@ export async function createStrategyFlat(ctx) {
       if (goal.cx !== mine.cx || goal.cy !== mine.cy) { home.cx = goal.cx; home.cy = goal.cy; }
     };
     const show = warShow = {
-      march(ms) {
-        stage = 'march'; t = 0; len = ms / 1000; ownMoves();
+      march() {
+        stage = 'march'; ownMoves();
         if (from != null && from !== to) frame([from, to]); else focusCity(to);
         mine = { ...goal };
       },
-      clash(ms) {
-        // nextDust: the march's clock would hold the first blow back to the clash's last moment.
-        stage = 'clash'; t = 0; len = ms / 1000; nextDust = 0; ownMoves(); place(A, stopA()); A.alpha = 1; D.shown = true; D.alpha = 0;
-        // Closer in, on the ground between the two standards with the walls behind, as the 3D map's; a player's own view comes back after (dispose).
-        at((stopA() + L) / 2); goal.z = Z_MAX; goal.cx = atX; goal.cy = atY - 0.35 * clothWidth(kNear) / CLOTH / kNear;
-        mine = { ...goal };
-      },
-      end(wins, ms) {
-        stage = 'end'; t = 0; len = ms / 1000; attWins = wins; A.alpha = D.alpha = 1; D.shown = true; A.lean = D.lean = 0;
-        (wins ? D : A).fallDir = wins ? side : -side; rideFrom = A.d; // from wherever his last lunge has him: back to his mark first would be a jump
-      },
-      tick(dt) {
-        t += dt;
-        for (const d of dust) if (d.t < d.life) { d.t += dt; d.y -= d.vy * dt * PAN_UNIT * UP; }
-        if (stage === 'march') {
-          // Rises at his city, then down the road at an even pace with a little stride, dust at its heels (none on a sea lane).
-          A.alpha = Math.min(1, t / 0.3);
-          const e = clamp((t - 0.2) / Math.max(0.1, len * 0.88 - 0.2), 0, 1), d = stopA() * (e * e * (3 - 2 * e) * 0.35 + e * 0.65);
-          place(A, d); A.lift = Math.abs(Math.sin(t * 9)) * 0.03 * (e > 0 && e < 1);
-          if (e > 0 && e < 1 && t >= nextDust) { if (!atSea) kick(A.x, A.y, { size: 0.7 * WAR, spread: 0.3 * WAR }); nextDust = t + 0.09; }
-        } else if (stage === 'clash') {
-          // The defender's standard stands up before his walls; the two lunge at each other in turn, dust and sparks flying between them, rings of both colours off the fight.
-          D.alpha = Math.min(1, t / 0.25); A.lift = 0;
-          const beat = (t * 2.6) % 1, a = Math.max(0, Math.sin(beat * Math.PI * 2)), b = Math.max(0, -Math.sin(beat * Math.PI * 2));
-          place(A, stopA() + 0.3 * a); place(D, holdD() - 0.3 * b);
-          A.lean = 0.12 * a * side; D.lean = -0.12 * b * side;
-          midX = (A.x + D.x) / 2; midY = (A.y + D.y) / 2;
-          if (t >= nextDust) {
-            kick(midX, midY, { n: 4, spread: 0.7 * WAR, size: WAR, life: 0.8 }); kick(midX, midY, { n: 3, spread: 0.5 * WAR, size: 0.4 * WAR, life: 0.3, spark: true });
-            nextDust = t + 0.36;
-            pulses.push({ c: { cx: midX, cy: midY }, color: colorOf(Math.floor(t / 0.36) % 2 ? def : att), t0: time });
-          }
-        } else if (stage === 'end') {
-          // The loser's standard topples away from the winner and fades; a winning attacker rides into the city.
-          const loser = attWins ? D : A, winner = attWins ? A : D, f = Math.min(1, t / 0.55);
-          loser.lean = loser.fallDir * (Math.PI / 2) * f * f; loser.alpha = 1 - clamp((t - 0.45) / 0.6, 0, 1);
-          if (t < 0.1) kick(loser.x, loser.y, { n: 2, spread: 0.6 * WAR, size: 0.9 * WAR });
-          winner.lean = 0;
-          if (attWins) { const e = Math.min(1, t / 0.9); place(A, rideFrom + (L - rideFrom) * e * (2 - e)); }
-          winner.lift = 0.05 * Math.max(0, Math.sin(Math.min(1, t / 0.5) * Math.PI));
-          winner.alpha = t > len - 0.35 ? Math.max(0, (len - t) / 0.35) : 1;
-        }
-      },
-      draw(k, x, y) {
-        // On a road running up the picture one cloth would hide the other: the two step aside as the defender stands up, just far enough to show both surnames.
-        const w = clothWidth(k), aside = D.shown ? Math.max(0, w * 1.15 - Math.abs(A.x - D.x) * k) / 2 * (stage === 'clash' ? Math.min(1, t / 0.25) : 1) * side : 0;
-        for (const S of A.y <= D.y ? [A, D] : [D, A]) if (S.shown && S.alpha > 0) drawStandard(S, k, x + (S === A ? -aside : aside), y, w); // the south, nearer the eye, over the north
-        drawDust(k, x, y);
-      },
+      clash() { stage = 'clash'; },
+      end() { stage = 'end'; },
+      tick() {},
       dispose() {
         if (warShow !== show) return;
         warShow = null; focusTerritory();
-        for (const d of dust) d.t = d.life = 0;
-        A.dispose(); D.dispose();
-        // The show closed in on its own account: the player gets his view back, with whatever he changed himself.
+        // The show moved the view on its own account: the player gets his back, with whatever he changed himself.
         if (home) { ownMoves(); Object.assign(goal, home); }
       },
-      fightAt: () => (stage === 'clash' ? to : null),
-      debug() { const of = (S) => ({ x: S.x, y: S.y, alpha: S.alpha, lean: S.lean, shown: S.shown }); return { stage, a: of(A), d: of(D), dust: liveDust(), cloth: clothWidth(viewState().k) }; },
+      debug: () => ({ stage }),
     };
     focusTerritory(); return show;
   }
@@ -883,7 +718,7 @@ export async function createStrategyFlat(ctx) {
       const c = cities[i], keep = roadsOn || i === selected || m.el.classList.contains('mine') || m.el.classList.contains('hl') || !!candidates?.has(i);
       const px = Math.round(c.tag[0] * k + x), py = Math.round(c.tag[1] * k + y);
       m.box.style.transform = `translate(-50%, -100%) translate(${px}px, ${py}px)`; // it stands on its anchor: on this flat view, centred there, it would hide the town
-      m.el.style.setProperty('--s', s.toFixed(3)); m.el.style.setProperty('--o', warShow?.fightAt() === i ? '0.3' : '1'); // the fight's own city's tag gives way to the standards rising behind it
+      m.el.style.setProperty('--s', s.toFixed(3))
       const far = view.z < FULL_FORM_Z && !keep;
       if (m.far !== far) { m.far = far; m.el.classList.toggle('far', far); measured = false; }
       const up = m.h * s / 2;
@@ -1018,7 +853,7 @@ export async function createStrategyFlat(ctx) {
       layers: layers.map((l) => SEASONS[l.s]), held: [...pics.keys()].map((s) => SEASONS[s]),
       sizes: { cv: [cv.width, cv.height], under: [under.width, under.height], sky: [skyCv?.width ?? 0, skyCv?.height ?? 0] },
       hover: hovered, selected, candidates: [...(candidates ?? [])], roadsOn, territoryOn, flowCount: flow.length, flow: flow.map((b) => ({ ...b })), flagColors: [...flagColors], crowned: [...crowned], tintDraws, underPaints, pulses: pulses.length,
-      weather: Object.fromEntries(['rain', 'snowfall', 'petals', 'fall', 'thunder'].map((n) => [n, season.cur[n]])), skyBands: { snowfall: bandOf('snowfall'), petals: bandOf('petals') }, aiWar: warShow?.debug() ?? null, dust: liveDust(),
+      weather: Object.fromEntries(['rain', 'snowfall', 'petals', 'fall', 'thunder'].map((n) => [n, season.cur[n]])), skyBands: { snowfall: bandOf('snowfall'), petals: bandOf('petals') }, aiWar: warShow?.debug() ?? null,
     }),
   };
 
